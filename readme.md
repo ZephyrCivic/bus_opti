@@ -329,4 +329,58 @@
 
 ---
 
+## プロダクト概要（MVP）
+
+- 富士通が西日本鉄道（西鉄）向けに提供する、バス業務（車両・乗務員割当）の「UI先行・最小実装」MVP。
+- 1名の非エンジニアがAIと共創。短期間で意思決定に必要な価値の可視化を最優先。
+- 目的: 人手で行っているブロック（運行機材の連結）およびDuty（乗務）の編成作業を、GTFSを基礎データとしてブラウザ上で直感的に実施できるようにする。次フェーズで数理最適化を段階導入。
+- カバー範囲: GTFS読込 → Explorerで地図/時系列の可視化 → Block候補推定（半自動）→ Dutyの手動割当＋簡易ルール警告 → CSV出力。PDFや厳密最適化は次フェーズ。
+
+## MVP仕様（再整理）
+
+- 入力データ
+  - GTFS/GTFS-JP ZIP（最低: stops, trips, stop_times, shapes。必要に応じて calendar, calendar_dates）。
+  - 任意オーバーレイ: 営業所/Depot, 交代可能地点（relief points）。
+- 主要機能
+  - Explorer: 地図（Stops/Shapes）と時刻ヒストグラムの同期表示、日/路線フィルタ、異常ピン留め。
+  - Block候補推定: Greedy連結（turn_gap/距離/同一路線優先）。候補の採否でBlock確定。単独Tripは孤立Block容認。
+  - Dutyガント: 運転/回送/休憩の3種セグメント、Drag&Drop編集、1段Undo、違反の即時可視化。
+  - エクスポート: Blocks/DutiesのCSV。
+- 簡易ルール（暫定・設定化）
+  - max_turn_gap=15分、max_continuous_drive=4時間、min_meal=30分、day_max_duty_span=9時間。
+  - sign_on/offバッファ、交代地点はrelief_pointsに準拠。
+- 受け入れ基準（MVP）
+  - 地図と時系列が同期し、Depot保存ができる。
+  - `block_id`未設定でも対象service日に対して70〜80%のTripでBlock候補提示→採否でBlock確定。
+  - Duty編成中にルール違反が色分け表示され、CSVをダウンロードできる。
+
+## 非スコープ（MVP）
+
+- PDF帳票（交番票）、厳密な数理最適化（MIP/CP）、SSO/RBACの高度化、サーバ常駐API、完全な差分比較UIなどは次フェーズ。
+
+## 想定利用者・体験
+
+- 想定利用者: 運行計画・配車・乗務割当の担当者。
+- 体験価値: 紙/Excel中心の手作業を、ブラウザ上で「見える・つなぐ・配置する」に置き換え、判断を早く・正確に。
+
+## 更新履歴
+- 2025-10-06: プロダクト概要とMVP仕様（再整理）を追加。
+
+## 仕様確定事項（2025-10-06）
+
+- Block候補の達成目標値は「70〜80%」で据え置き（引き上げない）。
+- Dutyルールの最小セットに「中拘束」「交代地点制約」を含める。
+- CSVスキーマは適切であればOKとし、以下のMVP案を採用（将来の変更は互換を配慮して小幅に実施）。
+
+### CSVスキーマ（MVP）
+- Blocks: `block_id, seq, trip_id, trip_start, trip_end, from_stop_id, to_stop_id, service_id`
+- Duties: `duty_id, seq, block_id, segment_start_trip_id, segment_end_trip_id, driver_id`
+  - 備考: 時刻はGTFS準拠（例: 24時超を許容）。文字コードUTF-8、区切りは`,`、改行はLF。
+
+### データ/フィード
+- サンプルは `data/GTFS-JP(gunmachuo).zip` を利用。ただし任意のGTFS/GTFS-JP ZIPをドラッグ&ドロップで読み込み可能にする（将来的に複数フィード切替は検討）。
+
+### マップタイル
+- MVP既定は MapLibre + OSM（キー不要）。運用要件に応じて後から切り替え可能。
+
 Note: An updated, concise README is available at docs/README_JA.md and an execution-focused checklist at docs/ImplementationChecklist.md. This file retains prior design notes.
