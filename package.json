@@ -1,5 +1,5 @@
 {
-  "name": "aiバス運行シフトジェネレーター",
+  "name": "ts-bus-operation-app",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -43,3 +43,4 @@
     "vite": "^6.2.0"
   }
 }
+

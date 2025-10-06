@@ -52,3 +52,47 @@ test('scanPaths ignores clean UTF-8 file', async () => {
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('scanPaths flags halfwidth katakana', async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'encoding-scan-'));
+  try {
+    const suspect = path.join(tempDir, 'halfwidth.txt');
+    const halfwidth = String.fromCharCode(0xff83, 0xff7d, 0xff84);
+    writeFileSync(suspect, halfwidth, 'utf8');
+
+    const results = await scanPaths([suspect]);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].issues.some((issue) => issue.type === 'HALFWIDTH_KATAKANA'), true);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('scanPaths flags fullwidth latin', async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'encoding-scan-'));
+  try {
+    const suspect = path.join(tempDir, 'fullwidth.txt');
+    const fullwidth = String.fromCharCode(0xff21, 0xff22, 0xff23); // ＡＢＣ
+    writeFileSync(suspect, fullwidth, 'utf8');
+
+    const results = await scanPaths([suspect]);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].issues.some((issue) => issue.type === 'FULLWIDTH_LATIN'), true);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('scanPaths allows fullwidth parentheses', async () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'encoding-scan-'));
+  try {
+    const ok = path.join(tempDir, 'parentheses.txt');
+    // 全角カッコは許容（日本語ドキュメントで一般的）
+    writeFileSync(ok, '連続運転（最大）と保存データ（.json）', 'utf8');
+
+    const results = await scanPaths([ok]);
+    assert.equal(results.length, 0);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

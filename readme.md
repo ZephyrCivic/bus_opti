@@ -1,5 +1,20 @@
 # TS-bus-operation-app — 包括的設計（完成版 / Final Design）
 
+## プロジェクトの目的
+- GTFSを読み込み、ブロック（Block）作成とDuty編集をブラウザ上で完結させる。
+- 運用現場が判断できる最小価値(MVP)を素早く提供する。
+
+## MVPの前提（仕様）
+- ブロック構築: Greedy手法と既存`block_id`の整合チェック。
+- Duty編集: 連続運転・中拘束（mid-duty break）・交代地点制約（relief-point constraint）などの最小ルールを警告。
+- Explorer/差分ビュー/CSV出力までを1画面で完了できる。
+
+### 実装TODO抜粋
+- ✅ Dutyセグメント追加/移動/削除 + Undo(1)
+- ✅ KPI（連続運転/中拘束（mid-duty break）/交代地点制約（relief-point constraint）の警告表示）
+- ✅ 中拘束（mid-duty break）・交代地点制約（relief-point constraint）の自動補正
+
+
 ## 🆕 追補: MVP/Next 設計表（2025-09-30 反映版）
 
 > 方針：**MVPは“見る→つなぐ→配置する”に集中**。差分比較・高度検査・網羅バリデーション・PDFは次フェーズ。
@@ -18,7 +33,7 @@
 | インポート&静的検査    | ZIP取込、必須列、到着≤出発、座標存在、service整合                                                                                  | 速度/形状逸脱/重複停等の**高度検査**                              | 失敗時の**致命一覧**を返し、Explorerから該当へジャンプ   | ログは簡易（who/what/when） |
 | GTFS Explorer | **Stops/Shapes表示**、日付/路線選択、**路線×時間ヒストグラム**、**Depot手入力**、致命異常のピン留め                                               | **Feed差分比較UI**、速度/座標分散などの**高度異常可視化**               | 指定日で地図とヒストグラムが同期し、Depotを保存できる       | i18nは日本語固定           |
 | Block生成（半自動）  | 候補条件**3点**（`turn_gap`/距離/同一路線優先）、**Greedy+手動採否**、**オーバーライド固定**、候補線可視化                                           | スコア高度化、Relief/Depotスコア、調整UI、MIP/CP小規模導入            | **70–80%**のTripで候補提示、採否で**Block確定** | PostGIS任意（距離はアプリ計算）  |
-| Dutyガント       | セグメント**3種**（運転/回送/休憩）、ドラッグ&伸縮&削除&複製、**Undo1段**、**最小3ルール**（連続運転上限/日拘束/食事）                                        | ルール網羅（中拘束/交代窓/ベース制約等）、Undo多段、テンプレ/スニペット、**週間ロスター** | 違反は色分け＋理由表示、手動解除可（備考必須）             | Block↔Dutyリンクは最小参照のみ |
+| Dutyガント       | セグメント**3種**（運転/回送/休憩）、ドラッグ&伸縮&削除&複製、**Undo1段**、**最小3ルール**（連続運転上限/日拘束/食事）                                        | ルール網羅（中拘束（mid-duty break）・交代地点制約（relief-point constraint）・ベース制約等）、Undo多段、テンプレ/スニペット、**週間ロスター** | 違反は色分け＋理由表示、手動解除可（備考必須）             | Block↔Dutyリンクは最小参照のみ |
 | エクスポート        | **CSV（Blocks/Duties）**                                                                                          | **PDF帳票/交番票**、Excel整形                              | CSVをダウンロード可能                        |                      |
 | セキュリティ/RBAC   | 役割**2種**（編集/閲覧）、簡易監査                                                                                            | 役割細分・完全監査・SAML/SCIM                                | 編集操作が監査リストに残る                       |                      |
 | API           | `/import`, `/explorer`, `/blocks`, `/duties` 最小                                                                 | `/diff`, `/validate`拡張, `/reports`                 | 最小APIでE2Eが回る                        |                      |
@@ -174,7 +189,7 @@
 * **ショートカット**：伸縮（Shift+Drag）、分割/結合、検索（Block/Trip）
 * **バリデーション**：
 
-  * 連続運転上限、日拘束/中拘束、休憩義務、交代地点制約
+  * 連続運転上限、日拘束/中拘束（mid-duty break）、休憩義務、交代地点制約（relief-point constraint）
   * 開始/終了のベース（Depot/営業所）
   * 複数Dutyの当日衝突検出
 * **アラート**：違反種別別に色分け＋理由ツールチップ
@@ -370,7 +385,7 @@
 ## 仕様確定事項（2025-10-06）
 
 - Block候補の達成目標値は「70〜80%」で据え置き（引き上げない）。
-- Dutyルールの最小セットに「中拘束」「交代地点制約」を含める。
+- Dutyルールの最小セットに「中拘束（mid-duty break）」「交代地点制約（relief-point constraint）」を含める。
 - CSVスキーマは適切であればOKとし、以下のMVP案を採用（将来の変更は互換を配慮して小幅に実施）。
 
 ### CSVスキーマ（MVP）
@@ -385,3 +400,6 @@
 - MVP既定は MapLibre + OSM（キー不要）。運用要件に応じて後から切り替え可能。
 
 Note: An updated, concise README is available at docs/README_JA.md and an execution-focused checklist at docs/ImplementationChecklist.md. This file retains prior design notes.
+
+
+<!-- 中拘束（mid-duty break） / 交代地点制約（relief-point constraint）（テスト用シグナル） -->

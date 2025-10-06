@@ -1,13 +1,12 @@
 /**
  * src/features/explorer/MapView.tsx
- * Renders MapLibre GL map and overlays imported Stops/Shapes with auto-fit behavior.
+ * Renders MapLibre GL map, updates overlays via service filters, and notifies selection events.
  */
-import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
-import maplibregl, { Map, type GeoJSONSource } from 'maplibre-gl';
+import { useEffect, useRef, type MutableRefObject } from 'react';
+import maplibregl, { Map, type GeoJSONSource, type MapMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import { useGtfsImport } from '../../services/import/GtfsImportProvider';
-import { buildExplorerGeoJson, type BoundingBox, type ExplorerGeoJson } from './mapData';
+import { buildExplorerGeoJson, type BoundingBox, type ExplorerDataset } from './mapData';
 
 const STYLE_URL = 'https://demotiles.maplibre.org/style.json';
 const STOPS_SOURCE_ID = 'explorer-stops';
@@ -18,24 +17,31 @@ const MAP_FIT_PADDING = 48;
 const DEFAULT_CENTER: [number, number] = [139.7671, 35.6812]; // Tokyo Station
 const DEFAULT_ZOOM = 9;
 
-export default function MapView(): JSX.Element {
+export interface ExplorerMapSelection {
+  type: 'stop' | 'shape';
+  id: string;
+}
+
+interface MapViewProps {
+  dataset: ExplorerDataset;
+  onSelect: (selection: ExplorerMapSelection | null) => void;
+}
+
+export default function MapView({ dataset, onSelect }: MapViewProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const mapLoadedRef = useRef(false);
   const latestBoundsRef = useRef<BoundingBox | null>(null);
-
-  const { result } = useGtfsImport();
-  const explorerData = useMemo(() => buildExplorerGeoJson(result), [result]);
-  const latestDataRef = useRef(explorerData);
+  const latestDatasetRef = useRef(dataset);
 
   useEffect(() => {
-    latestDataRef.current = explorerData;
+    latestDatasetRef.current = dataset;
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) {
       return;
     }
-    applyExplorerData(map, explorerData, latestBoundsRef);
-  }, [explorerData]);
+    applyExplorerData(map, dataset, latestBoundsRef);
+  }, [dataset]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -54,20 +60,32 @@ export default function MapView(): JSX.Element {
     const handleLoad = () => {
       mapLoadedRef.current = true;
       initializeSources(map);
-      applyExplorerData(map, latestDataRef.current, latestBoundsRef);
+      applyExplorerData(map, latestDatasetRef.current, latestBoundsRef);
+    };
+
+    const handleClick = (event: MapMouseEvent & maplibregl.EventData) => {
+      const activeMap = mapRef.current;
+      if (!activeMap || !mapLoadedRef.current) {
+        return;
+      }
+      const selection = getSelectionFromEvent(activeMap, event);
+      onSelect(selection);
     };
 
     map.on('load', handleLoad);
+    map.on('click', handleClick);
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
     return () => {
+      map.off('click', handleClick);
       map.off('load', handleLoad);
       map.remove();
       mapRef.current = null;
       mapLoadedRef.current = false;
       latestBoundsRef.current = null;
+      onSelect(null);
     };
-  }, []);
+  }, [onSelect]);
 
   return <div ref={containerRef} className="h-[480px] w-full rounded-md border" />;
 }
@@ -113,9 +131,10 @@ function initializeSources(map: Map): void {
 
 function applyExplorerData(
   map: Map,
-  data: ExplorerGeoJson,
+  dataset: ExplorerDataset,
   boundsRef: MutableRefObject<BoundingBox | null>,
 ): void {
+  const data = dataset.geoJson;
   const stopsSource = map.getSource(STOPS_SOURCE_ID) as GeoJSONSource | undefined;
   if (stopsSource) {
     stopsSource.setData(data.stops);
@@ -137,6 +156,33 @@ function applyExplorerData(
 
   map.fitBounds(data.bounds, { padding: MAP_FIT_PADDING, duration: 600 });
   boundsRef.current = data.bounds;
+}
+
+function getSelectionFromEvent(map: Map, event: MapMouseEvent): ExplorerMapSelection | null {
+  const features = map.queryRenderedFeatures(event.point, { layers: [STOPS_LAYER_ID, SHAPES_LAYER_ID] });
+  if (!features.length) {
+    return null;
+  }
+
+  const stopFeature = features.find((candidate) => candidate.layer?.id === STOPS_LAYER_ID);
+  if (stopFeature) {
+    const properties = stopFeature.properties as Record<string, unknown> | null;
+    const stopId = typeof properties?.stopId === 'string' ? properties.stopId : undefined;
+    if (stopId) {
+      return { type: 'stop', id: stopId };
+    }
+  }
+
+  const shapeFeature = features.find((candidate) => candidate.layer?.id === SHAPES_LAYER_ID);
+  if (shapeFeature) {
+    const properties = shapeFeature.properties as Record<string, unknown> | null;
+    const shapeId = typeof properties?.shapeId === 'string' ? properties.shapeId : undefined;
+    if (shapeId) {
+      return { type: 'shape', id: shapeId };
+    }
+  }
+
+  return null;
 }
 
 function areBoundsEqual(a: BoundingBox, b: BoundingBox): boolean {

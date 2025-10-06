@@ -46,11 +46,31 @@ const SKIP_EXTS = new Set([
   '.mp4',
   '.mov',
   '.pdf',
+  '.log',
 ]);
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB safety guard
 
-export type IssueType = 'INVALID_UTF8' | 'REPLACEMENT_CHAR';
+const HALFWIDTH_KATAKANA_RANGE = { start: 0xff61, end: 0xff9f };
+const FULLWIDTH_LATIN_RANGE = { start: 0xff01, end: 0xff5e };
+// 許容する全角記号（日本語ドキュメントで一般的に使用され誤検知が多い）
+const ALLOWED_FULLWIDTH_CODEPOINTS = new Set<number>([
+  0xff08, // （ FULLWIDTH LEFT PARENTHESIS
+  0xff09, // ） FULLWIDTH RIGHT PARENTHESIS
+  0xff06, // ＆ FULLWIDTH AMPERSAND (ドラッグ＆ドロップ等)
+  0xff0b, // ＋ FULLWIDTH PLUS SIGN（文中の並列表現で一般的）
+  0xff0f, // ／ FULLWIDTH SOLIDUS（区切りとして一般的）
+  0xff0c, // ， FULLWIDTH COMMA（和文で一般的）
+  0xff1a, // ： FULLWIDTH COLON（和文で一般的）
+  0xff1d, // ＝ FULLWIDTH EQUALS SIGN（和文表記で一般的）
+  0xff1f, // ？ FULLWIDTH QUESTION MARK（和文で一般的）
+]);
+
+export type IssueType =
+  | 'INVALID_UTF8'
+  | 'REPLACEMENT_CHAR'
+  | 'HALFWIDTH_KATAKANA'
+  | 'FULLWIDTH_LATIN';
 
 export interface ScanIssue {
   type: IssueType;
@@ -156,6 +176,38 @@ export async function scanPaths(paths: string[], root = process.cwd()): Promise<
           snippet: makeSnippet(text, replacementIndex),
         });
       }
+
+      for (let i = 0; i < text.length; i += 1) {
+        const code = text.charCodeAt(i);
+        if (code >= HALFWIDTH_KATAKANA_RANGE.start && code <= HALFWIDTH_KATAKANA_RANGE.end) {
+          const position = locatePosition(text, i);
+          issues.push({
+            type: 'HALFWIDTH_KATAKANA',
+            message: `半角カナ（U+${code.toString(16).toUpperCase()}）が含まれています。文字化け（Shift_JIS→UTF-8変換漏れ）の可能性があります。`,
+            position,
+            snippet: makeSnippet(text, i),
+          });
+          break;
+        }
+      }
+
+      for (let i = 0; i < text.length; i += 1) {
+        const code = text.charCodeAt(i);
+        if (
+          code >= FULLWIDTH_LATIN_RANGE.start &&
+          code <= FULLWIDTH_LATIN_RANGE.end &&
+          !ALLOWED_FULLWIDTH_CODEPOINTS.has(code)
+        ) {
+          const position = locatePosition(text, i);
+          issues.push({
+            type: 'FULLWIDTH_LATIN',
+            message: `全角英数字（U+${code.toString(16).toUpperCase()}）が含まれています。エンコード変換ミスや全角英数字の混入が疑われます。`,
+            position,
+            snippet: makeSnippet(text, i),
+          });
+          break;
+        }
+      }
     }
 
     if (issues.length > 0) {
@@ -188,7 +240,9 @@ function parseArgs(argv: string[]): CliOptions {
 
 async function runCli(): Promise<void> {
   const { paths, json } = parseArgs(process.argv.slice(2));
-  const results = await scanPaths(paths);
+  const defaultTargets = ['docs', 'src', 'tools', 'readme.md'];
+  const targets = paths.length > 0 ? paths : defaultTargets;
+  const results = await scanPaths(targets);
 
   if (json) {
     console.log(JSON.stringify({ issues: results }, null, 2));

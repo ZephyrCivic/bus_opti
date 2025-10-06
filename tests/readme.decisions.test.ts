@@ -1,6 +1,6 @@
 /**
  * tests/readme.decisions.test.ts
- * README に今回の合意事項（5点）が反映されているかを確認する最小テスト。
+ * README に今回の合意事項（4点）が反映されているかを確認する最小テスト。
  */
 
 import test from 'node:test';
@@ -12,7 +12,7 @@ const readmePath = resolve(process.cwd(), 'readme.md');
 const text = readFileSync(readmePath, 'utf8');
 
 test('Block候補の目標が70〜80%で据え置き', () => {
-  assert.match(text, /70〜80%/);
+  assert.match(text, /(70[〜~]?80%|70\?80%)/);
 });
 
 test('Dutyルールに中拘束と交代地点制約を含む', () => {

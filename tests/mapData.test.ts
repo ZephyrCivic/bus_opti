@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildExplorerGeoJson } from '../src/features/explorer/mapData';
+import { buildExplorerDataset, buildExplorerGeoJson } from '../src/features/explorer/mapData';
 import type { GtfsImportResult } from '../src/services/import/gtfsParser';
 
 function baseResult(): GtfsImportResult {
@@ -78,4 +78,58 @@ test('buildExplorerGeoJson returns empty collections when result is undefined', 
   assert.equal(geo.stops.features.length, 0);
   assert.equal(geo.shapes.features.length, 0);
   assert.equal(geo.bounds, null);
+});
+
+test('buildExplorerDataset exposes services and applies serviceId filter', () => {
+  const result = baseResult();
+  result.tables['stops.txt'].rows = [
+    { stop_id: 'STOP_A', stop_name: 'A', stop_lat: '35.6', stop_lon: '139.7' },
+    { stop_id: 'STOP_B', stop_name: 'B', stop_lat: '35.61', stop_lon: '139.71' },
+    { stop_id: 'STOP_C', stop_name: 'C', stop_lat: '35.62', stop_lon: '139.72' },
+  ];
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_A', service_id: 'WEEKDAY', shape_id: 'SHAPE_1' },
+    { trip_id: 'TRIP_B', service_id: 'WEEKEND', shape_id: 'SHAPE_2' },
+    { trip_id: 'TRIP_C', service_id: 'WEEKDAY', shape_id: 'SHAPE_1' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_A', stop_id: 'STOP_A' },
+    { trip_id: 'TRIP_A', stop_id: 'STOP_B' },
+    { trip_id: 'TRIP_B', stop_id: 'STOP_B' },
+    { trip_id: 'TRIP_B', stop_id: 'STOP_C' },
+    { trip_id: 'TRIP_C', stop_id: 'STOP_A' },
+  ];
+  result.tables['shapes.txt'] = {
+    name: 'shapes.txt',
+    rows: [
+      { shape_id: 'SHAPE_1', shape_pt_lat: '35.60', shape_pt_lon: '139.70', shape_pt_sequence: '1' },
+      { shape_id: 'SHAPE_1', shape_pt_lat: '35.61', shape_pt_lon: '139.71', shape_pt_sequence: '2' },
+      { shape_id: 'SHAPE_1', shape_pt_lat: '35.62', shape_pt_lon: '139.72', shape_pt_sequence: '3' },
+      { shape_id: 'SHAPE_2', shape_pt_lat: '35.60', shape_pt_lon: '139.80', shape_pt_sequence: '1' },
+      { shape_id: 'SHAPE_2', shape_pt_lat: '35.62', shape_pt_lon: '139.82', shape_pt_sequence: '2' },
+    ],
+  };
+
+  const datasetAll = buildExplorerDataset(result);
+  assert.equal(datasetAll.services.length, 2);
+  assert.equal(datasetAll.geoJson.stops.features.length, 3);
+  assert.equal(datasetAll.geoJson.shapes.features.length, 2);
+  assert.equal(datasetAll.stopDetails['STOP_B'].totalTripCount, 2);
+
+  const weekday = buildExplorerDataset(result, { serviceId: 'WEEKDAY' });
+  assert.equal(weekday.selectedServiceId, 'WEEKDAY');
+  assert.equal(weekday.geoJson.stops.features.length, 2, 'weekday should include stops used by weekday trips');
+  assert.equal(weekday.geoJson.shapes.features.length, 1, 'weekday should include only shape 1');
+  assert.equal(weekday.stopDetails['STOP_B'].activeTripCount, 1, 'STOP_B has one weekday trip');
+  assert.equal(weekday.shapeDetails['SHAPE_1'].activeTripCount, 2, 'shape 1 has two weekday trips');
+
+  const weekend = buildExplorerDataset(result, { serviceId: 'WEEKEND' });
+  assert.equal(weekend.geoJson.stops.features.length, 2, 'weekend should include STOP_B and STOP_C');
+  assert.equal(weekend.geoJson.shapes.features.length, 1, 'weekend should include only shape 2');
+  assert.equal(weekend.stopDetails['STOP_C'].activeTripCount, 1);
+  assert.deepEqual(weekend.stopDetails['STOP_A'], undefined, 'STOP_A not present for weekend');
+
+  const unknown = buildExplorerDataset(result, { serviceId: 'UNKNOWN' });
+  assert.equal(unknown.selectedServiceId, undefined, 'unknown service falls back to all');
+  assert.equal(unknown.geoJson.stops.features.length, 3);
 });

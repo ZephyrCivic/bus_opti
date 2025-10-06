@@ -1,3 +1,8 @@
+/**
+ * src/types.ts
+ * Shared domain model definitions used by scheduling, blocking, and duty editing flows.
+ * Keeps React state, service modules, and tests aligned on the same plain TypeScript shapes.
+ */
 export type DayOfWeek = string;
 
 export interface Driver {
@@ -51,3 +56,30 @@ export interface ScheduleState {
   dashboard: DashboardData;
 }
 
+export interface DutySegment {
+  id: string;
+  blockId: string;
+  startTripId: string;
+  endTripId: string;
+  startSequence: number;
+  endSequence: number;
+}
+
+export interface Duty {
+  id: string;
+  driverId?: string;
+  segments: DutySegment[];
+}
+
+export interface DutySettings {
+  maxContinuousMinutes: number;
+  minBreakMinutes: number;
+  maxDailyMinutes: number;
+  undoStackLimit: number;
+}
+
+export interface DutyEditState {
+  duties: Duty[];
+  settings: DutySettings;
+  lastSnapshot?: Duty[];
+}
