@@ -352,7 +352,8 @@
 - 受け入れ基準（MVP）
   - 地図と時系列が同期し、Depot保存ができる。
   - `block_id`未設定でも対象service日に対して70〜80%のTripでBlock候補提示→採否でBlock確定。
-  - Duty編成中にルール違反が色分け表示され、CSVをダウンロードできる。
+- Duty編成中にルール違反が色分け表示され、CSVをダウンロードできる。
+- 文字化け防止: `npm run scan:encoding` を実行し、詳細ルールは `docs/encoding-guidelines.md` を参照。
 
 ## 非スコープ（MVP）
 

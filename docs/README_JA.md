@@ -72,3 +72,10 @@ npm run dev
 ## チェックリスト
 - 実行用のチェックリストは `docs/ImplementationChecklist.md` を参照してください。
 
+
+---
+## エンコーディング運用メモ
+- ドキュメントは UTF-8 (BOMなし) で保存する。
+- コミット前に 
+pm run scan:encoding を実行し、問題がないことを確認する。
+- 詳細な運用ルールは docs/encoding-guidelines.md を参照。

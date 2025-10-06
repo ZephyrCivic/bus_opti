@@ -56,3 +56,14 @@
 
 ## 付録: 生成コンポーネント最小セット（shadcn/ui）
 - `button`, `input`, `select`, `dialog`, `drawer` or `sheet`, `tabs`, `tooltip`, `badge`, `card`, `alert`, `table`, `toaster`
+
+---
+
+## 追加: 合意に基づくタスク（2025-10-06）
+
+- [x] Block候補の達成目標（70〜80%）をMVP基準として明記（READMEに反映済み）
+- [ ] Block達成度のUI表示（対象service日のTripに対する候補提示率を表示）
+- [ ] Dutyルールに「中拘束」「交代地点制約」を追加（警告/可視化）
+- [ ] CSVスキーマ最終確認（READMEのMVP案に準拠：`driver_id` 採用）
+- [ ] 任意GTFS ZIPの読込/再読込（サンプル: `GTFS-JP(gunmachuo).zip`）
+- [ ] マップタイル既定を MapLibre + OSM に固定（後から差し替え可能に）

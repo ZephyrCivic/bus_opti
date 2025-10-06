@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "scan:encoding": "tsx tools/encodingScanCli.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",
