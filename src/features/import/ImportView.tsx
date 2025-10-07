@@ -21,7 +21,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
-import { fromSaved, toSaved, downloadSavedJson, defaultFileName } from '@/services/import/gtfsPersistence';
+import { fromSaved, toSaved, downloadSavedJson, defaultFileName, fromSavedProject, toSavedProject, downloadProjectJson } from '@/services/import/gtfsPersistence';
 
 const ACCEPTED_MIME = ['application/zip', 'application/x-zip-compressed'];
 const ACCEPTED_SAVED = ['application/json'];
@@ -30,7 +30,7 @@ export default function ImportView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const savedInputRef = useRef<HTMLInputElement | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const { status, errorMessage, result, importFromFile, reset, loadFromSaved } = useGtfsImport();
+  const { status, errorMessage, result, importFromFile, reset, loadFromSaved, manual, setManual } = useGtfsImport();
 
   const handleFiles = useCallback(
     async (fileList: FileList | null) => {
@@ -71,8 +71,7 @@ export default function ImportView(): JSX.Element {
       try {
         const text = await file.text();
         const saved = JSON.parse(text);
-        const hydrated = fromSaved(saved);
-        loadFromSaved(hydrated);
+        try {\n          const project = fromSavedProject(saved);\n          loadFromSaved(project.gtfs);\n          setManual(() => project.manual);\n        } catch {\n          const hydrated = fromSaved(saved);\n          loadFromSaved(hydrated);\n        }
       } catch {
         setLocalError('保存データの読込に失敗しました。内容をご確認ください。');
       }
@@ -102,6 +101,7 @@ export default function ImportView(): JSX.Element {
   );
 
   const hasOptionalWarnings = Boolean(result?.missingFiles.length);
+  const hasAlerts = Boolean(result?.alerts && result.alerts.length > 0);
 
   return (
     <div className="space-y-6">
@@ -193,6 +193,20 @@ export default function ImportView(): JSX.Element {
 
             <DataTable columns={summaryColumns} data={result.summary} emptyMessage="サマリーが計算できませんでした。" />
 
+            {hasAlerts && (
+              <Alert variant="destructive">
+                <FileWarning className="h-4 w-4" aria-hidden />
+                <AlertTitle>重要な警告</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc pl-5">
+                    {result!.alerts.map((msg, i) => (
+                      <li key={i}>{msg}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Table>
               <TableBody>
                 {Object.entries(result.tables).map(([name, table]) => (
@@ -219,3 +233,4 @@ export default function ImportView(): JSX.Element {
     </div>
   );
 }
+

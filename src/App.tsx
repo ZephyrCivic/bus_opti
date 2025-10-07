@@ -9,6 +9,7 @@ import ImportView from './features/import/ImportView';
 import ExplorerView from './features/explorer/ExplorerView';
 import BlocksView from './features/blocks/BlocksView';
 import DutiesView from './features/duties/DutiesView';
+import ManualDataView from './features/manual/ManualDataView';
 import { GtfsImportProvider } from './services/import/GtfsImportProvider';
 
 export default function App(): JSX.Element {
@@ -20,6 +21,7 @@ export default function App(): JSX.Element {
             <TabsTrigger value="import">Import</TabsTrigger>
             <TabsTrigger value="explorer">Explorer</TabsTrigger>
             <TabsTrigger value="blocks">Blocks</TabsTrigger>
+            <TabsTrigger value="manual">Manual</TabsTrigger>
             <TabsTrigger value="duties">Duties</TabsTrigger>
           </TabsList>
           <TabsContent value="import">
@@ -30,6 +32,9 @@ export default function App(): JSX.Element {
           </TabsContent>
           <TabsContent value="blocks">
             <BlocksView />
+          </TabsContent>
+          <TabsContent value="manual">
+            <ManualDataView />
           </TabsContent>
           <TabsContent value="duties">
             <DutiesView />

@@ -18,7 +18,7 @@ import {
   type DeleteDutySegmentInput,
   type MoveDutySegmentInput,
 } from '@/services/duty/dutyState';
-import type { Duty, DutyEditState } from '@/types';
+import type { Duty, DutyEditState, ManualInputs } from '@/types';
 import { autoCorrectDuty } from '@/services/duty/dutyAutoCorrect';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 
@@ -49,6 +49,8 @@ interface GtfsImportContextValue extends GtfsImportState {
   importFromFile: (file: File) => Promise<void>;
   loadFromSaved: (result: GtfsImportResult) => void;
   reset: () => void;
+  manual: ManualInputs;
+  setManual: (updater: (prev: ManualInputs) => ManualInputs) => void;
 }
 
 const GtfsImportContext = createContext<GtfsImportContextValue | undefined>(undefined);
@@ -56,6 +58,12 @@ const GtfsImportContext = createContext<GtfsImportContextValue | undefined>(unde
 export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element {
   const [state, setState] = useState<GtfsImportState>({ status: 'idle' });
   const [dutyState, setDutyState] = useState<DutyEditState>(() => createDutyEditState());
+  const [manual, setManualState] = useState<ManualInputs>(() => ({
+    depots: [],
+    reliefPoints: [],
+    deadheadRules: [],
+    linking: { minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+  }));
 
   const resetDutyState = useCallback(() => {
     setDutyState((prev) => createDutyEditState(prev.settings));
@@ -81,6 +89,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
   const reset = useCallback(() => {
     setState({ status: 'idle' });
     resetDutyState();
+    setManualState((prev) => ({ ...prev, depots: [], reliefPoints: [], deadheadRules: [] }));
   }, [resetDutyState]);
 
   const dutyActions = useMemo<DutyEditorActions>(() => ({
@@ -133,7 +142,9 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     importFromFile,
     loadFromSaved,
     reset,
-  }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset]);
+    manual,
+    setManual: (updater) => setManualState((prev) => updater(prev)),
+  }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual]);
 
   return <GtfsImportContext.Provider value={value}>{children}</GtfsImportContext.Provider>;
 }

@@ -24,6 +24,7 @@ export interface GtfsImportResult {
   tables: Record<string, GtfsTable>;
   missingFiles: string[];
   summary: GtfsImportSummaryItem[];
+  alerts: string[];
   sourceName: string;
   importedAt: Date;
 }
@@ -58,16 +59,25 @@ export async function parseGtfsArchive(file: File | Blob): Promise<GtfsImportRes
     tables[filename] = table;
   }
 
+  // Detect but do not require frequencies.txt; if present we will warn the user.
+  const frequencies = await loadTable(zip, 'frequencies.txt');
+  if (frequencies) {
+    tables['frequencies.txt'] = frequencies;
+  }
+
   if (missingFiles.some((filename) => REQUIRED_FILES.includes(filename as typeof REQUIRED_FILES[number]))) {
     throw new GtfsImportError(`必須ファイルが不足しています: ${missingFiles.join(', ')}`);
   }
 
-  const summary = buildSummary(tables);
+  const baseSummary = buildSummary(tables);
+  const { alerts, extraSummary } = buildAlertsAndAugments(tables);
+  const summary = [...baseSummary, ...extraSummary];
 
   return {
     tables,
     missingFiles: missingFiles.filter((name) => OPTIONAL_FILES.includes(name as typeof OPTIONAL_FILES[number])),
     summary,
+    alerts,
     sourceName: getFileName(file),
     importedAt: new Date(),
   };
@@ -158,4 +168,38 @@ function getFileName(file: File | Blob): string {
     return file.name;
   }
   return 'GTFS.zip';
+}
+
+// Additional detection for strong warnings and extra summary items
+function buildAlertsAndAugments(tables: Record<string, GtfsTable>): { alerts: string[]; extraSummary: GtfsImportSummaryItem[] } {
+  const alerts: string[] = [];
+  const extraSummary: GtfsImportSummaryItem[] = [];
+
+  const frequencies = tables['frequencies.txt']?.rows ?? [];
+  if (frequencies.length > 0) {
+    extraSummary.push({ metric: 'Frequencies', value: frequencies.length, description: 'frequencies.txt の行数' });
+    alerts.push('frequencies.txt を検出: 等間隔運行は連結/拘束計算前に静的便へ展開が必要（現状は未展開）。');
+  }
+
+  const stopTimes = tables['stop_times.txt']?.rows ?? [];
+  let over24 = 0;
+  for (const row of stopTimes) {
+    const at = (row as any)['arrival_time'];
+    const dt = (row as any)['departure_time'];
+    if (isOver24Notation(at) || isOver24Notation(dt)) over24 += 1;
+  }
+  if (over24 > 0) {
+    extraSummary.push({ metric: 'Stop times >24h', value: over24, description: 'HH>24 の時刻表記の行数' });
+    alerts.push('stop_times.txt に 24時超の時刻表記（例: 25:10:00）を検出。日跨ぎ正規化が未実装のため、Duty計算が不正確の可能性。');
+  }
+
+  return { alerts, extraSummary };
+}
+
+function isOver24Notation(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const m = value.match(/^(\d{2,}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return false;
+  const hh = Number(m[1]);
+  return Number.isFinite(hh) && hh >= 24;
 }

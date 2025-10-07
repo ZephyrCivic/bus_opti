@@ -1,6 +1,6 @@
 /**
  * tests/docs.decisions.test.ts
- * 決定事項ドキュメント（DECISIONS）とREADMEの整合を軽量に確認。
+ * DECISIONS と README の整合チェック（軽量）。
  */
 
 import test from 'node:test';
@@ -11,9 +11,9 @@ import { resolve } from 'node:path';
 const decisions = readFileSync(resolve('docs/DECISIONS_2025-10-06.md'), 'utf8');
 const readme = readFileSync(resolve('readme.md'), 'utf8');
 
-test('DECISIONS includes 70-80% and MapLibre and gunmachuo', () => {
-  // 70〜80%（全角チルダ/半角チルダ/旧表記）いずれも許容
-  assert.match(decisions, /(70[〜~]?80%|70\?80%)/);
+test('DECISIONS includes 70~80% and MapLibre and gunmachuo', () => {
+  // 許容: ~ / 〜 / ～ / ?
+  assert.match(decisions, /(70[?~〜～]?80%|70\?80%)/);
   assert.match(decisions, /MapLibre/);
   assert.match(decisions, /GTFS-JP\(gunmachuo\)\.zip/);
 });

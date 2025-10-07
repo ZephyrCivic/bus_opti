@@ -8,7 +8,6 @@ import type { DutySettings } from '@/types';
 export const DEFAULT_DUTY_SETTINGS: DutySettings = {
   maxContinuousMinutes: 240,
   minBreakMinutes: 30,
-  maxDailyMinutes: 540,
+  maxDailyMinutes: 780,
   undoStackLimit: 50,
 };
-

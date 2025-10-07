@@ -4,7 +4,8 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toSaved, fromSaved } from '../src/services/import/gtfsPersistence';
+import { toSaved, fromSaved, toSavedProject, fromSavedProject } from '../src/services/import/gtfsPersistence';
+import type { ManualInputs } from '../src/types';
 import type { GtfsImportResult } from '../src/services/import/gtfsParser';
 
 const sample: GtfsImportResult = {
@@ -20,6 +21,7 @@ const sample: GtfsImportResult = {
     { metric: 'Stops', value: 1, description: 'stops rows' },
     { metric: 'Trips', value: 1, description: 'trips rows' },
   ],
+  alerts: [],
 };
 
 test('gtfsPersistence round-trip', () => {
@@ -30,4 +32,23 @@ test('gtfsPersistence round-trip', () => {
   assert.ok('stops.txt' in restored.tables);
   assert.equal(restored.tables['stops.txt'].rows.length, 1);
   assert.equal(restored.summary.length, sample.summary.length);
+});
+
+test('projectPersistence round-trip (GTFS + manual)', () => {
+  const manual: ManualInputs = {
+    depots: [{ depotId: 'D1', name: 'Depot A', lat: 35.0, lon: 139.0, minTurnaroundMin: 10 }],
+    reliefPoints: [{ reliefId: 'RP1', name: 'Relief', lat: 35.1, lon: 139.1, stopId: 'A', walkTimeToStopMin: 5 }],
+    deadheadRules: [{ fromId: 'D1', toId: 'RP1', mode: 'walk', travelTimeMin: 6 }],
+    linking: { minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+  };
+  const saved = toSavedProject(sample, manual);
+  const restored = fromSavedProject(saved);
+  // GTFS
+  assert.equal(restored.gtfs.sourceName, sample.sourceName);
+  assert.equal(restored.gtfs.tables['stops.txt'].rows.length, 1);
+  // Manual
+  assert.equal(restored.manual.depots.length, 1);
+  assert.equal(restored.manual.reliefPoints.length, 1);
+  assert.equal(restored.manual.deadheadRules.length, 1);
+  assert.equal(restored.manual.linking.minTurnaroundMin, 10);
 });
