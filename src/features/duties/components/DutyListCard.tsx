@@ -32,12 +32,12 @@ export function DutyListCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Duty一覧</CardTitle>
-        <CardDescription>セグメントをクリックすると詳細を編集できます。</CardDescription>
+        <CardTitle>乗務一覧</CardTitle>
+        <CardDescription>区間を選択すると詳細が表示されます。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {duties.length === 0 ? (
-          <p className="text-sm text-muted-foreground">まだDutyはありません。セグメントを追加してください。</p>
+          <p className="text-sm text-muted-foreground">まだ乗務がありません。区間を追加してください。</p>
         ) : (
           duties.map((duty) => (
             <div
@@ -48,9 +48,9 @@ export function DutyListCard({
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <h4 className="font-semibold">{duty.id}</h4>
-                  <p className="text-xs text-muted-foreground">driver_id: {duty.driverId ?? '未設定'}</p>
+                  <p className="text-xs text-muted-foreground">運転士ID: {duty.driverId ?? '未設定'}</p>
                 </div>
-                <Badge variant="secondary">{duty.segments.length} segments</Badge>
+                <Badge variant="secondary">{duty.segments.length} 区間</Badge>
               </div>
               <div className="mt-3 space-y-2">
                 {duty.segments.map((segment) => (
@@ -83,4 +83,3 @@ export function DutyListCard({
     </Card>
   );
 }
-

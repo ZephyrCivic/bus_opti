@@ -8,7 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { buildExplorerGeoJson, type BoundingBox, type ExplorerDataset } from './mapData';
 
-const STYLE_URL = 'https://demotiles.maplibre.org/style.json';
+const STYLE_URL = 'https://tile.openstreetmap.jp/styles/osm-bright/style.json';
 const STOPS_SOURCE_ID = 'explorer-stops';
 const SHAPES_SOURCE_ID = 'explorer-shapes';
 const STOPS_LAYER_ID = 'explorer-stops-layer';
@@ -103,7 +103,7 @@ function initializeSources(map: Map): void {
       type: 'circle',
       source: STOPS_SOURCE_ID,
       paint: {
-        'circle-radius': 4,
+        'circle-radius': 5,
         'circle-color': '#2563eb',
         'circle-stroke-width': 1,
         'circle-stroke-color': '#ffffff',
@@ -121,8 +121,8 @@ function initializeSources(map: Map): void {
       type: 'line',
       source: SHAPES_SOURCE_ID,
       paint: {
-        'line-color': '#0f172a',
-        'line-width': 2,
+        'line-color': '#2563eb',
+        'line-width': 3,
         'line-opacity': 0.8,
       },
     });

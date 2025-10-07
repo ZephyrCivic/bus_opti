@@ -47,13 +47,13 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle>Inspector</CardTitle>
-        <CardDescription>Duty/KPIの概要を確認できます。</CardDescription>
+        <CardTitle>乗務の状況</CardTitle>
+        <CardDescription>選択した乗務の情報と注意点を確認できます。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground" htmlFor="default-driver">
-            driver_id (追加時に適用)
+            運転士ID（新規追加時に自動適用）
           </label>
           <Input
             id="default-driver"
@@ -66,12 +66,12 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
         {selectedDuty ? (
           <DutyMetricsPanel metrics={selectedMetrics} onAutoCorrect={onAutoCorrect} />
         ) : (
-          <p className="text-sm text-muted-foreground">Dutyを選択するとKPIを表示します。</p>
+          <p className="text-sm text-muted-foreground">乗務を選ぶと、安全チェック結果が表示されます。</p>
         )}
         {selectedSegmentDetail ? (
           <SegmentDetails selection={selectedSegment} segment={selectedSegmentDetail} />
         ) : (
-          <p className="text-sm text-muted-foreground">セグメントを選択すると詳細を表示します。</p>
+          <p className="text-sm text-muted-foreground">区間を選ぶと、詳細がここに表示されます。</p>
         )}
       </CardContent>
     </Card>
@@ -90,15 +90,15 @@ function QuickStats({
   return (
     <div className="rounded-md border p-3 text-sm">
       <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">Duty数</span>
+        <span className="text-muted-foreground">乗務件数</span>
         <span>{dutyCount}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">Segment数</span>
+        <span className="text-muted-foreground">区間数</span>
         <span>{segmentCount}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">Drivers</span>
+        <span className="text-muted-foreground">運転士人数</span>
         <span>{driverCount}</span>
       </div>
     </div>
@@ -109,21 +109,21 @@ function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | u
   if (!metrics) {
     return (
       <div className="rounded-md border p-3 text-sm">
-        <h4 className="font-semibold">Duty KPI</h4>
-        <p className="text-xs text-muted-foreground">Dutyを選択するとKPIを表示します。</p>
+        <h4 className="font-semibold">乗務チェック項目</h4>
+        <p className="text-xs text-muted-foreground">乗務を選ぶと、拘束時間などの結果が表示されます。</p>
       </div>
     );
   }
 
   const warningMessages: string[] = [];
   if (metrics.warnings.exceedsContinuous) {
-    warningMessages.push('連続運転時間が設定値を超えています。');
+    warningMessages.push('連続運転時間が上限を超えています。');
   }
   if (metrics.warnings.exceedsDailySpan) {
-    warningMessages.push('1日の拘束時間が設定値を超えています。');
+    warningMessages.push('一日の拘束時間が上限を超えています。');
   }
   if (metrics.warnings.insufficientBreak && metrics.shortestBreakMinutes !== null) {
-    warningMessages.push('休憩が最小設定値を満たしていません。');
+    warningMessages.push('休憩時間が規定より短い区間があります。');
   }
 
   const showWarnings = metrics.warnings.exceedsContinuous || metrics.warnings.exceedsDailySpan || metrics.warnings.insufficientBreak;
@@ -133,16 +133,16 @@ function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | u
       {showWarnings ? (
         <div className="flex justify-end">
           <Button size="sm" variant="secondary" onClick={onAutoCorrect}>
-            自動補正
+            自動調整
           </Button>
         </div>
       ) : null}
-      <h4 className="font-semibold">Duty KPI</h4>
-      <MetricRow label="連続運転（最大）" value={formatMinutes(metrics.longestContinuousMinutes)} warn={metrics.warnings.exceedsContinuous} />
-      <MetricRow label="日拘束（全体）" value={formatMinutes(metrics.totalSpanMinutes)} warn={metrics.warnings.exceedsDailySpan} />
+      <h4 className="font-semibold">乗務チェック項目</h4>
+      <MetricRow label="連続運転（最長）" value={formatMinutes(metrics.longestContinuousMinutes)} warn={metrics.warnings.exceedsContinuous} />
+      <MetricRow label="乗務時間（総計）" value={formatMinutes(metrics.totalSpanMinutes)} warn={metrics.warnings.exceedsDailySpan} />
       <MetricRow
-        label="休憩（最小）"
-        value={metrics.shortestBreakMinutes === null ? '?' : formatMinutes(metrics.shortestBreakMinutes)}
+        label="休憩時間（最短）"
+        value={metrics.shortestBreakMinutes === null ? '未計測' : formatMinutes(metrics.shortestBreakMinutes)}
         warn={metrics.warnings.insufficientBreak}
       />
       {warningMessages.length > 0 ? (
@@ -152,7 +152,7 @@ function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | u
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted-foreground">全て設定範囲内です。</p>
+        <p className="text-xs text-muted-foreground">規定範囲内です。</p>
       )}
     </div>
   );
@@ -176,11 +176,11 @@ function SegmentDetails({
 }): JSX.Element {
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm">
-      <h4 className="font-semibold">選択中のセグメント</h4>
-      <DetailRow label="duty_id" value={selection?.dutyId ?? '-'} />
-      <DetailRow label="segment_id" value={segment.id} />
-      <DetailRow label="Block" value={segment.blockId} />
-      <DetailRow label="Trip範囲" value={`${segment.startTripId} → ${segment.endTripId}`} />
+      <h4 className="font-semibold">選択中の区間</h4>
+      <DetailRow label="乗務ID" value={selection?.dutyId ?? '-'} />
+      <DetailRow label="区間ID" value={segment.id} />
+      <DetailRow label="ブロックID" value={segment.blockId} />
+      <DetailRow label="Trip区間" value={`${segment.startTripId} → ${segment.endTripId}`} />
     </div>
   );
 }
@@ -193,4 +193,3 @@ function DetailRow({ label, value }: { label: string; value: string }): JSX.Elem
     </div>
   );
 }
-

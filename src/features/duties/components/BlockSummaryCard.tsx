@@ -1,7 +1,6 @@
 /**
  * src/features/duties/components/BlockSummaryCard.tsx
  * Presents block coverage stats, block summaries, and trip selection controls for Duty editing.
- * Keeps DutiesView lean by encapsulating UI-only logic around block/trip selection.
  */
 import {
   Card,
@@ -30,6 +29,7 @@ interface BlockSummaryCardProps {
   onMove(): void;
   onDelete(): void;
   onUndo(): void;
+  onRedo(): void;
 }
 
 export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
@@ -46,6 +46,7 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
     onMove,
     onDelete,
     onUndo,
+    onRedo,
   } = props;
 
   const coveragePercentage = Math.round(plan.coverageRatio * 100);
@@ -53,14 +54,12 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Blocks</CardTitle>
-        <CardDescription>
-          Coverage {coveragePercentage}% / Trip {plan.assignedTripCount.toLocaleString()} 件
-        </CardDescription>
+        <CardTitle>ブロック一覧</CardTitle>
+        <CardDescription>運行ブロックのカバー率と便ごとの区間を確認できます。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Max Turn Gap</span>
+          <span className="text-xs text-muted-foreground">待機時間の上限</span>
           <Badge variant="secondary">{plan.maxTurnGapMinutes} 分</Badge>
         </div>
 
@@ -69,16 +68,16 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
             <TableHeader>
               <TableRow>
                 <TableHead>block_id</TableHead>
-                <TableHead>Trip</TableHead>
-                <TableHead>開始</TableHead>
-                <TableHead>終了</TableHead>
+                <TableHead>便数</TableHead>
+                <TableHead>始発</TableHead>
+                <TableHead>終着</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {plan.summaries.map((summary) => (
                 <TableRow
                   key={summary.blockId}
-                  className={selectedBlockId === summary.blockId ? 'bg-muted/50 cursor-pointer' : 'cursor-pointer'}
+                  className={selectedBlockId === summary.blockId ? 'cursor-pointer bg-muted/50' : 'cursor-pointer'}
                   onClick={() => onSelectBlock(summary.blockId)}
                 >
                   <TableCell className="font-medium">{summary.blockId}</TableCell>
@@ -96,7 +95,7 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
             <label className="text-xs font-medium text-muted-foreground">開始Trip</label>
             <Select value={startTripId ?? ''} onValueChange={onStartTripChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Tripを選択" />
+                <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
@@ -111,7 +110,7 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
             <label className="text-xs font-medium text-muted-foreground">終了Trip</label>
             <Select value={endTripId ?? ''} onValueChange={onEndTripChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Tripを選択" />
+                <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
@@ -125,28 +124,31 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={onAdd}>追加</Button>
+          <Button onClick={onAdd}>区間を作成</Button>
           <Button variant="secondary" onClick={onMove}>
-            移動
+            区間を移す
           </Button>
           <Button variant="destructive" onClick={onDelete}>
-            削除
+            区間を削除
           </Button>
           <Button variant="outline" onClick={onUndo}>
-            Undo
+            元に戻す
+          </Button>
+          <Button variant="outline" onClick={onRedo}>
+            やり直す
           </Button>
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Block内Trip</h4>
+          <h4 className="text-sm font-semibold">ブロック内の便一覧</h4>
           <div className="max-h-[220px] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>seq</TableHead>
                   <TableHead>trip_id</TableHead>
-                  <TableHead>start</TableHead>
-                  <TableHead>end</TableHead>
+                  <TableHead>出発</TableHead>
+                  <TableHead>到着</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -161,7 +163,7 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
                 {filteredTrips.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
-                      Blockを選択してください。
+                      ブロックを選ぶと便が表示されます。
                     </TableCell>
                   </TableRow>
                 )}
@@ -173,4 +175,3 @@ export function BlockSummaryCard(props: BlockSummaryCardProps): JSX.Element {
     </Card>
   );
 }
-

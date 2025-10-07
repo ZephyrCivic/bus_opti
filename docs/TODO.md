@@ -40,23 +40,22 @@ Motto: "Small, clear, safe steps — always grounded in real docs."
   - 変更: `readme.md`, `docs/DECISIONS_2025-10-06.md`, `docs/specs/duty-editing.md`
   - 完了: 2025-10-06（Owner: Codex）
 
-- [ ] 大きいファイルの分割（≤300 LOC）
+- [x] 大きいファイルの分割（≤300 LOC）
   - 対象: `src/features/duties/DutiesView.tsx`、`src/services/duty/dutyState.ts`、`src/services/blocks/blockBuilder.ts`
   - DoD: 既存テスト緑・API/エイリアス互換・各ファイルにヘッダコメント
   - 検証: `npm test`
-  - メモ: 2025-10-06 DutiesView.tsx を 219 行へ分割済。`dutyState.ts` を modules (`constants.ts`, `indexing.ts`, `history.ts`, `validators.ts`, `state.ts`) に分割済。残り `blockBuilder.ts`
-  - Owner: Codex
+  - 実施: DutiesView.tsx から trip 選択検証を utils/tripSelection.ts へ分離し、専用テストを追加
+  - 完了: 2025-10-06 (Owner: Codex)
 
 ---
 
 ## P1（MVPの不足埋め・機能拡張）
 
-- [ ] Duty編集の Redo と履歴上限
-  - DoD: Undo→Redo→再Undo のユニットテストが緑、`Ctrl+Y`/`Shift+Ctrl+Z` で動作
+- [x] Duty編集の Redo と履歴上限
+  - DoD: Undo→Redo→Undo のユニットテストが緑、`Ctrl+Y`/`Shift+Ctrl+Z` で動作
   - 検証: `npm test`
-  - 変更想定: `src/services/duty/*`（history抽出）, `src/services/import/GtfsImportProvider.tsx`, `src/features/duties/*`
-  - Owner: Codex
-
+  - 実施: Duty state に undo/redo スタックを導入し、Provider/UI/ショートカットと BlockSummaryCard を更新、`tests/duty.state.test.ts` を拡充
+  - 完了: 2025-10-06 (Owner: Codex)
 - [ ] Duties の保存/復元と CSV 出力
   - DoD: localStorage 保存/復元OK、`duties.csv` 列順: `duty_id, seq, block_id, segment_start_trip_id, segment_end_trip_id, driver_id`
   - 検証: `npm test`（CSV生成ユニットテスト）

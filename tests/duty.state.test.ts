@@ -13,6 +13,7 @@ import {
   deleteDutySegment,
   moveDutySegment,
   undoLastAction,
+  redoLastAction,
   type AddDutySegmentInput,
   type BlockTripSequenceIndex,
   type MoveDutySegmentInput,
@@ -106,7 +107,7 @@ test('deleteDutySegment removes duty when no segments remain', () => {
   assert.equal(afterDelete.duties.length, 0);
 });
 
-test('undoLastAction restores previous snapshot once', () => {
+test('undoLastAction walks back through the undo history', () => {
   const index = createIndexFromSequences({ BLOCK_001: ['T1', 'T2', 'T3'] });
   const initial = createDutyEditState();
   const first = addDutySegment(initial, { blockId: 'BLOCK_001', startTripId: 'T1', endTripId: 'T1' }, index);
@@ -117,8 +118,11 @@ test('undoLastAction restores previous snapshot once', () => {
   assert.equal(undone.duties[0].segments.length, 1);
   assert.equal(undone.duties[0].segments[0].startTripId, 'T1');
 
-  const noRetry = undoLastAction(undone);
-  assert.strictEqual(noRetry, undone);
+  const undoneAgain = undoLastAction(undone);
+  assert.equal(undoneAgain.duties.length, 0);
+
+  const noFurtherUndo = undoLastAction(undoneAgain);
+  assert.strictEqual(noFurtherUndo, undoneAgain);
 });
 
 test('moveDutySegment rejects changing blockId in MVP scope', () => {
@@ -172,3 +176,51 @@ test('buildTripIndexFromPlan mirrors csvRows content', () => {
 
   assert.deepEqual(indexToRecord(fromPlan), indexToRecord(fromCsv));
 });
+
+
+test('redoLastAction reapplies the most recent undo snapshot', () => {
+  const index = createIndexFromSequences({ BLOCK_001: ['T1', 'T2', 'T3'] });
+  const first = addDutySegment(
+    createDutyEditState(),
+    { blockId: 'BLOCK_001', startTripId: 'T1', endTripId: 'T1' },
+    index,
+  );
+
+  const second = addDutySegment(
+    first,
+    { dutyId: 'DUTY_001', blockId: 'BLOCK_001', startTripId: 'T2', endTripId: 'T2' },
+    index,
+  );
+
+  const undone = undoLastAction(second);
+  assert.equal(undone.duties[0]?.segments.length, 1);
+  assert.equal(undone.redoStack.length, 1);
+
+  const redone = redoLastAction(undone);
+  assert.equal(redone.duties[0]?.segments.length, 2);
+  assert.equal(redone.redoStack.length, 0);
+});
+
+test('redoLastAction returns the same state when no redo history exists', () => {
+  const state = createDutyEditState();
+  const result = redoLastAction(state);
+  assert.strictEqual(result, state);
+});
+
+test('createNextState truncates undo history to the configured limit', () => {
+  const index = createIndexFromSequences({ BLOCK_001: ['T1', 'T2', 'T3'] });
+  let state = createDutyEditState({ undoStackLimit: 1 });
+  state = addDutySegment(state, { blockId: 'BLOCK_001', startTripId: 'T1', endTripId: 'T1' }, index);
+  state = addDutySegment(
+    state,
+    { dutyId: 'DUTY_001', blockId: 'BLOCK_001', startTripId: 'T2', endTripId: 'T2' },
+    index,
+  );
+
+  assert.equal(state.undoStack.length, 1);
+  const undone = undoLastAction(state);
+  assert.equal(undone.duties[0]?.segments.length, 1);
+});
+
+
+

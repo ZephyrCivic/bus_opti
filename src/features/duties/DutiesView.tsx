@@ -3,7 +3,7 @@
  * Renders the three-pane Duty editing interface with block summaries, duty list,
  * and inspector panel wired to DutyEditState actions.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -22,6 +22,10 @@ import type { Duty, DutySegment } from '@/types';
 import { BlockSummaryCard } from './components/BlockSummaryCard';
 import { DutyListCard } from './components/DutyListCard';
 import { InspectorCard } from './components/InspectorCard';
+import {
+  evaluateTripSelection,
+  selectionErrorToMessage,
+} from './utils/tripSelection';
 
 interface SegmentSelection {
   dutyId: string;
@@ -30,6 +34,8 @@ interface SegmentSelection {
 
 export default function DutiesView(): JSX.Element {
   const { result, dutyState, dutyActions } = useGtfsImport();
+  const undoAction = dutyActions.undo;
+  const redoAction = dutyActions.redo;
 
   const plan = useMemo<BlockPlan>(
     () => buildBlocksPlan(result, { maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES }),
@@ -44,6 +50,41 @@ export default function DutiesView(): JSX.Element {
   const [startTripId, setStartTripId] = useState<string | null>(null);
   const [endTripId, setEndTripId] = useState<string | null>(null);
   const [defaultDriverId, setDefaultDriverId] = useState('');
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'y') {
+        event.preventDefault();
+        redoAction();
+        return;
+      }
+      if (key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoAction();
+        } else {
+          undoAction();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [redoAction, undoAction]);
 
   const selectedDuty = selectedDutyId ? dutyState.duties.find((duty) => duty.id === selectedDutyId) ?? null : null;
   const selectedMetrics = useMemo(
@@ -64,15 +105,15 @@ export default function DutiesView(): JSX.Element {
 
   const handleAutoCorrect = useCallback(() => {
     if (!selectedDuty) {
-      toast.error('Dutyを選択してください。');
+      toast.error('乗務を選んでください。');
       return;
     }
     const changed = dutyActions.autoCorrect(selectedDuty.id, tripLookup);
     if (changed) {
-      toast.success('Dutyを自動補正しました。');
+      toast.success('乗務の内容を自動調整しました。');
       setSelectedSegment(null);
     } else {
-      toast.info('補正対象の違反は見つかりませんでした。');
+      toast.info('調整が必要な項目は見つかりませんでした。');
     }
   }, [selectedDuty, dutyActions, tripLookup]);
 
@@ -100,93 +141,89 @@ export default function DutiesView(): JSX.Element {
     setEndTripId(segment.endTripId);
   };
 
-  const ensureSelection = (): { blockId: string; start: string; end: string } | null => {
-    if (!selectedBlockId) {
-      toast.error('Blockを選択してください。');
-      return null;
-    }
-    if (!startTripId || !endTripId) {
-      toast.error('開始と終了のTripを選択してください。');
-      return null;
-    }
-    const blockTrips = tripIndex.get(selectedBlockId);
-    if (!blockTrips) {
-      toast.error('選択したBlockに対応するTripが見つかりません。');
-      return null;
-    }
-    const startSeq = blockTrips.get(startTripId);
-    const endSeq = blockTrips.get(endTripId);
-    if (startSeq === undefined || endSeq === undefined) {
-      toast.error('選択したTripがBlockに含まれていません。');
-      return null;
-    }
-    if (startSeq > endSeq) {
-      toast.error('開始Tripは終了Tripより前を選択してください。');
-      return null;
-    }
-    return { blockId: selectedBlockId, start: startTripId, end: endTripId };
-  };
-
   const handleAdd = () => {
-    const selection = ensureSelection();
-    if (!selection) return;
+    const selectionResult = evaluateTripSelection({
+      selectedBlockId,
+      startTripId,
+      endTripId,
+      tripIndex,
+    });
+    if (!selectionResult.ok) {
+      toast.error(selectionErrorToMessage(selectionResult.reason));
+      return;
+    }
+
     try {
       dutyActions.addSegment(
         {
-          blockId: selection.blockId,
-          startTripId: selection.start,
-          endTripId: selection.end,
+          blockId: selectionResult.selection.blockId,
+          startTripId: selectionResult.selection.startTripId,
+          endTripId: selectionResult.selection.endTripId,
           dutyId: selectedDutyId ?? undefined,
           driverId: defaultDriverId || undefined,
         },
         tripIndex,
       );
-      toast.success('セグメントを追加しました。');
+      toast.success('区間を追加しました。');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '追加に失敗しました。');
+      toast.error(error instanceof Error ? error.message : '区間の追加に失敗しました。');
     }
   };
 
   const handleMove = () => {
     if (!selectedSegment) {
-      toast.error('移動するセグメントを選択してください。');
+      toast.error('移動する区間を選んでください。');
       return;
     }
-    const selection = ensureSelection();
-    if (!selection) return;
+
+    const selectionResult = evaluateTripSelection({
+      selectedBlockId,
+      startTripId,
+      endTripId,
+      tripIndex,
+    });
+    if (!selectionResult.ok) {
+      toast.error(selectionErrorToMessage(selectionResult.reason));
+      return;
+    }
+
     try {
       dutyActions.moveSegment(
         {
           dutyId: selectedSegment.dutyId,
           segmentId: selectedSegment.segmentId,
-          blockId: selection.blockId,
-          startTripId: selection.start,
-          endTripId: selection.end,
+          blockId: selectionResult.selection.blockId,
+          startTripId: selectionResult.selection.startTripId,
+          endTripId: selectionResult.selection.endTripId,
         },
         tripIndex,
       );
-      toast.success('セグメントを移動しました。');
+      toast.success('区間を移動しました。');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '移動に失敗しました。');
+      toast.error(error instanceof Error ? error.message : '区間の移動に失敗しました。');
     }
   };
 
   const handleDelete = () => {
     if (!selectedSegment) {
-      toast.error('削除するセグメントを選択してください。');
+      toast.error('削除する区間を選んでください。');
       return;
     }
     try {
       dutyActions.deleteSegment({ dutyId: selectedSegment.dutyId, segmentId: selectedSegment.segmentId });
       setSelectedSegment(null);
-      toast.success('セグメントを削除しました。');
+      toast.success('区間を削除しました。');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '削除に失敗しました。');
+      toast.error(error instanceof Error ? error.message : '区間の削除に失敗しました。');
     }
   };
 
   const handleUndo = () => {
-    dutyActions.undo();
+    undoAction();
+  };
+
+  const handleRedo = () => {
+    redoAction();
   };
 
   const selectedSegmentDetail = selectedSegment
@@ -215,6 +252,7 @@ export default function DutiesView(): JSX.Element {
         onMove={handleMove}
         onDelete={handleDelete}
         onUndo={handleUndo}
+        onRedo={handleRedo}
       />
       <DutyListCard
         duties={dutyState.duties}
@@ -238,4 +276,3 @@ export default function DutiesView(): JSX.Element {
     </div>
   );
 }
-

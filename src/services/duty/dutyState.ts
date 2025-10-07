@@ -9,6 +9,7 @@ export {
   moveDutySegment,
   deleteDutySegment,
   undoLastAction,
+  redoLastAction,
   replaceDutyState,
   buildTripIndexFromPlan,
   buildTripIndexFromCsv,

@@ -81,5 +81,6 @@ export interface DutySettings {
 export interface DutyEditState {
   duties: Duty[];
   settings: DutySettings;
-  lastSnapshot?: Duty[];
+  undoStack: Duty[][];
+  redoStack: Duty[][];
 }

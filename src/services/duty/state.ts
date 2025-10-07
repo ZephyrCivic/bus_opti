@@ -14,7 +14,7 @@ import {
   type MoveDutySegmentInput,
   type SegmentRangeInput,
 } from './types';
-import { captureSnapshot, applySnapshot, cloneDuties } from './history';
+import { captureSnapshot, cloneDuties, popSnapshot, pushSnapshot } from './history';
 import { ensureBlockConsistency, ensureNoOverlap, resolveRange } from './validators';
 
 export type { BlockTripSequenceIndex, AddDutySegmentInput, MoveDutySegmentInput, DeleteDutySegmentInput } from './types';
@@ -27,6 +27,8 @@ export function createDutyEditState(settings?: Partial<DutySettings>): DutyEditS
   return {
     duties: [],
     settings: resolved,
+    undoStack: [],
+    redoStack: [],
   };
 }
 
@@ -127,29 +129,61 @@ export function deleteDutySegment(
 }
 
 export function undoLastAction(state: DutyEditState): DutyEditState {
-  return applySnapshot(state, state.lastSnapshot);
+  const result = popSnapshot(state.undoStack);
+  if (!result) {
+    return state;
+  }
+  const redoStack = pushSnapshot(state.redoStack, state.duties, state.settings.undoStackLimit);
+  return {
+    duties: result.snapshot,
+    settings: state.settings,
+    undoStack: result.stack,
+    redoStack,
+  };
+}
+
+export function redoLastAction(state: DutyEditState): DutyEditState {
+  const result = popSnapshot(state.redoStack);
+  if (!result) {
+    return state;
+  }
+  const undoStack = pushSnapshot(state.undoStack, state.duties, state.settings.undoStackLimit);
+  return {
+    duties: result.snapshot,
+    settings: state.settings,
+    undoStack,
+    redoStack: result.stack,
+  };
 }
 
 export function replaceDutyState(
   state: DutyEditState,
   duties: Duty[],
 ): DutyEditState {
-  return {
-    duties: cloneDuties(duties),
-    settings: state.settings,
-  };
+  return createNextState(state, cloneDuties(duties));
 }
 
 function createNextState(state: DutyEditState, duties: Duty[]): DutyEditState {
+  const limit = state.settings.undoStackLimit;
+  if (limit < 1) {
+    return {
+      duties,
+      settings: state.settings,
+      undoStack: [],
+      redoStack: [],
+    };
+  }
+
   const snapshot = captureSnapshot(state);
-  const next: DutyEditState = {
+  const undoStack = snapshot
+    ? pushSnapshot(state.undoStack, snapshot, limit)
+    : state.undoStack.slice();
+  return {
     duties,
     settings: state.settings,
+    undoStack,
+    redoStack: [],
   };
-  if (snapshot) {
-    next.lastSnapshot = snapshot;
-  }
-  return next;
 }
 
 function createSegment(

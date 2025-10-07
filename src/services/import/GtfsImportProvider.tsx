@@ -12,6 +12,7 @@ import {
   moveDutySegment,
   replaceDutyState,
   undoLastAction,
+  redoLastAction,
   type AddDutySegmentInput,
   type BlockTripSequenceIndex,
   type DeleteDutySegmentInput,
@@ -36,6 +37,7 @@ interface DutyEditorActions {
   moveSegment: (input: MoveDutySegmentInput, index: BlockTripSequenceIndex) => void;
   deleteSegment: (input: DeleteDutySegmentInput) => void;
   undo: () => void;
+  redo: () => void;
   replace: (duties: Duty[]) => void;
   autoCorrect: (dutyId: string, tripLookup: BlockTripLookup) => boolean;
   reset: () => void;
@@ -93,6 +95,9 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     },
     undo: () => {
       setDutyState((prev) => undoLastAction(prev));
+    },
+    redo: () => {
+      setDutyState((prev) => redoLastAction(prev));
     },
     replace: (duties: Duty[]) => {
       setDutyState((prev) => replaceDutyState(prev, duties));
