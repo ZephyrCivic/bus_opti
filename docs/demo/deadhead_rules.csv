@@ -1,4 +1,0 @@
-from_id,to_id,mode,travel_time_min,distance_km,allowed_window
-DEPOT_MAIN,STOP_MAIN,bus,20,12.5,
-STOP_MAIN,DEPOT_MAIN,bus,18,12.5,
-RELIEF_STATION,RELIEF_TERMINAL,other,30,15.0,05:00-22:00
