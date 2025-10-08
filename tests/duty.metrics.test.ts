@@ -150,3 +150,24 @@ test('computeDutyMetrics flags total span beyond daily limit', () => {
   assert.equal(metrics.warnings.exceedsDailySpan, true);
   assert.equal(formatMinutes(metrics.totalSpanMinutes), '18時間30分');
 });
+
+test('computeDutyMetrics handles 24:00 notation across midnight', () => {
+  const overnightRows: BlockCsvRow[] = [
+    { blockId: 'BLOCK_NIGHT', seq: 1, tripId: 'N1', tripStart: '23:30', tripEnd: '24:10', fromStopId: 'SA', toStopId: 'SB', serviceId: 'WKD' },
+    { blockId: 'BLOCK_NIGHT', seq: 2, tripId: 'N2', tripStart: '24:20', tripEnd: '25:00', fromStopId: 'SB', toStopId: 'SC', serviceId: 'WKD' },
+  ];
+  const overnightLookup = buildTripLookup(overnightRows);
+  const duty = {
+    id: 'DUTY_NIGHT',
+    segments: [
+      { id: 'SEG_N1', blockId: 'BLOCK_NIGHT', startTripId: 'N1', endTripId: 'N1', startSequence: 1, endSequence: 1 },
+      { id: 'SEG_N2', blockId: 'BLOCK_NIGHT', startTripId: 'N2', endTripId: 'N2', startSequence: 2, endSequence: 2 },
+    ],
+  } satisfies Duty;
+
+  const metrics = computeDutyMetrics(duty, overnightLookup, DEFAULT_DUTY_SETTINGS);
+  assert.equal(metrics.warnings.exceedsDailySpan, false);
+  assert.equal(formatMinutes(metrics.totalSpanMinutes), '1時間30分');
+  assert.equal(formatMinutes(metrics.shortestBreakMinutes ?? undefined), '10分');
+  assert.equal(metrics.warnings.insufficientBreak, true);
+});

@@ -39,7 +39,8 @@ test('projectPersistence round-trip (GTFS + manual)', () => {
     depots: [{ depotId: 'D1', name: 'Depot A', lat: 35.0, lon: 139.0, minTurnaroundMin: 10 }],
     reliefPoints: [{ reliefId: 'RP1', name: 'Relief', lat: 35.1, lon: 139.1, stopId: 'A', walkTimeToStopMin: 5 }],
     deadheadRules: [{ fromId: 'D1', toId: 'RP1', mode: 'walk', travelTimeMin: 6 }],
-    linking: { minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+    drivers: [{ driverId: 'DRV1', name: 'Driver One' }],
+    linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
   const saved = toSavedProject(sample, manual);
   const restored = fromSavedProject(saved);
@@ -50,5 +51,7 @@ test('projectPersistence round-trip (GTFS + manual)', () => {
   assert.equal(restored.manual.depots.length, 1);
   assert.equal(restored.manual.reliefPoints.length, 1);
   assert.equal(restored.manual.deadheadRules.length, 1);
+  assert.equal(restored.manual.drivers.length, 1);
   assert.equal(restored.manual.linking.minTurnaroundMin, 10);
+  assert.equal(restored.manual.linking.enabled, true);
 });

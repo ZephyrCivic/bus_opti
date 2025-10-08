@@ -7,7 +7,7 @@
 
 ## MVPの範囲（現在）
 - GTFS/GTFS-JPのZIP取込（stops/trips/stop_times/shapes）と保存/復元（JSON）。
-- Greedyな行路推定（折返し上限分の調整可）と未割当Tripの可視化。
+- Greedyな行路推定（折返し上限分の調整可、manual.linking のON/OFFで自動連結を制御）と未割当Tripの可視化。
 - 仕業の追加/移動/削除、Undo/Redo、基本の労務チェック（拘束スパン・連続運転・最小休憩）。
 - 地図（MapLibre）と表での可視化、サービスIDフィルタ。
 - 変更差分とダッシュボード指標（総シフト数・総時間・未割当・簡易フェアネス）。
@@ -22,21 +22,24 @@
 回避策/暫定動作
 - 交代地点・回送が未入力でも編集は続行（警告を出しつつブロック/仕業は操作可能）。
 - 回送は近似（固定分・距離）から開始し、精緻化は後続リリースで対応。
-- HH≥24:00の時刻やfrequenciesは検出して強い警告を表示（正規化/展開は順次実装）。
+- HH≥24:00の時刻を正規化し、frequencies.txt は `trip_id#n` 形式の静的便へ自動展開。exact_times=0/1 どちらでも Block / Duty 計算に取り込める。
 
 ## 次の着手（採用済みのP0）
 - 行路連結ガード: 終点=次便始点（親子駅/半径R m許容）かつ最小折返しT分を満たす場合のみ連結。
 - Blocks/DutyのCSV出力: schema_version・元trip_id・生成日時・設定ハッシュを付与。
-- 時刻正規化: HH≥24:00を正規化（分）してDuty計算に反映。
+- 時刻正規化: HH≥24:00 を 24:00 形式に正規化し、Duty 計算へ反映。
 
 これらにより「誤連結で全体像が歪む」「成果物が出せない」「日跨ぎで数字が狂う」を解消し、現場の初期案作成〜レビューに耐えるMVPとします。
 ## このアプリでできること（主要機能）
 - GTFS/GTFS-JPのZIPをドラッグ＆ドロップで取り込み、routes/trips/calendar/stop_times/shapes/stopsを解析してローカルに保持。
 - サービスと時系列に沿って、続けて運行できる次の便を順に選んでつなぎ、行路（Vehicle Block）を推定・表示。Blocks CSVとしても出力可能。
+- Blocks / Duties の両ビューにSVGベースのガントタイムラインを追加し、24:00超の区間も含めて俯瞰できる。
 - 推定した行路（Block）を素材に仕業（Duty）を設計。セグメントの追加・移動・削除、履歴を使ったやり直しに対応。CSV出力も可能。
 - 安全・労務ルール（中拘束・交代地点制約など）を自動検証し、不適合を早期に把握。アラート表示（アラートがあっても作業は継続可能）。
-- 地図（MapLibre）と表の両方で可視化。Stops/Shapes表示、Tripのハイライト、基本的なフィルタを提供。
+- 地図（MapLibre）と表の両方で可視化。Stops/Shapes表示、Tripのハイライト、基本的なフィルタを提供。Depots / Relief points のオーバーレイをトグルし、Duty影響カウントを地図上で確認できる。
 - 差分比較とダッシュボードでの集計により、案の比較・評価を支援。
+- Dashboard タブで Duty 割当の総シフト数・総時間・未割当数・公平性スコアを即時に確認し、設定したKPI閾値に基づくカバレッジ/公平性アラートを表示。右上の「KPI設定」ボタンから閾値を編集すると即時に反映される。
+- Diff タブで基準案と現在案を比較し、追加 / 削除 / 担当替えと指標差分およびKPIアラート差分を一覧化。履歴カードから最大10件の基準を適用・再ダウンロード可能。
 - サンプルデータ（data/GTFS-JP(gunmachuo).zip）で、インストール直後から体験可能。
 
 注記: 交番（Rosters）と当日割付（Daily Assignments）は全体フローに含まれる次段階機能で、本MVPでは行路と仕業の設計・検証を中心に提供します。
@@ -100,6 +103,8 @@ E. 当日割付ボード
 F. KPIダッシュ（横断）
 - 車両：営業/回送比、予備車率、車庫別出入庫ピーク
 - 労務：人件費試算、拘束・休憩遵守率、交番の公平性指標
+- Dashboard（MVP実装済み）: Duty 割当の総シフト数・総時間・未割当・公平性スコアをカード表示、ドライバー別ワークロードを表形式で確認。
+- Diff（MVP実装済み）: 基準スナップショットと現行案を比較し、追加/削除/担当替え・指標差分・KPIアラートの差異をテーブル表示。JSON基準ファイルの保存/読込と履歴による再適用をサポート。
 
 ## 最小データモデル（MVP用）
 - gtfs_trips/stop_times/calendar(_dates)（読取専用）
@@ -156,7 +161,8 @@ F. KPIダッシュ（横断）
 4) CSVへエクスポート、または差分とダッシュボードで影響を確認。
 
 ## クイックスタート
-前提: Node.js 20系（LTS推奨）、npm 10+
+前提: Node.js 20系（LTS推奨）、npm 10+  
+※ `package.json` の `engines.node` で Node >= 20 を強制しています。
 
 ```
 # 依存のインストール
@@ -174,7 +180,23 @@ npm run preview
 
 # テスト（任意）
 npm test
+
+# Chrome DevTools スモーク（preview を自動起動してタイトル検証）
+npm run smoke:chrome
 ```
+
+## 60秒デモ（最短ルート）
+### 操作手順（約1分）
+1. 依存をインストール済みであることを確認し、`npm run dev` を実行する（Vite が `http://localhost:5173` で待機）。
+2. Chromium系ブラウザで `http://localhost:5173` を開き、上部タブから **Import** を選択する。
+3. リポジトリ同梱の `data/GTFS-JP(gunmachuo).zip` をドラッグ＆ドロップし、インポート完了トーストを待つ。
+4. **Blocks** タブに移動し、ガントタイムラインで自動生成された行路を確認する（カバレッジと未割当 Trip が即座に更新される）。
+5. **Duties** タブで同じ行路を素材にセグメント一覧を確認し、必要なら `ExportBar` から CSV をダウンロードして成果物を共有する。
+
+### 留意点
+- ブラウザは最新の Chrome / Edge を推奨（MapLibre の WebGL 描画に対応している必要があります）。
+- サンプル以外のGTFSを読み込む場合はファイルサイズに応じて初回解析が数十秒かかることがあります。
+- 別データで再検証する際は Import 画面右上の **Reset** を実行して状態を初期化してください。
 
 ## 技術スタック（最小）
 - フロントエンド: React 19 + TypeScript, Vite, Tailwind CSS, shadcn/ui（Radix UI）, TanStack Table, Sonner
@@ -198,6 +220,8 @@ npm test
   - 検証: 中拘束（最小休憩）、連続運転の上限、1日合計の上限を算出し警告を表示（`computeDutyMetrics`）。
   - 自動修正: 違反セグメントを優先的に間引くヒューリスティック（`autoCorrectDuty`）。
   - CSV スキーマ（MVP）: `duty_id, seq, block_id, segment_start_trip_id, segment_end_trip_id, driver_id`。
+  - 保存: Duty 編集結果は `localStorage` の `dutyEditState:v1` に自動保存し、再読込時に復元。
+  - CSV 読み込み: Duty タイムライン右上の「Duties CSVを読み込む」で簡易CSVを差し替え（既存Dutyを置換）。
 - スケジュール差分/ダッシュボード
   - 差分: 追加/削除/担当替えを検出し、未変更件数とメトリクス差分を算出（`diffSchedules`）。
   - メトリクス: 勤務時間の合計・未割当数・公平性スコアなどを集計（`dashboardCalculator`）。
@@ -232,6 +256,9 @@ npm test
 - 必須: Node.js 20（LTS推奨）, npm 10+
 - ブラウザ: 最新版の Chrome/Edge（MapLibre表示を含む）
 - 権限/ネットワーク: 外部APIや自動化ツールの利用時は社内ポリシーに従う（Context7/Playwright/DevTools CLIなど）
+
+## CI
+- GitHub Actions (`.github/workflows/ci.yml`) で `npm run scan:encoding -- --json` と `npm test` をプッシュ／Pull Request 毎に実行し、文字コード検査とユニットテストを自動検証する。
 
 ## 非目標（MVP外）
 - PDFレポート/RBAC/本格サーバAPIの提供（将来検討）

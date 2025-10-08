@@ -1,0 +1,13 @@
+{
+  "schedule": null,
+  "dashboard": {
+    "unassignedRoutes": [],
+    "workloadAnalysis": [],
+    "summary": {
+      "totalShifts": 0,
+      "totalHours": 0,
+      "fairnessScore": 0,
+      "unassignedCount": 0
+    }
+  }
+}

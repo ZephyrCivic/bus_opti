@@ -4,17 +4,19 @@
  * service/day summaries for filtering and detail panels.
  */
 import type { Feature, FeatureCollection, LineString, Point, Position } from 'geojson';
+import type { ManualInputs, Duty } from '@/types';
+import type { BlockPlan } from '@/services/blocks/blockBuilder';
 import type { GtfsImportResult, GtfsTable } from '../../services/import/gtfsParser';
 
 export type BoundingBox = [number, number, number, number];
 
-export interface StopProperties {
+export interface StopProperties extends Record<string, unknown> {
   stopId: string;
   name?: string;
   code?: string;
 }
 
-export interface ShapeProperties {
+export interface ShapeProperties extends Record<string, unknown> {
   shapeId: string;
 }
 
@@ -59,12 +61,48 @@ export interface ExplorerDataset {
   stopDetails: Record<string, ExplorerStopDetail>;
   shapeDetails: Record<string, ExplorerShapeDetail>;
   selectedServiceId?: string;
+  manualOverlay: ExplorerManualOverlay;
+  manualSummary: ExplorerManualSummary;
 }
 
-export function buildExplorerDataset(result?: GtfsImportResult, filter?: ExplorerFilter): ExplorerDataset {
-  const normalizedFilter = sanitizeId(filter?.serviceId ?? undefined) ?? undefined;
+export interface ExplorerManualOverlay {
+  depots: FeatureCollection<Point, DepotOverlayProperties>;
+  reliefPoints: FeatureCollection<Point, ReliefPointOverlayProperties>;
+}
+
+export interface DepotOverlayProperties extends Record<string, unknown> {
+  depotId: string;
+  name?: string;
+  dutyImpactCount: number;
+}
+
+export interface ReliefPointOverlayProperties extends Record<string, unknown> {
+  reliefId: string;
+  name?: string;
+  stopId?: string;
+  dutyImpactCount: number;
+}
+
+export interface ExplorerManualSummary {
+  depotCount: number;
+  reliefPointCount: number;
+  totalDutyImpacts: number;
+}
+
+export interface ExplorerDatasetOptions {
+  filter?: ExplorerFilter;
+  manual?: ManualInputs;
+  duties?: Duty[];
+  blockPlan?: BlockPlan;
+}
+
+export function buildExplorerDataset(result?: GtfsImportResult, options?: ExplorerDatasetOptions): ExplorerDataset {
+  const normalizedFilter = sanitizeId(options?.filter?.serviceId ?? undefined) ?? undefined;
+  const manual = options?.manual;
+  const duties = options?.duties ?? [];
+  const blockPlan = options?.blockPlan;
   if (!result) {
-    return emptyExplorerDataset(normalizedFilter);
+    return emptyExplorerDataset(normalizedFilter, manual);
   }
 
   const stopsTable = result.tables['stops.txt'];
@@ -114,6 +152,11 @@ export function buildExplorerDataset(result?: GtfsImportResult, filter?: Explore
     activeTripIds,
   });
 
+  const tripStopLookup = buildTripStopLookup(blockPlan);
+  const dutyStopUsage = computeDutyStopUsage(duties, tripStopLookup);
+  const manualOverlay = buildManualOverlay(manual, dutyStopUsage);
+  const manualSummary = buildManualSummary(manualOverlay);
+
   const bounds = calculateBounds(stopArtifacts.features, shapeArtifacts.features);
 
   return {
@@ -126,20 +169,25 @@ export function buildExplorerDataset(result?: GtfsImportResult, filter?: Explore
     stopDetails: stopArtifacts.details,
     shapeDetails: shapeArtifacts.details,
     selectedServiceId,
+    manualOverlay,
+    manualSummary,
   };
 }
 
 export function buildExplorerGeoJson(result?: GtfsImportResult, filter?: ExplorerFilter): ExplorerGeoJson {
-  return buildExplorerDataset(result, filter).geoJson;
+  return buildExplorerDataset(result, { filter }).geoJson;
 }
 
-function emptyExplorerDataset(selectedServiceId?: string): ExplorerDataset {
+function emptyExplorerDataset(selectedServiceId?: string, manual?: ManualInputs): ExplorerDataset {
+  const manualOverlay = buildManualOverlay(manual, new Map());
   return {
     geoJson: emptyExplorerGeoJson(),
     services: [],
     stopDetails: {},
     shapeDetails: {},
     selectedServiceId,
+    manualOverlay,
+    manualSummary: buildManualSummary(manualOverlay),
   };
 }
 
@@ -151,10 +199,149 @@ function emptyExplorerGeoJson(): ExplorerGeoJson {
   };
 }
 
+type TripStopLookup = Map<string, TripStopSpan>;
+
+interface TripStopSpan {
+  startStopId?: string;
+  endStopId?: string;
+}
+
+function buildTripStopLookup(blockPlan?: BlockPlan): TripStopLookup {
+  const lookup: TripStopLookup = new Map();
+  if (!blockPlan) {
+    return lookup;
+  }
+
+  for (const row of blockPlan.csvRows) {
+    const tripId = sanitizeId(row.tripId);
+    if (!tripId) {
+      continue;
+    }
+    const span = lookup.get(tripId) ?? {};
+    const fromStop = sanitizeId(row.fromStopId);
+    if (fromStop && span.startStopId === undefined) {
+      span.startStopId = fromStop;
+    }
+    const toStop = sanitizeId(row.toStopId);
+    if (toStop && span.endStopId === undefined) {
+      span.endStopId = toStop;
+    }
+    lookup.set(tripId, span);
+  }
+
+  return lookup;
+}
+
+function computeDutyStopUsage(duties: Duty[], tripStops: TripStopLookup): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const duty of duties) {
+    for (const segment of duty.segments) {
+      const touched = new Set<string>();
+      const startSpan = tripStops.get(segment.startTripId);
+      if (startSpan?.startStopId) {
+        touched.add(startSpan.startStopId);
+      }
+      if (startSpan?.endStopId) {
+        touched.add(startSpan.endStopId);
+      }
+      const endSpan = tripStops.get(segment.endTripId);
+      if (endSpan?.startStopId) {
+        touched.add(endSpan.startStopId);
+      }
+      if (endSpan?.endStopId) {
+        touched.add(endSpan.endStopId);
+      }
+      for (const stopId of touched) {
+        incrementCount(counts, stopId);
+      }
+    }
+  }
+  return counts;
+}
+
+function buildManualOverlay(manual: ManualInputs | undefined, dutyStopUsage: Map<string, number>): ExplorerManualOverlay {
+  if (!manual) {
+    return {
+      depots: createFeatureCollection<Point, DepotOverlayProperties>([]),
+      reliefPoints: createFeatureCollection<Point, ReliefPointOverlayProperties>([]),
+    };
+  }
+
+  const deadheadCounts = new Map<string, number>();
+  for (const rule of manual.deadheadRules) {
+    const fromId = sanitizeId(rule.fromId);
+    if (fromId) {
+      incrementCount(deadheadCounts, fromId);
+    }
+    const toId = sanitizeId(rule.toId);
+    if (toId) {
+      incrementCount(deadheadCounts, toId);
+    }
+  }
+
+  const depotFeatures: Feature<Point, DepotOverlayProperties>[] = [];
+  for (const depot of manual.depots) {
+    if (!Number.isFinite(depot.lat) || !Number.isFinite(depot.lon)) {
+      continue;
+    }
+    const dutyImpactCount = deadheadCounts.get(depot.depotId) ?? 0;
+    depotFeatures.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [depot.lon, depot.lat] },
+      properties: {
+        depotId: depot.depotId,
+        name: depot.name,
+        dutyImpactCount,
+      },
+    });
+  }
+
+  const reliefFeatures: Feature<Point, ReliefPointOverlayProperties>[] = [];
+  for (const relief of manual.reliefPoints) {
+    if (!Number.isFinite(relief.lat) || !Number.isFinite(relief.lon)) {
+      continue;
+    }
+    const stopId = relief.stopId ? sanitizeId(relief.stopId) ?? undefined : undefined;
+    const stopImpact = stopId ? dutyStopUsage.get(stopId) ?? 0 : 0;
+    const deadheadImpact = deadheadCounts.get(relief.reliefId) ?? 0;
+    const dutyImpactCount = stopImpact + deadheadImpact;
+    reliefFeatures.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [relief.lon, relief.lat] },
+      properties: {
+        reliefId: relief.reliefId,
+        name: relief.name,
+        stopId,
+        dutyImpactCount,
+      },
+    });
+  }
+
+  return {
+    depots: createFeatureCollection(depotFeatures),
+    reliefPoints: createFeatureCollection(reliefFeatures),
+  };
+}
+
+function buildManualSummary(overlay: ExplorerManualOverlay): ExplorerManualSummary {
+  const depotImpacts = overlay.depots.features.reduce((sum, feature) => sum + (feature.properties?.dutyImpactCount ?? 0), 0);
+  const reliefImpacts = overlay.reliefPoints.features.reduce((sum, feature) => sum + (feature.properties?.dutyImpactCount ?? 0), 0);
+  return {
+    depotCount: overlay.depots.features.length,
+    reliefPointCount: overlay.reliefPoints.features.length,
+    totalDutyImpacts: depotImpacts + reliefImpacts,
+  };
+}
+
 function createFeatureCollection<G extends Point | LineString, P extends Record<string, unknown>>(
   features: Feature<G, P>[],
 ): FeatureCollection<G, P> {
   return { type: 'FeatureCollection', features };
+}
+
+function incrementCount(map: Map<string, number>, key: string, amount = 1): void {
+  const next = (map.get(key) ?? 0) + amount;
+  map.set(key, next);
 }
 
 interface Relationships {

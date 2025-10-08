@@ -41,3 +41,18 @@ test('parseChromeArgs evaluate applies overrides', () => {
   assert.equal(options.pollTimeout, 2000);
   assert.equal(options.pollInterval, 50);
 });
+
+test('parseChromeArgs screenshot sets output defaults', () => {
+  const options = parseChromeArgs([
+    'screenshot',
+    '--url',
+    'https://example.com',
+    '--output',
+    'demo.png',
+    '--full-page',
+  ]);
+  assert.equal(options.command, 'screenshot');
+  assert.equal(options.url, 'https://example.com');
+  assert.equal(options.outputPath, 'demo.png');
+  assert.equal(options.fullPage, true);
+});

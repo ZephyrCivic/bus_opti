@@ -23,6 +23,8 @@ export interface BlockSummary {
   firstTripStart: string;
   lastTripEnd: string;
   gaps: number[];
+  overlapScore?: number;
+  gapWarnings?: number;
 }
 
 export interface BlockPlan {
@@ -37,6 +39,7 @@ export interface BlockPlan {
 
 export interface BuildBlocksOptions {
   maxTurnGapMinutes?: number;
+  linkingEnabled?: boolean;
 }
 
 export const DEFAULT_MAX_TURN_GAP_MINUTES = 15;
@@ -67,6 +70,7 @@ interface OpenBlock {
 
 export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocksOptions): BlockPlan {
   const maxTurnGapMinutes = Math.max(0, options?.maxTurnGapMinutes ?? DEFAULT_MAX_TURN_GAP_MINUTES);
+  const linkingEnabled = options?.linkingEnabled ?? true;
 
   if (!result) {
     return emptyPlan(maxTurnGapMinutes);
@@ -98,7 +102,7 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const openBlocks: OpenBlock[] = [];
 
   for (const schedule of schedules) {
-    const candidate = findAttachableBlock(openBlocks, schedule, maxTurnGapMinutes);
+    const candidate = linkingEnabled ? findAttachableBlock(openBlocks, schedule, maxTurnGapMinutes) : null;
     if (candidate) {
       attachTrip(candidate, schedule, csvRows);
       continue;
@@ -176,9 +180,10 @@ function buildTripSchedule(tripId: string, rows: StopTimeRow[], serviceId?: stri
     return null;
   }
   const sorted = rows.slice().sort((a, b) => a.sequence - b.sequence);
+  const normalized = normalizeStopTimeRows(sorted);
 
-  const first = sorted.find((row) => row.departure !== null || row.arrival !== null);
-  const last = [...sorted].reverse().find((row) => row.arrival !== null || row.departure !== null);
+  const first = normalized.find((row) => row.departure !== null || row.arrival !== null);
+  const last = [...normalized].reverse().find((row) => row.arrival !== null || row.departure !== null);
 
   if (!first || !last) {
     return null;
@@ -204,8 +209,36 @@ function buildTripSchedule(tripId: string, rows: StopTimeRow[], serviceId?: stri
     fromStopId: first.stopId,
     toStopId: last.stopId,
   };
+}
 
+function normalizeStopTimeRows(rows: StopTimeRow[]): StopTimeRow[] {
+  let offset = 0;
+  let lastSeen: number | null = null;
 
+  const adjust = (value: number | null): number | null => {
+    if (value === null) {
+      return null;
+    }
+    let candidate = value + offset;
+    if (lastSeen !== null && candidate < lastSeen) {
+      offset += 1440;
+      candidate = value + offset;
+    }
+    if (lastSeen === null || candidate > lastSeen) {
+      lastSeen = candidate;
+    }
+    return candidate;
+  };
+
+  return rows.map((row) => {
+    const arrival = adjust(row.arrival);
+    const departure = adjust(row.departure);
+    return {
+      ...row,
+      arrival,
+      departure,
+    };
+  });
 }
 function findAttachableBlock(blocks: OpenBlock[], schedule: TripSchedule, maxTurnGapMinutes: number): OpenBlock | null {
   let best: OpenBlock | null = null;
@@ -236,6 +269,7 @@ function attachTrip(block: OpenBlock, schedule: TripSchedule, csvRows: BlockCsvR
   }
   summary.tripCount = seq;
   summary.lastTripEnd = schedule.endTime;
+  updateSummaryOverlaps(summary, schedule.startMinutes, schedule.endMinutes);
 
   csvRows.push(makeCsvRow(summary.blockId, seq, schedule));
 
@@ -265,6 +299,18 @@ function createNewBlock(blocks: OpenBlock[], summaries: BlockSummary[], schedule
   attachTrip(open, schedule, csvRows);
 }
 
+function updateSummaryOverlaps(summary: BlockSummary, startMinutes: number, endMinutes: number): void {
+  const duration = Math.max(0, endMinutes - startMinutes);
+  const gapWarnings = summary.gaps.filter((gap) => gap > 0).length;
+  summary.gapWarnings = gapWarnings;
+  if (duration === 0) {
+    return;
+  }
+  const averageGap = summary.gaps.length > 0
+    ? summary.gaps.reduce((acc, value) => acc + value, 0) / summary.gaps.length
+    : 0;
+  summary.overlapScore = Number(averageGap.toFixed(2));
+}
 function makeCsvRow(blockId: string, seq: number, schedule: TripSchedule): BlockCsvRow {
   return {
     blockId,

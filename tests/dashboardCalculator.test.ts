@@ -37,6 +37,14 @@ test('calculateDashboardMetrics aggregates hours and unassigned routes', () => {
   assert.equal(dashboard.workloadAnalysis.find((w) => w.driverId === 'd2')?.shiftCount, 0);
   const totalHours = dashboard.summary.totalHours;
   assert.ok(totalHours > 0);
+  assert.equal(dashboard.summary.coveragePercentage, 50);
+  assert.ok(dashboard.alerts.some((alert) => alert.id === 'coverage-low'));
+  assert.ok(dashboard.alerts.some((alert) => alert.id === 'unassigned-exceeds'));
+  assert.equal(dashboard.driverWorkloads.length, dashboard.workloadAnalysis.length);
+  assert.ok(dashboard.dailyMetrics.length > 0);
+  const monday = dashboard.dailyMetrics.find((metric) => metric.label === '月');
+  assert.ok(monday);
+  assert.equal(monday.unassignedCount, 1);
 });
 
 test('calculateDashboardMetrics returns fairness 100 when workloads equal', () => {
@@ -52,4 +60,26 @@ test('calculateDashboardMetrics returns fairness 100 when workloads equal', () =
   assert.equal(dashboard.summary.unassignedCount, 0);
   assert.equal(dashboard.summary.totalShifts, 2);
   assert.equal(dashboard.summary.fairnessScore, 100);
+  assert.equal(dashboard.summary.coveragePercentage, 100);
+  assert.deepEqual(dashboard.alerts, []);
+  assert.equal(dashboard.dailyMetrics.length, 1);
+  assert.equal(dashboard.dailyMetrics[0]?.coveragePercentage, 100);
+});
+
+test('calculateDashboardMetrics flags fairness imbalance when thresholds exceeded', () => {
+  const schedule: Schedule = {
+    '月': [
+      { routeId: 'r1-月', driverId: 'd1' },
+      { routeId: 'r2-月', driverId: 'd1' },
+    ],
+  };
+
+  const dashboard = calculateDashboardMetrics(schedule, expand(baseRoutes), drivers, {
+    maxUnassignedPercentage: 10,
+    maxNightShiftVariance: 5,
+  });
+
+  assert.equal(dashboard.summary.fairnessScore, 0);
+  assert.ok(dashboard.alerts.some((alert) => alert.id === 'fairness-imbalance'));
+  assert.ok(Array.isArray(dashboard.alertHistory));
 });

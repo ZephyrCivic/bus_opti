@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 
 import { buildExplorerDataset, buildExplorerGeoJson } from '../src/features/explorer/mapData';
 import type { GtfsImportResult } from '../src/services/import/gtfsParser';
+import type { ManualInputs, Duty } from '../src/types';
+import type { BlockPlan } from '../src/services/blocks/blockBuilder';
 
 function baseResult(): GtfsImportResult {
   return {
@@ -116,20 +118,121 @@ test('buildExplorerDataset exposes services and applies serviceId filter', () =>
   assert.equal(datasetAll.geoJson.shapes.features.length, 2);
   assert.equal(datasetAll.stopDetails['STOP_B'].totalTripCount, 2);
 
-  const weekday = buildExplorerDataset(result, { serviceId: 'WEEKDAY' });
+  const weekday = buildExplorerDataset(result, { filter: { serviceId: 'WEEKDAY' } });
   assert.equal(weekday.selectedServiceId, 'WEEKDAY');
   assert.equal(weekday.geoJson.stops.features.length, 2, 'weekday should include stops used by weekday trips');
   assert.equal(weekday.geoJson.shapes.features.length, 1, 'weekday should include only shape 1');
   assert.equal(weekday.stopDetails['STOP_B'].activeTripCount, 1, 'STOP_B has one weekday trip');
   assert.equal(weekday.shapeDetails['SHAPE_1'].activeTripCount, 2, 'shape 1 has two weekday trips');
 
-  const weekend = buildExplorerDataset(result, { serviceId: 'WEEKEND' });
+  const weekend = buildExplorerDataset(result, { filter: { serviceId: 'WEEKEND' } });
   assert.equal(weekend.geoJson.stops.features.length, 2, 'weekend should include STOP_B and STOP_C');
   assert.equal(weekend.geoJson.shapes.features.length, 1, 'weekend should include only shape 2');
   assert.equal(weekend.stopDetails['STOP_C'].activeTripCount, 1);
   assert.deepEqual(weekend.stopDetails['STOP_A'], undefined, 'STOP_A not present for weekend');
 
-  const unknown = buildExplorerDataset(result, { serviceId: 'UNKNOWN' });
+  const unknown = buildExplorerDataset(result, { filter: { serviceId: 'UNKNOWN' } });
   assert.equal(unknown.selectedServiceId, undefined, 'unknown service falls back to all');
   assert.equal(unknown.geoJson.stops.features.length, 3);
+});
+
+test('buildExplorerDataset aggregates manual overlay duty impacts', () => {
+  const result = baseResult();
+  result.tables['stops.txt'].rows = [
+    { stop_id: 'STOP_A', stop_name: 'A', stop_lat: '35.60', stop_lon: '139.70' },
+    { stop_id: 'STOP_B', stop_name: 'B', stop_lat: '35.61', stop_lon: '139.71' },
+    { stop_id: 'STOP_C', stop_name: 'C', stop_lat: '35.62', stop_lon: '139.72' },
+  ];
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_START', service_id: 'WEEKDAY', shape_id: 'SHAPE_MANUAL' },
+    { trip_id: 'TRIP_END', service_id: 'WEEKDAY', shape_id: 'SHAPE_MANUAL' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_START', stop_id: 'STOP_A' },
+    { trip_id: 'TRIP_START', stop_id: 'STOP_B' },
+    { trip_id: 'TRIP_END', stop_id: 'STOP_B' },
+    { trip_id: 'TRIP_END', stop_id: 'STOP_C' },
+  ];
+
+  const manual: ManualInputs = {
+    depots: [{
+      depotId: 'DEPOT_MAIN',
+      name: 'Main Depot',
+      lat: 35.59,
+      lon: 139.69,
+      minTurnaroundMin: 10,
+    }],
+    reliefPoints: [{
+      reliefId: 'RELIEF_1',
+      name: 'Relief Stop',
+      lat: 35.61,
+      lon: 139.71,
+      stopId: 'STOP_B',
+    }],
+    deadheadRules: [
+      { fromId: 'DEPOT_MAIN', toId: 'RELIEF_1', mode: 'bus', travelTimeMin: 12 },
+      { fromId: 'RELIEF_1', toId: 'DEPOT_MAIN', mode: 'bus', travelTimeMin: 15 },
+    ],
+    drivers: [{ driverId: 'DRV1', name: 'Driver One' }],
+    linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+  };
+
+  const duties: Duty[] = [{
+    id: 'DUTY_1',
+    segments: [{
+      id: 'SEG_1',
+      blockId: 'BLOCK_1',
+      startTripId: 'TRIP_START',
+      endTripId: 'TRIP_END',
+      startSequence: 1,
+      endSequence: 2,
+    }],
+  }];
+
+  const plan: BlockPlan = {
+    summaries: [],
+    csvRows: [
+      {
+        blockId: 'BLOCK_1',
+        seq: 1,
+        tripId: 'TRIP_START',
+        tripStart: '08:00',
+        tripEnd: '08:30',
+        fromStopId: 'STOP_A',
+        toStopId: 'STOP_B',
+        serviceId: 'WEEKDAY',
+      },
+      {
+        blockId: 'BLOCK_1',
+        seq: 2,
+        tripId: 'TRIP_END',
+        tripStart: '08:30',
+        tripEnd: '09:10',
+        fromStopId: 'STOP_B',
+        toStopId: 'STOP_C',
+        serviceId: 'WEEKDAY',
+      },
+    ],
+    unassignedTripIds: [],
+    totalTripCount: 2,
+    assignedTripCount: 2,
+    coverageRatio: 1,
+    maxTurnGapMinutes: 15,
+  };
+
+  const dataset = buildExplorerDataset(result, {
+    manual,
+    duties,
+    blockPlan: plan,
+  });
+
+  const depotFeatures = dataset.manualOverlay.depots.features;
+  const reliefFeatures = dataset.manualOverlay.reliefPoints.features;
+  assert.equal(depotFeatures.length, 1);
+  assert.equal(reliefFeatures.length, 1);
+  assert.equal(depotFeatures[0]?.properties?.dutyImpactCount, 2, 'deadhead rules counted for depots');
+  assert.equal(reliefFeatures[0]?.properties?.dutyImpactCount, 3, 'deadhead + duty stop usage counted');
+  assert.equal(dataset.manualSummary.depotCount, 1);
+  assert.equal(dataset.manualSummary.reliefPointCount, 1);
+  assert.equal(dataset.manualSummary.totalDutyImpacts, 5);
 });

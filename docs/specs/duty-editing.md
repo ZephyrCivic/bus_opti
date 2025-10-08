@@ -20,8 +20,8 @@
 参考: README・DECISIONSのCSVスキーマ定義と整合（Blocks/Dutiesの列名）。
 
 ## データモデル（CSV/I/O）
-- Blocks CSV（出力）: `block_id, seq, trip_id, trip_start, trip_end, from_stop_id, to_stop_id, service_id`
-- Duties CSV（出力）: `duty_id, seq, block_id, segment_start_trip_id, segment_end_trip_id, driver_id`
+- Blocks CSV（出力）: `block_id, seq, trip_id, trip_start, trip_end, from_stop_id, to_stop_id, service_id, generated_at, settings_hash`
+- Duties CSV（出力）: `duty_id, seq, block_id, segment_start_trip_id, segment_end_trip_id, driver_id, generated_at, settings_hash`
   - `duty_id`: 画面での新規作成時に `DUTY_###` 形式で採番（エクスポート時点で連番再整備OK）。
   - `seq`: 同一`duty_id`内のセグメント通し番号（1..N）。
   - `segment_start_trip_id`/`segment_end_trip_id`: 境界Tripの`trip_id`。閉区間。[start..end] は同一Block内かつ順序が正。

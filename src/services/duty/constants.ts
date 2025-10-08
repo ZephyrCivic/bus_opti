@@ -10,4 +10,6 @@ export const DEFAULT_DUTY_SETTINGS: DutySettings = {
   minBreakMinutes: 30,
   maxDailyMinutes: 780,
   undoStackLimit: 50,
+  maxUnassignedPercentage: 5,
+  maxNightShiftVariance: 10,
 };

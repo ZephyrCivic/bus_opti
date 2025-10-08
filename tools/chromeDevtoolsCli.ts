@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import CDP, { Client as ChromeClient } from 'chrome-remote-interface';
 
-export type ChromeCommand = 'evaluate' | 'help';
+export type ChromeCommand = 'evaluate' | 'screenshot' | 'help';
 
 export interface ChromeCliOptions {
   command: ChromeCommand;
@@ -23,6 +23,8 @@ export interface ChromeCliOptions {
   userDataDir?: string;
   pollTimeout: number;
   pollInterval: number;
+  outputPath?: string;
+  fullPage: boolean;
 }
 
 export const DEFAULT_REMOTE_PORT = 9222;
@@ -31,6 +33,7 @@ export const DEFAULT_POLL_INTERVAL = 250;
 export const DEFAULT_CHROME_PATH = process.platform === 'win32'
   ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
   : '/usr/bin/google-chrome';
+export const DEFAULT_SCREENSHOT_PATH = 'chrome-screenshot.png';
 
 function parsePort(raw?: string): number {
   if (!raw) return DEFAULT_REMOTE_PORT;
@@ -67,13 +70,14 @@ export function parseChromeArgs(argv: string[]): ChromeCliOptions {
   const command = (commandRaw ?? '').toLowerCase();
 
   const options: ChromeCliOptions = {
-    command: command === 'evaluate' ? 'evaluate' : 'help',
+    command: command === 'evaluate' || command === 'screenshot' ? (command as ChromeCommand) : 'help',
     chromePath: DEFAULT_CHROME_PATH,
     remotePort: DEFAULT_REMOTE_PORT,
     headless: true,
     keepBrowser: false,
     pollTimeout: DEFAULT_POLL_TIMEOUT,
     pollInterval: DEFAULT_POLL_INTERVAL,
+    fullPage: false,
   };
 
   for (let i = 0; i < rest.length; i += 1) {
@@ -95,6 +99,10 @@ export function parseChromeArgs(argv: string[]): ChromeCliOptions {
       options.expression = arg.slice('--expression='.length);
     } else if (arg === '--expression') {
       options.expression = rest[++i];
+    } else if (arg.startsWith('--output=')) {
+      options.outputPath = arg.slice('--output='.length);
+    } else if (arg === '--output') {
+      options.outputPath = rest[++i];
     } else if (arg === '--headed') {
       options.headless = false;
     } else if (arg === '--keep-browser') {
@@ -111,11 +119,15 @@ export function parseChromeArgs(argv: string[]): ChromeCliOptions {
       options.pollInterval = parseTimeout(arg.split('=')[1], DEFAULT_POLL_INTERVAL);
     } else if (arg === '--poll-interval') {
       options.pollInterval = parseTimeout(rest[++i], DEFAULT_POLL_INTERVAL);
+    } else if (arg === '--full-page') {
+      options.fullPage = true;
     }
   }
 
   if (options.command === 'evaluate') {
     options.expression ??= 'document.title';
+  } else if (options.command === 'screenshot') {
+    options.outputPath ??= DEFAULT_SCREENSHOT_PATH;
   }
 
   return options;
@@ -245,8 +257,85 @@ export async function evaluateChrome(options: ChromeCliOptions): Promise<string>
   return await evaluateExpression(options);
 }
 
+async function captureScreenshot(options: ChromeCliOptions): Promise<string> {
+  if (!options.url) {
+    throw new Error('screenshot command requires --url to be specified');
+  }
+  const tempDir = options.userDataDir ?? await mkdtemp(join(tmpdir(), 'chrome-devtools-'));
+  const cleanTempDir = !options.userDataDir;
+  const chrome = await launchChrome(options, tempDir);
+  let output = options.outputPath ?? DEFAULT_SCREENSHOT_PATH;
+  try {
+    await waitForDevtools(options.remotePort, options.pollTimeout, options.pollInterval);
+    const host = '127.0.0.1';
+    const client = await CDP({ host, port: options.remotePort });
+    try {
+      const { Target } = client;
+      const { targetId } = await Target.createTarget({ url: 'about:blank' });
+      const session = await CDP({ host, port: options.remotePort, target: targetId });
+      try {
+        await session.Page.enable();
+        await session.Runtime.enable();
+        await session.Page.navigate({ url: options.url, transitionType: 'typed' });
+        await waitForLoad(session);
+        if (options.fullPage) {
+          await session.Emulation.setDeviceMetricsOverride({
+            width: 1280,
+            height: 720,
+            deviceScaleFactor: 1,
+            mobile: false,
+          });
+        }
+        const screenshot = await session.Page.captureScreenshot({
+          format: 'png',
+          captureBeyondViewport: options.fullPage,
+        });
+        const buffer = Buffer.from(screenshot.data, 'base64');
+        await import('node:fs/promises').then(({ writeFile }) => writeFile(output, buffer));
+      } finally {
+        await session.close();
+        await Target.closeTarget({ targetId }).catch(() => undefined);
+      }
+    } finally {
+      await client.close();
+    }
+  } finally {
+    if (!options.keepBrowser) {
+      if (chrome.exitCode === null) {
+        chrome.kill('SIGTERM');
+        await new Promise<void>((resolve) => {
+          chrome.once('exit', () => resolve());
+        });
+      }
+    }
+    if (!options.keepBrowser && cleanTempDir) {
+      await delay(200);
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+  return output;
+}
+
 function showHelp(): void {
-  console.log(`Chrome DevTools direct CLI\n\nExample:\n  npx tsx tools/chromeDevtoolsCli.ts evaluate --url https://example.com --expression "document.title"\n\nOptions:\n  --chrome-path <path>   Path to Chrome executable (default platform specific)\n  --remote-port <port>   Remote debugging port (default ${DEFAULT_REMOTE_PORT})\n  --url <url>            Page URL to open before evaluation\n  --expression <js>      JavaScript snippet to evaluate (default document.title)\n  --headed               Launch Chrome with UI instead of headless\n  --keep-browser         Leave Chrome running after evaluation\n  --user-data-dir <dir>  Use existing Chrome profile directory\n  --poll-timeout <ms>    Max wait for DevTools availability (default ${DEFAULT_POLL_TIMEOUT})\n  --poll-interval <ms>   Poll interval while waiting (default ${DEFAULT_POLL_INTERVAL})\n`);
+  console.log(`Chrome DevTools direct CLI
+
+Examples:
+  npx tsx tools/chromeDevtoolsCli.ts evaluate --url https://example.com --expression "document.title"
+  npx tsx tools/chromeDevtoolsCli.ts screenshot --url https://example.com --output export.png --full-page
+
+Options:
+  --chrome-path <path>   Path to Chrome executable (default platform specific)
+  --remote-port <port>   Remote debugging port (default ${DEFAULT_REMOTE_PORT})
+  --url <url>            Page URL to open before evaluation/screenshot
+  --expression <js>      JavaScript snippet to evaluate (default document.title)
+  --output <file>        Screenshot destination (screenshot only)
+  --full-page            Capture beyond viewport (screenshot only)
+  --headed               Launch Chrome with UI instead of headless
+  --keep-browser         Leave Chrome running after command
+  --user-data-dir <dir>  Use existing Chrome profile directory
+  --poll-timeout <ms>    Max wait for DevTools availability (default ${DEFAULT_POLL_TIMEOUT})
+  --poll-interval <ms>   Poll interval while waiting (default ${DEFAULT_POLL_INTERVAL})
+`);
 }
 
 async function main(): Promise<void> {
@@ -256,6 +345,11 @@ async function main(): Promise<void> {
       case 'evaluate': {
         const result = await evaluateChrome(options);
         console.log(result);
+        break;
+      }
+      case 'screenshot': {
+        const path = await captureScreenshot(options);
+        console.log(`Saved screenshot to ${path}`);
         break;
       }
       default:

@@ -51,8 +51,11 @@ export function computeDutyMetrics(
     };
   }
 
-  let totalSpan = segmentsWithTiming[segmentsWithTiming.length - 1].endMinutes - segmentsWithTiming[0].startMinutes;
-  totalSpan = totalSpan >= 0 ? totalSpan : undefined;
+  let totalSpan: number | undefined =
+    segmentsWithTiming[segmentsWithTiming.length - 1].endMinutes - segmentsWithTiming[0].startMinutes;
+  if (typeof totalSpan === 'number' && totalSpan < 0) {
+    totalSpan = undefined;
+  }
 
   let longestContinuous = 0;
   for (const segment of segmentsWithTiming) {

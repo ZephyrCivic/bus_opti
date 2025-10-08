@@ -136,3 +136,51 @@ test('buildBlocksPlan splits blocks across service days even with zero gap', () 
   assert.equal(day0?.tripCount, 1);
   assert.equal(day1?.tripCount, 1);
 });
+
+test('buildBlocksPlan normalises overnight trips to 24h notation', () => {
+  const result = baseResult();
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_OVERNIGHT', service_id: 'WEEKDAY' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_OVERNIGHT', stop_sequence: '1', stop_id: 'STOP_A', departure_time: '23:50' },
+    { trip_id: 'TRIP_OVERNIGHT', stop_sequence: '2', stop_id: 'STOP_B', arrival_time: '00:10', departure_time: '00:12' },
+    { trip_id: 'TRIP_OVERNIGHT', stop_sequence: '3', stop_id: 'STOP_C', arrival_time: '00:30' },
+  ];
+
+  const plan = buildBlocksPlan(result);
+  assert.equal(plan.totalTripCount, 1);
+  assert.equal(plan.summaries.length, 1);
+  const summary = plan.summaries[0];
+  assert.ok(summary);
+  assert.equal(summary.serviceDayIndex, 0, 'overnight trip still belongs to the departure service day');
+  assert.equal(summary.firstTripStart, '23:50');
+  assert.equal(summary.lastTripEnd, '24:30');
+
+  const csvRow = plan.csvRows[0];
+  assert.equal(csvRow.tripStart, '23:50');
+  assert.equal(csvRow.tripEnd, '24:30');
+});
+
+test('buildBlocksPlan honours linkingEnabled flag', () => {
+  const result = baseResult();
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_ONE', service_id: 'WEEKDAY' },
+    { trip_id: 'TRIP_TWO', service_id: 'WEEKDAY' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_ONE', stop_sequence: '1', stop_id: 'STOP_A', departure_time: '07:00' },
+    { trip_id: 'TRIP_ONE', stop_sequence: '2', stop_id: 'STOP_B', arrival_time: '08:00' },
+    { trip_id: 'TRIP_TWO', stop_sequence: '1', stop_id: 'STOP_B', departure_time: '08:05' },
+    { trip_id: 'TRIP_TWO', stop_sequence: '2', stop_id: 'STOP_C', arrival_time: '09:00' },
+  ];
+
+  const enabledPlan = buildBlocksPlan(result, { linkingEnabled: true });
+  assert.equal(enabledPlan.summaries.length, 1, 'enabled linking connects trips into single block');
+  assert.equal(enabledPlan.summaries[0]?.tripCount, 2);
+
+  const disabledPlan = buildBlocksPlan(result, { linkingEnabled: false });
+  assert.equal(disabledPlan.summaries.length, 2, 'disabled linking keeps trips separate');
+  assert.equal(disabledPlan.summaries[0]?.tripCount, 1);
+  assert.equal(disabledPlan.summaries[1]?.tripCount, 1);
+});

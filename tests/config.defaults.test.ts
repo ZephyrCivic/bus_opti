@@ -27,6 +27,8 @@ test('DEFAULT_DUTY_SETTINGS mirrors config.py values', () => {
     minBreakMinutes: readConfigValue('DUTY_MIN_BREAK_MINUTES'),
     maxDailyMinutes: readConfigValue('DUTY_MAX_DAILY_MINUTES'),
     undoStackLimit: readConfigValue('DUTY_UNDO_STACK_LIMIT'),
+    maxUnassignedPercentage: readConfigValue('DUTY_MAX_UNASSIGNED_PERCENTAGE'),
+    maxNightShiftVariance: readConfigValue('DUTY_MAX_NIGHT_SHIFT_VARIANCE'),
   };
 
   assert.deepEqual(DEFAULT_DUTY_SETTINGS, configDefaults);

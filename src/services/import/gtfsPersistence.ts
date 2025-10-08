@@ -90,15 +90,17 @@ export function fromSavedProject(payload: unknown): { gtfs: GtfsImportResult; ma
     depots: [],
     reliefPoints: [],
     deadheadRules: [],
-    linking: { minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+    drivers: [],
+    linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
   const any = payload as any;
   // Legacy GTFS-only
   if (any && typeof any === 'object' && 'version' in any && !(any as any).projectVersion) {
-    return { gtfs: fromSaved(any as SavedGtfsImportV1), manual: defaultManual };
+    return { gtfs: fromSaved(any as SavedGtfsImportV1), manual: hydrateManual(undefined, defaultManual) };
   }
   if (any && typeof any === 'object' && (any as any).projectVersion === 1 && (any as any).gtfs) {
-    return { gtfs: fromSaved((any as SavedProjectV1).gtfs), manual: (any as SavedProjectV1).manual ?? defaultManual };
+    const manual = (any as SavedProjectV1).manual;
+    return { gtfs: fromSaved((any as SavedProjectV1).gtfs), manual: hydrateManual(manual, defaultManual) };
   }
   throw new Error('未対応の保存フォーマットです');
 }
@@ -115,4 +117,24 @@ export function downloadProjectJson(saved: SavedProjectV1, fileName?: string): v
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function hydrateManual(manual: ManualInputs | undefined, defaults: ManualInputs): ManualInputs {
+  const baseLinking = { ...defaults.linking };
+  if (!manual) {
+    return {
+      depots: [],
+      reliefPoints: [],
+      deadheadRules: [],
+      drivers: [],
+      linking: baseLinking,
+    };
+  }
+  return {
+    depots: manual.depots ? [...manual.depots] : [],
+    reliefPoints: manual.reliefPoints ? [...manual.reliefPoints] : [],
+    deadheadRules: manual.deadheadRules ? [...manual.deadheadRules] : [],
+    drivers: manual.drivers ? [...manual.drivers] : [],
+    linking: manual.linking ? { ...manual.linking } : baseLinking,
+  };
 }

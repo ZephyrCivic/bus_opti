@@ -38,17 +38,41 @@ export interface WorkloadItem {
   hours: number;
 }
 
+export interface DashboardDailyMetric {
+  label: string;
+  totalShifts: number;
+  totalHours: number;
+  unassignedCount: number;
+  coveragePercentage: number;
+}
+
+export interface DashboardAlertHistoryEntry {
+  label: string;
+  alerts: DashboardAlert[];
+}
+
 export interface DashboardSummary {
   totalShifts: number;
   totalHours: number;
   unassignedCount: number;
   fairnessScore: number;
+  coveragePercentage: number;
+}
+
+export interface DashboardAlert {
+  id: 'coverage-low' | 'unassigned-exceeds' | 'fairness-imbalance';
+  severity: 'warning' | 'critical';
+  message: string;
 }
 
 export interface DashboardData {
   summary: DashboardSummary;
   workloadAnalysis: WorkloadItem[];
+  driverWorkloads: WorkloadItem[];
   unassignedRoutes: string[];
+  alerts: DashboardAlert[];
+  dailyMetrics: DashboardDailyMetric[];
+  alertHistory: DashboardAlertHistoryEntry[];
 }
 
 export interface ScheduleState {
@@ -76,6 +100,8 @@ export interface DutySettings {
   minBreakMinutes: number;
   maxDailyMinutes: number;
   undoStackLimit: number;
+  maxUnassignedPercentage: number;
+  maxNightShiftVariance: number;
 }
 
 export interface DutyEditState {
@@ -115,7 +141,13 @@ export interface DeadheadRule {
   allowedWindow?: string;
 }
 
+export interface ManualDriver {
+  driverId: string;
+  name: string;
+}
+
 export interface LinkingSettings {
+  enabled: boolean; // true のとき自動連結を許可
   minTurnaroundMin: number; // 最小折返し
   maxConnectRadiusM: number; // 停留所近接半径
   allowParentStation: boolean; // 親子駅許容
@@ -125,5 +157,6 @@ export interface ManualInputs {
   depots: Depot[];
   reliefPoints: ReliefPoint[];
   deadheadRules: DeadheadRule[];
+  drivers: ManualDriver[];
   linking: LinkingSettings;
 }

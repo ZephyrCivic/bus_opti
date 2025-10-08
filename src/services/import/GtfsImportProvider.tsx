@@ -3,7 +3,7 @@
  * React context for GTFS import state and Duty editing helpers.
  * Keeps GTFS parsing, Duty state transitions, and undo handling available to UI layers.
  */
-import { createContext, useCallback, useContext, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 import {
   addDutySegment,
@@ -18,9 +18,10 @@ import {
   type DeleteDutySegmentInput,
   type MoveDutySegmentInput,
 } from '@/services/duty/dutyState';
-import type { Duty, DutyEditState, ManualInputs } from '@/types';
+import type { Duty, DutyEditState, DutySettings, ManualInputs } from '@/types';
 import { autoCorrectDuty } from '@/services/duty/dutyAutoCorrect';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
+import { loadDutyState, saveDutyState } from '@/services/duty/dutyPersistence';
 
 import { GtfsImportError, type GtfsImportResult, parseGtfsArchive } from './gtfsParser';
 
@@ -32,7 +33,7 @@ export interface GtfsImportState {
   errorMessage?: string;
 }
 
-interface DutyEditorActions {
+export interface DutyEditorActions {
   addSegment: (input: AddDutySegmentInput, index: BlockTripSequenceIndex) => void;
   moveSegment: (input: MoveDutySegmentInput, index: BlockTripSequenceIndex) => void;
   deleteSegment: (input: DeleteDutySegmentInput) => void;
@@ -41,6 +42,7 @@ interface DutyEditorActions {
   replace: (duties: Duty[]) => void;
   autoCorrect: (dutyId: string, tripLookup: BlockTripLookup) => boolean;
   reset: () => void;
+  updateSettings: (settings: Partial<DutySettings>) => void;
 }
 
 interface GtfsImportContextValue extends GtfsImportState {
@@ -57,17 +59,32 @@ const GtfsImportContext = createContext<GtfsImportContextValue | undefined>(unde
 
 export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element {
   const [state, setState] = useState<GtfsImportState>({ status: 'idle' });
-  const [dutyState, setDutyState] = useState<DutyEditState>(() => createDutyEditState());
+  const [dutyState, setDutyState] = useState<DutyEditState>(() => {
+    const stored = loadDutyState();
+    if (!stored) {
+      return createDutyEditState();
+    }
+    const base = createDutyEditState(stored.settings);
+    return {
+      ...base,
+      duties: stored.duties,
+    };
+  });
   const [manual, setManualState] = useState<ManualInputs>(() => ({
     depots: [],
     reliefPoints: [],
     deadheadRules: [],
-    linking: { minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
+    drivers: [],
+    linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   }));
 
   const resetDutyState = useCallback(() => {
     setDutyState((prev) => createDutyEditState(prev.settings));
   }, []);
+
+  useEffect(() => {
+    saveDutyState(dutyState);
+  }, [dutyState]);
 
   const importFromFile = useCallback(async (file: File) => {
     setState({ status: 'parsing' });
@@ -89,7 +106,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
   const reset = useCallback(() => {
     setState({ status: 'idle' });
     resetDutyState();
-    setManualState((prev) => ({ ...prev, depots: [], reliefPoints: [], deadheadRules: [] }));
+    setManualState((prev) => ({ ...prev, depots: [], reliefPoints: [], deadheadRules: [], drivers: [] }));
   }, [resetDutyState]);
 
   const dutyActions = useMemo<DutyEditorActions>(() => ({
@@ -130,6 +147,14 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     },
     reset: () => {
       resetDutyState();
+    },
+    updateSettings: (settings: Partial<DutySettings>) => {
+      setDutyState((prev) => ({
+        duties: prev.duties,
+        settings: { ...prev.settings, ...settings },
+        undoStack: prev.undoStack,
+        redoStack: prev.redoStack,
+      }));
     },
   }), [resetDutyState]);
 

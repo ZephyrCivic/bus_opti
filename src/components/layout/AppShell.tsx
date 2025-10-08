@@ -5,7 +5,7 @@
  */
 import { type PropsWithChildren } from 'react';
 
-const APP_NAME = 'TS Bus Operation App';
+export const APP_NAME = 'TS-bus-operation-app';
 
 export default function AppShell({ children }: PropsWithChildren): JSX.Element {
   return (

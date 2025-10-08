@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-import type { Duty, DutySegment } from '@/types';
+import type { Duty, DutySegment, ManualDriver } from '@/types';
 import type { DutyMetrics } from '@/services/duty/dutyMetrics';
 import { formatMinutes } from '@/services/duty/dutyMetrics';
 
@@ -28,6 +28,7 @@ interface InspectorCardProps {
   selectedSegmentDetail: DutySegment | null;
   selectedMetrics?: DutyMetrics;
   onAutoCorrect: () => void;
+  driverOptions: ManualDriver[];
 }
 
 export function InspectorCard(props: InspectorCardProps): JSX.Element {
@@ -42,6 +43,7 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
     selectedSegmentDetail,
     selectedMetrics,
     onAutoCorrect,
+    driverOptions,
   } = props;
 
   return (
@@ -61,6 +63,29 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
             onChange={(event) => onDefaultDriverChange(event.target.value)}
             placeholder="DRIVER_001"
           />
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">運転士候補から選択</span>
+          {driverOptions.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {driverOptions.map((driver) => {
+                const active = driver.driverId === defaultDriverId;
+                const label = driver.name ? `${driver.driverId}（${driver.name}）` : driver.driverId;
+                return (
+                  <Button
+                    key={driver.driverId}
+                    variant={active ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => onDefaultDriverChange(driver.driverId)}
+                  >
+                    {label}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Drivers CSV を読み込むと候補が表示されます。</p>
+          )}
         </div>
         <QuickStats dutyCount={dutyCount} segmentCount={segmentCount} driverCount={driverCount} />
         {selectedDuty ? (

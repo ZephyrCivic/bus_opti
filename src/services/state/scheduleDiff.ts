@@ -10,6 +10,11 @@ export interface ScheduleDiffResult {
     totalHours: number;
     unassigned: number;
     fairnessScore: number;
+    coveragePercentage: number;
+  };
+  alerts: {
+    current: DashboardData['alerts'];
+    baseline: DashboardData['alerts'];
   };
 }
 
@@ -39,6 +44,7 @@ function summaryDelta(current: DashboardData, baseline: DashboardData) {
     totalHours: (current.summary?.totalHours ?? 0) - (baseline.summary?.totalHours ?? 0),
     unassigned: (current.summary?.unassignedCount ?? 0) - (baseline.summary?.unassignedCount ?? 0),
     fairnessScore: (current.summary?.fairnessScore ?? 0) - (baseline.summary?.fairnessScore ?? 0),
+    coveragePercentage: (current.summary?.coveragePercentage ?? 0) - (baseline.summary?.coveragePercentage ?? 0),
   };
 }
 
@@ -76,8 +82,11 @@ export function diffSchedules(current: ScheduleState, baseline: ScheduleState): 
     reassigned,
     unchangedCount,
     metricsDelta: summaryDelta(current.dashboard, baseline.dashboard),
+    alerts: {
+      current: current.dashboard.alerts ?? [],
+      baseline: baseline.dashboard.alerts ?? [],
+    },
   };
 }
 
 export default diffSchedules;
-

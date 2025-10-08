@@ -15,9 +15,14 @@ const emptyDashboard: DashboardData = {
     totalHours: 0,
     unassignedCount: 0,
     fairnessScore: 0,
+    coveragePercentage: 100,
   },
   workloadAnalysis: [],
+  driverWorkloads: [],
   unassignedRoutes: [],
+  alerts: [],
+  dailyMetrics: [],
+  alertHistory: [],
 };
 
 test('diffSchedules detects added and reassigned shifts', () => {
@@ -33,9 +38,14 @@ test('diffSchedules detects added and reassigned shifts', () => {
       totalHours: 16,
       unassignedCount: 0,
       fairnessScore: 80,
+      coveragePercentage: 100,
     },
     workloadAnalysis: [],
+    driverWorkloads: [],
     unassignedRoutes: [],
+    alerts: [],
+    dailyMetrics: [],
+    alertHistory: [],
   };
 
   const currentSchedule: Schedule = {
@@ -50,9 +60,16 @@ test('diffSchedules detects added and reassigned shifts', () => {
       totalHours: 18,
       unassignedCount: 1,
       fairnessScore: 75,
+      coveragePercentage: 67,
     },
     workloadAnalysis: [],
+    driverWorkloads: [],
     unassignedRoutes: [],
+    alerts: [
+      { id: 'coverage-low', severity: 'warning', message: 'coverage low' },
+    ],
+    dailyMetrics: [],
+    alertHistory: [],
   };
 
   const result = diffSchedules(
@@ -71,6 +88,9 @@ test('diffSchedules detects added and reassigned shifts', () => {
   assert.strictEqual(result.metricsDelta.totalHours, 2);
   assert.strictEqual(result.metricsDelta.unassigned, 1);
   assert.strictEqual(result.metricsDelta.fairnessScore, -5);
+  assert.strictEqual(result.metricsDelta.coveragePercentage, -33);
+  assert.equal(result.alerts.current.length, 1);
+  assert.equal(result.alerts.baseline.length, 0);
 });
 
 test('diffSchedules handles empty schedules without error', () => {
@@ -87,4 +107,7 @@ test('diffSchedules handles empty schedules without error', () => {
   assert.strictEqual(result.metricsDelta.totalHours, 0);
   assert.strictEqual(result.metricsDelta.unassigned, 0);
   assert.strictEqual(result.metricsDelta.fairnessScore, 0);
+  assert.strictEqual(result.metricsDelta.coveragePercentage, 0);
+  assert.equal(result.alerts.current.length, 0);
+  assert.equal(result.alerts.baseline.length, 0);
 });

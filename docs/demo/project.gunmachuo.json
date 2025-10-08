@@ -1,0 +1,23 @@
+{
+  "projectVersion": 1,
+  "gtfs": {
+    "version": 1,
+    "sourceName": "GTFS-JP(gunmachuo).zip",
+    "importedAt": "2025-10-07T00:00:00.000Z",
+    "tables": {},
+    "missingFiles": [],
+    "summary": [],
+    "alerts": []
+  },
+  "manual": {
+    "depots": [],
+    "reliefPoints": [],
+    "deadheadRules": [],
+    "linking": {
+      "enabled": true,
+      "minTurnaroundMin": 10,
+      "maxConnectRadiusM": 100,
+      "allowParentStation": true
+    }
+  }
+}

@@ -71,12 +71,19 @@ export default function ImportView(): JSX.Element {
       try {
         const text = await file.text();
         const saved = JSON.parse(text);
-        try {\n          const project = fromSavedProject(saved);\n          loadFromSaved(project.gtfs);\n          setManual(() => project.manual);\n        } catch {\n          const hydrated = fromSaved(saved);\n          loadFromSaved(hydrated);\n        }
+        try {
+          const project = fromSavedProject(saved);
+          loadFromSaved(project.gtfs);
+          setManual(() => project.manual);
+        } catch {
+          const hydrated = fromSaved(saved);
+          loadFromSaved(hydrated);
+        }
       } catch {
         setLocalError('保存データの読込に失敗しました。内容をご確認ください。');
       }
     },
-    [loadFromSaved],
+    [loadFromSaved, setManual],
   );
 
   const summaryColumns = useMemo<ColumnDef<GtfsImportSummaryItem>[]>(
