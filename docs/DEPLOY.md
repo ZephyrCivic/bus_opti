@@ -14,7 +14,7 @@
 
 ## 1. GitHub Pages（GitHub Actions で自動デプロイ）
 
-1. `vite.config.ts` の `base` をリポジトリ名に合わせて設定（例: `/ts-bus-operation-app/`）。
+1. `vite.config.ts` の `base` は GitHub Pages 用に `/bus_opti/` をセット済み。別リポジトリへフォークする場合のみ名称を変更する。
 2. `npm run build` を実行。`dist/` 配下に本番成果物が生成される。
 3. `dist/` を `gh-pages` ブランチへ push または GitHub Actions ワークフローを作成し、自動デプロイする。例:
    ```yaml

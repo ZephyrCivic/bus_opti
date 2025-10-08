@@ -1,0 +1,16 @@
+<!--
+  public/vite.svg
+  Purpose: Shared favicon/logo copied into the build output to avoid 404s on static hosting.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="410" height="404" viewBox="0 0 410 404" fill="none">
+  <path fill="#41D1FF" d="M399.641 59.525a21.02 21.02 0 00-7.516-11.668L209.443 1.155a21.021 21.021 0 00-14.697 0L17.92 47.856a21.02 21.02 0 00-7.516 11.668 20.997 20.997 0 00-.586 8.171L51.703 346.31a21.022 21.022 0 007.35 12.73 21.028 21.028 0 0013.266 5.056h265.36a21.027 21.027 0 0013.266-5.056 21.024 21.024 0 007.35-12.73l41.885-278.614a20.997 20.997 0 00-.665-8.17z"/>
+  <path fill="#BD34FE" d="M334.735 113.483L205.5 349.507 76.265 113.483h63.948l65.287 120.288 65.287-120.288h63.948z"/>
+  <path fill="url(#paint0_linear)" d="M205.5 34.432l120.338 312.288h-63.948l-56.39-156.86-56.39 156.86H85.076L205.5 34.432z"/>
+  <defs>
+    <linearGradient id="paint0_linear" x1="205.5" x2="205.5" y1="34.432" y2="346.72" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFEA83"/>
+      <stop offset=".083" stop-color="#FFDD35"/>
+      <stop offset="1" stop-color="#FFA800"/>
+    </linearGradient>
+  </defs>
+</svg>

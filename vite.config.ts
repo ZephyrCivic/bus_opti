@@ -6,15 +6,24 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
+
+export default defineConfig(({ mode }) => {
+  const isProduction = mode === 'production';
+
+  return {
+    // GitHub Pages（ZephyrCivic/bus_opti）に合わせたベースパス。開発時は `/` に戻す。
+    base: isProduction ? '/bus_opti/' : '/',
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(rootDir, './src'),
+      },
     },
-  },
-  build: {
-    sourcemap: true,
-  },
+    build: {
+      sourcemap: true,
+    },
+  };
 });
