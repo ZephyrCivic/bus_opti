@@ -1,6 +1,6 @@
 /**
  * src/features/duties/components/DutyTimelineCard.tsx
- * Duty タイムライン領域のレイアウトと操作ボタンをまとめたプレゼンテーショナルコンポーネント。
+ * Duty タイムライン操作用のカード。CSV 入出力と区間操作、タイムライン描画をまとめて提供する。
  */
 import { forwardRef } from 'react';
 
@@ -14,10 +14,17 @@ import {
 } from '@/components/ui/card';
 import ExportBar from '@/components/export/ExportBar';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
-import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import type {
+  TimelineInteractionEvent,
+  TimelineLane,
+  TimelineSelection,
+  TimelineSegmentDragEvent,
+} from '@/features/timeline/types';
 import type { DutyTimelineMeta } from '../hooks/useDutyTimelineData';
 
 interface DutyTimelineCardProps {
+  heading?: string;
+  description?: string;
   onImportClick: () => void;
   onImportFile: (file: File) => void;
   onExport: () => void;
@@ -37,6 +44,8 @@ interface DutyTimelineCardProps {
 export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardProps>(
   (
     {
+      heading = 'Duty タイムライン',
+      description = 'ブロックをドラッグして区間を編集し、CSV の読み書きで外部ツールとも連携できます。',
       onImportClick,
       onImportFile,
       onExport,
@@ -58,8 +67,8 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>Duty タイムライン</CardTitle>
-            <CardDescription>仕業の区間と時間帯を俯瞰します。バーをクリックするとInspectorが更新されます。</CardDescription>
+            <CardTitle>{heading}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -75,8 +84,10 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
                 }
               }}
             />
-            <Button variant="outline" onClick={onImportClick}>CSV を読み込む</Button>
-            <Button onClick={onExport}>CSV を出力</Button>
+            <Button variant="outline" onClick={onImportClick}>
+              CSV を読み込む
+            </Button>
+            <Button onClick={onExport}>CSV を書き出す</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -85,15 +96,15 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
               { id: 'add', label: '区間を追加', onClick: onAdd },
               { id: 'move', label: '区間を移動', onClick: onMove },
               { id: 'delete', label: '区間を削除', onClick: onDelete },
-              { id: 'autocorrect', label: '自動調整', onClick: onAutoCorrect },
-              { id: 'undo', label: 'Undo', onClick: onUndo },
-              { id: 'redo', label: 'Redo', onClick: onRedo },
+              { id: 'autocorrect', label: '区間を調整', onClick: onAutoCorrect },
+              { id: 'undo', label: '元に戻す', onClick: onUndo },
+              { id: 'redo', label: 'やり直す', onClick: onRedo },
             ]}
           />
           <TimelineGantt
             lanes={lanes}
             pixelsPerMinute={pixelsPerMinute}
-            emptyMessage="Duties を追加するとタイムラインが表示されます。"
+            emptyMessage="Duty を追加するとタイムラインに表示されます。"
             onInteraction={onInteraction}
             onSegmentDrag={onSegmentDrag}
             onSelect={onSelect}

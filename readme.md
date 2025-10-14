@@ -183,7 +183,11 @@ npm test
 
 # Chrome DevTools スモーク（preview を自動起動してタイトル検証）
 npm run smoke:chrome
-```
+
+## UI スモーク（主要セクション見出し・モバイルナビ・エラーオーバーレイを自動確認）
+npm run smoke:ui
+- Chrome DevTools CLI がモバイル幅の select ナビゲーション生成と各セクション見出し、Vite エラーオーバーレイ非表示を一括検証します。
+
 
 ## 60秒デモ（最短ルート）
 ### 操作手順（約1分）

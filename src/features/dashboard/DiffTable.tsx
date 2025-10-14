@@ -1,8 +1,14 @@
 /**
  * src/features/dashboard/DiffTable.tsx
- * Renders added/removed/reassigned schedule items with dashboard metric deltas.
+ * 追加・削除・担当変更された Duty を一覧表示し、指標の差分を可視化するコンポーネント。
  */
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { ScheduleDiffResult } from '@/services/state/scheduleDiff';
 
@@ -14,8 +20,8 @@ function EmptyState(): JSX.Element {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>差分はありません</CardTitle>
-        <CardDescription>比較できる基準データを読み込むと変更点が表示されます。</CardDescription>
+        <CardTitle>差分データがありません</CardTitle>
+        <CardDescription>基準データを読み込み、変更箇所を抽出するとここに表示されます。</CardDescription>
       </CardHeader>
     </Card>
   );
@@ -37,16 +43,18 @@ function Section({ title, description, rows, emptyMessage }: SectionProps): JSX.
       </CardHeader>
       <CardContent>
         {rows && rows.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>day</TableHead>
-                <TableHead>route_id</TableHead>
-                <TableHead>driver</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>{rows}</TableBody>
-          </Table>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>サービス日</TableHead>
+                  <TableHead>route_id</TableHead>
+                  <TableHead>driver</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>{rows}</TableBody>
+            </Table>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         )}
@@ -57,18 +65,18 @@ function Section({ title, description, rows, emptyMessage }: SectionProps): JSX.
 
 function MetricsDelta({ diff }: { diff: ScheduleDiffResult['metricsDelta'] }): JSX.Element {
   const entries: Array<{ label: string; value: number }> = [
-    { label: '総シフト数', value: diff.totalShifts },
-    { label: '総時間', value: diff.totalHours },
-    { label: '未割当', value: diff.unassigned },
+    { label: 'シフト数', value: diff.totalShifts },
+    { label: '稼働時間 (h)', value: diff.totalHours },
+    { label: '未割当 Duty', value: diff.unassigned },
     { label: '公平性スコア', value: diff.fairnessScore },
-    { label: 'カバレッジ', value: diff.coveragePercentage },
+    { label: 'カバレッジ率', value: diff.coveragePercentage },
   ];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>指標の変化量</CardTitle>
-        <CardDescription>現在案と基準案の差分を表示します。</CardDescription>
+        <CardTitle>指標の差分</CardTitle>
+        <CardDescription>現状と基準データの KPI 差分を確認できます。</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -85,13 +93,9 @@ function MetricsDelta({ diff }: { diff: ScheduleDiffResult['metricsDelta'] }): J
 }
 
 function formatDelta(value: number): string {
-  if (value > 0) {
-    return `+${value}`;
-  }
-  if (value < 0) {
-    return value.toString();
-  }
-  return '0';
+  if (value > 0) return `+${value}`;
+  if (value < 0) return value.toString();
+  return '±0';
 }
 
 export default function DiffTable({ diff }: DiffTableProps): JSX.Element {
@@ -120,9 +124,7 @@ export default function DiffTable({ diff }: DiffTableProps): JSX.Element {
       <TableCell>{item.day}</TableCell>
       <TableCell>{item.routeId}</TableCell>
       <TableCell>
-        {item.fromDriverId}
-        {' → '}
-        {item.toDriverId}
+        {item.fromDriverId} → {item.toDriverId}
       </TableCell>
     </TableRow>
   ));
@@ -133,63 +135,60 @@ export default function DiffTable({ diff }: DiffTableProps): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>アラート比較</CardTitle>
-          <CardDescription>基準案と現在案のKPIアラートを比較します。</CardDescription>
+          <CardDescription>基準と現在の KPI アラートを比較し、注意が必要な項目を把握します。</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">現在のアラート</h3>
-            {diff.alerts.current.length === 0 ? (
-              <p className="text-sm text-muted-foreground">現在案のアラートはありません。</p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {diff.alerts.current.map((alert, index) => (
-                  <li key={`current-alert-${alert.id}-${index}`}>
-                    <span className={alert.severity === 'critical' ? 'text-destructive font-semibold' : 'text-amber-500'}>
-                      [{alert.severity === 'critical' ? '重大' : '注意'}]
-                    </span>{' '}
-                    {alert.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-muted-foreground">基準のアラート</h3>
-            {diff.alerts.baseline.length === 0 ? (
-              <p className="text-sm text-muted-foreground">基準案のアラートはありません。</p>
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {diff.alerts.baseline.map((alert, index) => (
-                  <li key={`baseline-alert-${alert.id}-${index}`}>
-                    <span className={alert.severity === 'critical' ? 'text-destructive font-semibold' : 'text-amber-500'}>
-                      [{alert.severity === 'critical' ? '重大' : '注意'}]
-                    </span>{' '}
-                    {alert.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <AlertList heading="現在のアラート" alerts={diff.alerts.current} emptyMessage="現在のアラートはありません。" />
+          <AlertList heading="基準のアラート" alerts={diff.alerts.baseline} emptyMessage="基準のアラートはありません。" />
         </CardContent>
       </Card>
       <Section
-        title="追加された担当"
-        description="現行案に追加された driver × route の組み合わせです。"
+        title="追加された勤務"
+        description="新たに割り当てられた driver × route の組み合わせです。"
         rows={addedRows}
-        emptyMessage="追加された担当はありません。"
+        emptyMessage="追加された勤務はありません。"
       />
       <Section
-        title="削除された担当"
-        description="基準案から削除された driver × route の組み合わせです。"
+        title="削除された勤務"
+        description="基準には存在していたが、現在は削除された driver × route の組み合わせです。"
         rows={removedRows}
-        emptyMessage="削除された担当はありません。"
+        emptyMessage="削除された勤務はありません。"
       />
       <Section
-        title="担当替え"
-        description="同じ route で driver が入れ替わった項目を表示します。"
+        title="担当が変わった勤務"
+        description="同じ route を別のドライバーが担当するようになった勤務です。"
         rows={reassignedRows}
-        emptyMessage="担当替えはありません。"
+        emptyMessage="担当変更された勤務はありません。"
       />
     </div>
   );
 }
+
+interface AlertListProps {
+  heading: string;
+  alerts: ScheduleDiffResult['alerts']['current'];
+  emptyMessage: string;
+}
+
+function AlertList({ heading, alerts, emptyMessage }: AlertListProps): JSX.Element {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium text-muted-foreground">{heading}</h3>
+      {alerts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {alerts.map((alert, index) => (
+            <li key={`${heading}-alert-${alert.id}-${index}`}>
+              <span className={alert.severity === 'critical' ? 'text-destructive font-semibold' : 'text-amber-500'}>
+                [{alert.severity === 'critical' ? '重要' : '注意'}]
+              </span>{' '}
+              {alert.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+

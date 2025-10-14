@@ -1,10 +1,10 @@
 /**
  * src/App.tsx
- * TabsでImport/Explorer/Blocks/Duties/Dashboard/Diff/Manualを切り替え、Explorerは遅延読込で初期ロードを軽量化する。
+ * 各機能セクションを定義し、AppShell に渡して画面切替を管理する。
+ * セクションごとのコンテンツを日本語 UI へ寄せつつ、遅延読み込みも維持する。
  */
-import { Suspense, lazy } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-import AppShell from './components/layout/AppShell';
+import { Suspense, lazy, useMemo, useState } from 'react';
+import AppShell, { type NavigationSection } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { Toaster } from './components/ui/sonner';
 import ImportView from './features/import/ImportView';
@@ -17,46 +17,53 @@ import { GtfsImportProvider } from './services/import/GtfsImportProvider';
 
 const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView'));
 
+const SECTIONS: NavigationSection[] = [
+  { id: 'import', label: 'GTFS取込' },
+  { id: 'explorer', label: '地図・便調査' },
+  { id: 'blocks', label: '行路推定' },
+  { id: 'duties', label: '勤務編集' },
+  { id: 'dashboard', label: '運行指標' },
+  { id: 'diff', label: '差分・出力' },
+  { id: 'manual', label: '手動入力' },
+];
+
+type SectionId = (typeof SECTIONS)[number]['id'];
+
 export default function App(): JSX.Element {
+  const [activeSection, setActiveSection] = useState<SectionId>(SECTIONS[0]!.id);
+  const handleSectionSelect = (nextSection: string) => {
+    setActiveSection(nextSection as SectionId);
+  };
+
+  const content = useMemo(() => {
+    switch (activeSection) {
+      case 'import':
+        return <ImportView />;
+      case 'explorer':
+        return (
+          <Suspense fallback={<LazyPaneFallback label="地図・便調査を読み込み中…" />}>
+            <ExplorerView />
+          </Suspense>
+        );
+      case 'blocks':
+        return <BlocksView />;
+      case 'duties':
+        return <DutiesView />;
+      case 'dashboard':
+        return <DashboardView />;
+      case 'diff':
+        return <DiffView />;
+      case 'manual':
+        return <ManualDataView />;
+      default:
+        return null;
+    }
+  }, [activeSection]);
+
   return (
     <GtfsImportProvider>
-      <AppShell>
-        <ErrorBoundary fallback={<ErrorPaneFallback />}>
-          <Tabs defaultValue="import" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="import">Import</TabsTrigger>
-              <TabsTrigger value="explorer">Explorer</TabsTrigger>
-              <TabsTrigger value="blocks">Blocks</TabsTrigger>
-              <TabsTrigger value="duties">Duties</TabsTrigger>
-              <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-              <TabsTrigger value="diff">Diff</TabsTrigger>
-              <TabsTrigger value="manual">Manual</TabsTrigger>
-            </TabsList>
-            <TabsContent value="import">
-              <ImportView />
-            </TabsContent>
-            <TabsContent value="explorer">
-              <Suspense fallback={<LazyPaneFallback label="Explorer" />}>
-                <ExplorerView />
-              </Suspense>
-            </TabsContent>
-            <TabsContent value="blocks">
-              <BlocksView />
-            </TabsContent>
-            <TabsContent value="duties">
-              <DutiesView />
-            </TabsContent>
-            <TabsContent value="dashboard">
-              <DashboardView />
-            </TabsContent>
-            <TabsContent value="diff">
-              <DiffView />
-            </TabsContent>
-            <TabsContent value="manual">
-              <ManualDataView />
-            </TabsContent>
-          </Tabs>
-        </ErrorBoundary>
+      <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
+        <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
       </AppShell>
       <Toaster position="top-right" richColors closeButton />
     </GtfsImportProvider>
@@ -68,14 +75,14 @@ interface LazyPaneFallbackProps {
 }
 
 function LazyPaneFallback({ label }: LazyPaneFallbackProps): JSX.Element {
-  return <div className="p-4 text-sm text-muted-foreground">{label} view を読み込んでいます…</div>;
+  return <div className="p-4 text-sm text-muted-foreground">{label}</div>;
 }
 
 function ErrorPaneFallback(): JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
-      <p>ビューの描画に失敗しました。</p>
-      <p>入力内容を保存したうえで、ページの再読み込みをお試しください。</p>
+      <p>画面の表示に失敗しました。</p>
+      <p>入力内容を保存のうえ、ページを再読み込みしてください。</p>
     </div>
   );
 }

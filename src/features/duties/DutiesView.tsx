@@ -1,6 +1,6 @@
 /**
  * src/features/duties/DutiesView.tsx
- * Duty編集画面のコンテナ。独自フックで集約した状態とハンドラを用いて、各カードを組み合わせたUIを描画する。
+ * 勤務（Duty）編集のハブとなる画面。タイムライン操作、ブロック一覧、Duty リスト、詳細インスペクターを統合する。
  */
 import { useCallback, useRef } from 'react';
 
@@ -164,8 +164,17 @@ export default function DutiesView(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold">勤務編集</h2>
+        <p className="text-sm text-muted-foreground">
+          ブロック推定結果をもとに Duty を作成・調整します。タイムラインで区間を編集し、一覧とインスペクターで詳細を確認してください。
+        </p>
+      </div>
+
       <DutyTimelineCard
         ref={fileInputRef}
+        heading="タイムライン編集"
+        description="ブロックをドラッグ＆ドロップして Duty を構成します。必要に応じて CSV の入出力も実行できます。"
         onImportClick={triggerImportClick}
         onImportFile={handleImportFile}
         onExport={handleExport}
@@ -181,6 +190,7 @@ export default function DutiesView(): JSX.Element {
         onSegmentDrag={handleTimelineSegmentDragCallback}
         onSelect={handleTimelineSelectCallback}
       />
+
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="space-y-4">
           <BlockSummaryCard
@@ -226,5 +236,3 @@ export default function DutiesView(): JSX.Element {
     </div>
   );
 }
-
-

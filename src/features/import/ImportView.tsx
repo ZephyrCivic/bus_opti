@@ -1,6 +1,7 @@
 /**
  * src/features/import/ImportView.tsx
- * Provides the GTFS import workflow: drag&drop/file選択UI、解析ステータス表示、サマリー、手動保存/読込、再インポート動線。
+ * GTFS データの取込・保存・読み込みを行うメイン画面。
+ * 取込状況、サマリー、警告、保存データの管理をワンストップで提供する。
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -21,10 +22,25 @@ import { DataTable } from '@/components/ui/data-table';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
-import { fromSaved, toSaved, downloadSavedJson, defaultFileName, fromSavedProject, toSavedProject, downloadProjectJson } from '@/services/import/gtfsPersistence';
+import {
+  defaultFileName,
+  downloadProjectJson,
+  downloadSavedJson,
+  fromSaved,
+  fromSavedProject,
+  toSaved,
+  toSavedProject,
+} from '@/services/import/gtfsPersistence';
 
 const ACCEPTED_MIME = ['application/zip', 'application/x-zip-compressed'];
 const ACCEPTED_SAVED = ['application/json'];
+
+const STATUS_COPY: Record<string, string> = {
+  idle: '待機中',
+  parsing: '解析中',
+  ready: '完了',
+  error: '失敗',
+};
 
 export default function ImportView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -36,9 +52,11 @@ export default function ImportView(): JSX.Element {
     async (fileList: FileList | null) => {
       setLocalError(null);
       if (!fileList || fileList.length === 0) return;
-      const file = Array.from(fileList).find((candidate) => ACCEPTED_MIME.includes(candidate.type) || candidate.name.endsWith('.zip'));
+      const file = Array.from(fileList).find(
+        (candidate) => ACCEPTED_MIME.includes(candidate.type) || candidate.name.endsWith('.zip'),
+      );
       if (!file) {
-        setLocalError('ZIP 形式の GTFS ファイルを選択してください。');
+        setLocalError('GTFS の ZIP ファイルを選択してください。');
         return;
       }
       await importFromFile(file);
@@ -65,7 +83,7 @@ export default function ImportView(): JSX.Element {
       if (!files || files.length === 0) return;
       const file = files[0];
       if (!ACCEPTED_SAVED.includes(file.type) && !file.name.endsWith('.json')) {
-        setLocalError('保存データ（.json）を選択してください。');
+        setLocalError('保存ファイル（.json）を選択してください。');
         return;
       }
       try {
@@ -80,7 +98,7 @@ export default function ImportView(): JSX.Element {
           loadFromSaved(hydrated);
         }
       } catch {
-        setLocalError('保存データの読込に失敗しました。内容をご確認ください。');
+        setLocalError('保存ファイルの読み込みに失敗しました。内容をご確認ください。');
       }
     },
     [loadFromSaved, setManual],
@@ -90,7 +108,7 @@ export default function ImportView(): JSX.Element {
     () => [
       {
         accessorKey: 'metric',
-        header: 'メトリクス',
+        header: '指標',
         cell: ({ row }) => <span className="font-medium">{row.getValue<string>('metric')}</span>,
       },
       {
@@ -114,9 +132,10 @@ export default function ImportView(): JSX.Element {
     <div className="space-y-6">
       <Card className="border-dashed">
         <CardHeader>
-          <CardTitle>GTFS インポート</CardTitle>
+          <CardTitle>GTFS取込</CardTitle>
           <CardDescription>
-            ZIP ファイルをドラッグ＆ドロップするか、ファイル選択ボタンから `stops/trips/stop_times/shapes` を含む GTFS Feed を読み込んでください。
+            ZIP ファイルをドラッグ＆ドロップするか、「ファイルを選択」から `stops / trips / stop_times / shapes`
+            を含む GTFS Feed を読み込んでください。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -142,29 +161,29 @@ export default function ImportView(): JSX.Element {
           </div>
         </CardContent>
         <CardFooter className="justify-between text-xs text-muted-foreground">
-          <span>status: {status}</span>
+          <span>状態: {STATUS_COPY[status] ?? status}</span>
           {result?.sourceName && <Badge variant="secondary">{result.sourceName}</Badge>}
         </CardFooter>
       </Card>
 
       {localError && (
         <Alert variant="destructive">
-          <AlertTitle>ファイル形式エラー</AlertTitle>
+          <AlertTitle>ファイル選択エラー</AlertTitle>
           <AlertDescription>{localError}</AlertDescription>
         </Alert>
       )}
 
       {status === 'error' && errorMessage && (
         <Alert variant="destructive">
-          <AlertTitle>インポート失敗</AlertTitle>
+          <AlertTitle>取込に失敗しました</AlertTitle>
           <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>
       )}
 
       {status === 'parsing' && (
         <Alert>
-          <AlertTitle>解析中</AlertTitle>
-          <AlertDescription>ZIP の内容を展開しています。大きいファイルの場合は数秒かかる場合があります。</AlertDescription>
+          <AlertTitle>解析中です</AlertTitle>
+          <AlertDescription>ZIP の内容を展開・解析しています。大きなファイルでは数分かかる場合があります。</AlertDescription>
         </Alert>
       )}
 
@@ -172,12 +191,12 @@ export default function ImportView(): JSX.Element {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
-              <CardTitle>インポートサマリー</CardTitle>
+              <CardTitle>取込サマリー</CardTitle>
               <CardDescription>{new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(result.importedAt)}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" type="button" onClick={() => savedInputRef.current?.click()}>
-                保存データを読込
+                保存データを読み込む
               </Button>
               <Button
                 variant="secondary"
@@ -188,9 +207,12 @@ export default function ImportView(): JSX.Element {
                   downloadSavedJson(saved, defaultFileName(result.sourceName));
                 }}
               >
-                保存（JSON）
+                取込結果を保存
               </Button>
-              <Button variant="ghost" size="icon" aria-label="再インポート" onClick={reset}>
+              <Button variant="ghost" size="sm" type="button" onClick={() => downloadProjectJson(toSavedProject(result, manual))}>
+                プロジェクト保存
+              </Button>
+              <Button variant="ghost" size="icon" aria-label="再取込" onClick={reset}>
                 <RefreshCcw className="h-4 w-4" />
               </Button>
             </div>
@@ -198,16 +220,16 @@ export default function ImportView(): JSX.Element {
           <CardContent className="space-y-4">
             <input ref={savedInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => void handleSaved(e.target.files)} />
 
-            <DataTable columns={summaryColumns} data={result.summary} emptyMessage="サマリーが計算できませんでした。" />
+            <DataTable columns={summaryColumns} data={result.summary} emptyMessage="サマリーを計算できませんでした。" />
 
             {hasAlerts && (
               <Alert variant="destructive">
                 <FileWarning className="h-4 w-4" aria-hidden />
-                <AlertTitle>重要な警告</AlertTitle>
+                <AlertTitle>重要な注意事項</AlertTitle>
                 <AlertDescription>
                   <ul className="list-disc pl-5">
-                    {result!.alerts.map((msg, i) => (
-                      <li key={i}>{msg}</li>
+                    {result.alerts!.map((msg, index) => (
+                      <li key={index}>{msg}</li>
                     ))}
                   </ul>
                 </AlertDescription>
@@ -219,7 +241,7 @@ export default function ImportView(): JSX.Element {
                 {Object.entries(result.tables).map(([name, table]) => (
                   <TableRow key={name}>
                     <TableCell className="font-medium">{name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{table.rows.length.toLocaleString()} rows</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{table.rows.length.toLocaleString()} 件</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -228,9 +250,9 @@ export default function ImportView(): JSX.Element {
             {hasOptionalWarnings && (
               <Alert>
                 <FileWarning className="h-4 w-4" aria-hidden />
-                <AlertTitle>任意ファイルが見つかりません</AlertTitle>
+                <AlertTitle>任意ファイルが欠落しています</AlertTitle>
                 <AlertDescription>
-                  {result.missingFiles.join(', ')} は ZIP 内に存在しません。MVP では任意扱いですが、地図表示や行路推定で細かな補正ができない場合があります。
+                  {result.missingFiles.join(', ')} が ZIP に含まれていません。MVP では任意扱いですが、業務で利用する場合はご注意ください。
                 </AlertDescription>
               </Alert>
             )}
@@ -240,4 +262,3 @@ export default function ImportView(): JSX.Element {
     </div>
   );
 }
-

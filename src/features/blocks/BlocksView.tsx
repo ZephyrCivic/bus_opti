@@ -1,6 +1,7 @@
 /**
  * src/features/blocks/BlocksView.tsx
- * ブロック計画の統計とサービス日別タイムラインを表示し、重複ハイライトを行う。
+ * ブロック推定結果を確認し、ターン間隔や重複状況を把握する画面。
+ * タイムライン、統計カード、詳細テーブル、未割当 Trip 一覧を提供する。
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -50,9 +51,7 @@ export default function BlocksView(): JSX.Element {
 
   useEffect(() => {
     if (allDays.length === 0) {
-      if (activeDayIndex !== null) {
-        setActiveDayIndex(null);
-      }
+      if (activeDayIndex !== null) setActiveDayIndex(null);
       return;
     }
     const firstDay = allDays[0]!.dayIndex;
@@ -91,11 +90,11 @@ export default function BlocksView(): JSX.Element {
       const color = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
       const lane: TimelineLane = {
         id: summary.blockId,
-        label: `${summary.blockId} (${summary.tripCount} Trips)`,
+        label: `${summary.blockId}（Trip ${summary.tripCount} 件）`,
         segments: [
           {
             id: `${summary.blockId}-window`,
-            label: `${summary.firstTripStart} → ${summary.lastTripEnd}`,
+            label: `${summary.firstTripStart} ～ ${summary.lastTripEnd}`,
             startMinutes,
             endMinutes: Math.max(endMinutes, startMinutes + 1),
             color,
@@ -120,17 +119,19 @@ export default function BlocksView(): JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Blocks</h2>
+        <h2 className="text-lg font-semibold">行路推定</h2>
         <p className="text-sm text-muted-foreground">
-          GreedyアルゴリズムでTripを連結し、最大ターン間隔 {plan.maxTurnGapMinutes} 分以内で block_id を採番します。
+          GTFS 取込データを Greedy アルゴリズムで束ね、ターン間隔（現在 {plan.maxTurnGapMinutes} 分）と重複状況を確認します。
         </p>
       </div>
 
       <Card>
         <CardHeader className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-1">
-            <CardTitle>ターン間隔の調整</CardTitle>
-            <CardDescription>GTFS取り込み済みのTripに対して適用されます。値を更新すると即座に再計算します。</CardDescription>
+            <CardTitle>ターン設定の確認</CardTitle>
+            <CardDescription>
+              取込済みの Trip に対してターン間隔を適用します。数値を変更すると即座に再計算されます。
+            </CardDescription>
           </div>
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-muted-foreground" htmlFor="turn-gap-input">
@@ -149,10 +150,10 @@ export default function BlocksView(): JSX.Element {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="割り当て済みTrip" value={plan.assignedTripCount.toLocaleString()} />
-            <StatCard label="対象Trip総数" value={plan.totalTripCount.toLocaleString()} />
+            <StatCard label="割り当て済み Trip" value={plan.assignedTripCount.toLocaleString()} />
+            <StatCard label="対象 Trip 件数" value={plan.totalTripCount.toLocaleString()} />
             <StatCard
-              label="カバレッジ"
+              label="カバレッジ率"
               value={`${coveragePercentage}%`}
               trend={coverageBadgeVariant(coveragePercentage)}
             />
@@ -163,14 +164,14 @@ export default function BlocksView(): JSX.Element {
       <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <CardTitle>サービス日別タイムライン</CardTitle>
-            <CardDescription>重なりがある Block を赤系でハイライトし、日別に確認できます。</CardDescription>
+            <CardTitle>日別タイムライン</CardTitle>
+            <CardDescription>サービス日ごとのブロック稼働時間と重複を視覚化します。</CardDescription>
           </div>
-          <Badge variant="outline">サービス日: {allDays.length}</Badge>
+          <Badge variant="outline">サービス日数: {allDays.length}</Badge>
         </CardHeader>
         <CardContent className="space-y-4">
           {allDays.length === 0 ? (
-            <p className="text-sm text-muted-foreground">サービス日がまだ計算されていません。GTFSフィードをインポートしてください。</p>
+            <p className="text-sm text-muted-foreground">サービス日の集計がありません。GTFS フィードを取り込んでください。</p>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -188,11 +189,11 @@ export default function BlocksView(): JSX.Element {
               <TimelineGantt
                 lanes={timelineLanes}
                 pixelsPerMinute={DEFAULT_PIXELS_PER_MINUTE}
-                emptyMessage="選択中のサービス日に表示できる Block がありません。"
+                emptyMessage="選択したサービス日に表示できるブロックがありません。"
               />
               {visibleOverlapSummaries.length > 0 ? (
                 <div>
-                  <h4 className="text-sm font-semibold">重なり検出済み Block</h4>
+                  <h4 className="text-sm font-semibold">重複があるブロック</h4>
                   <ul className="mt-2 space-y-1 text-sm">
                     {visibleOverlapSummaries.map((item) => (
                       <li key={item.blockId} className="flex items-center justify-between">
@@ -203,7 +204,7 @@ export default function BlocksView(): JSX.Element {
                   </ul>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">選択中のサービス日に重なりはありません。</p>
+                <p className="text-sm text-muted-foreground">選択したサービス日に重複はありません。</p>
               )}
             </>
           )}
@@ -225,7 +226,7 @@ interface StatCardProps {
 function StatCard({ label, value, trend = 'outline' }: StatCardProps): JSX.Element {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card/60 p-4">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground tracking-wide">{label}</span>
       <Badge variant={trend} className="w-fit text-base">
         {value}
       </Badge>
@@ -242,51 +243,53 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
   return (
     <Card>
       <CardHeader>
-        <CardTitle>生成された Blocks</CardTitle>
-        <CardDescription>Greedy連結の結果とギャップ統計を表示します。重複は参考値です。</CardDescription>
+        <CardTitle>ブロック一覧</CardTitle>
+        <CardDescription>推定されたブロックの概要やターン間隔、重複量を確認できます。</CardDescription>
       </CardHeader>
       <CardContent>
         {summaries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ブロックがまだ計算されていません。GTFSフィードをインポートしてください。</p>
+          <p className="text-sm text-muted-foreground">ブロックの計算結果がありません。GTFS フィードを取り込んでください。</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>block_id</TableHead>
-                <TableHead>サービス</TableHead>
-                <TableHead>サービス日</TableHead>
-                <TableHead>Trip数</TableHead>
-                <TableHead>開始時刻</TableHead>
-                <TableHead>終了時刻</TableHead>
-                <TableHead>平均隙間 (分)</TableHead>
-                <TableHead>最大隙間 (分)</TableHead>
-                <TableHead>重複合計 (分)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {summaries.map((summary) => {
-                const averageGap =
-                  summary.gaps.length === 0
-                    ? 0
-                    : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
-                const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
-                const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
-                return (
-                  <TableRow key={summary.blockId}>
-                    <TableCell className="font-medium">{summary.blockId}</TableCell>
-                    <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
-                    <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
-                    <TableCell>{summary.tripCount}</TableCell>
-                    <TableCell>{summary.firstTripStart}</TableCell>
-                    <TableCell>{summary.lastTripEnd}</TableCell>
-                    <TableCell>{averageGap}</TableCell>
-                    <TableCell>{maxGap}</TableCell>
-                    <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Block ID</TableHead>
+                  <TableHead>サービス ID</TableHead>
+                  <TableHead>サービス日</TableHead>
+                  <TableHead>Trip 数</TableHead>
+                  <TableHead>始発時刻</TableHead>
+                  <TableHead>最終時刻</TableHead>
+                  <TableHead>平均ターン (分)</TableHead>
+                  <TableHead>最大ターン (分)</TableHead>
+                  <TableHead>重複合計 (分)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summaries.map((summary) => {
+                  const averageGap =
+                    summary.gaps.length === 0
+                      ? 0
+                      : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
+                  const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
+                  const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
+                  return (
+                    <TableRow key={summary.blockId}>
+                      <TableCell className="font-medium">{summary.blockId}</TableCell>
+                      <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
+                      <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
+                      <TableCell>{summary.tripCount}</TableCell>
+                      <TableCell>{summary.firstTripStart}</TableCell>
+                      <TableCell>{summary.lastTripEnd}</TableCell>
+                      <TableCell>{averageGap}</TableCell>
+                      <TableCell>{maxGap}</TableCell>
+                      <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -301,27 +304,29 @@ function UnassignedTable({ unassigned }: UnassignedTableProps): JSX.Element {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>未割り当て Trip</CardTitle>
-        <CardDescription>時刻情報不足やターン間隔超過で連結できなかった Trip を表示します。</CardDescription>
+        <CardTitle>未割当 Trip</CardTitle>
+        <CardDescription>ブロックに割り当てられていない Trip を一覧で確認できます。</CardDescription>
       </CardHeader>
       <CardContent>
         {unassigned.length === 0 ? (
-          <p className="text-sm text-muted-foreground">未割り当てのTripはありません。</p>
+          <p className="text-sm text-muted-foreground">未割当の Trip はありません。</p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>trip_id</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {unassigned.map((tripId) => (
-                <TableRow key={tripId}>
-                  <TableCell>{tripId}</TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>trip_id</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {unassigned.map((tripId) => (
+                  <TableRow key={tripId}>
+                    <TableCell>{tripId}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -347,5 +352,6 @@ function coverageBadgeVariant(percentage: number): 'default' | 'secondary' | 'ou
 }
 
 function formatServiceDay(index: number): string {
-  return `Day ${index + 1}`;
+  return `サービス日 ${index + 1}`;
 }
+

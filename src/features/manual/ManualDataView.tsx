@@ -1,7 +1,7 @@
 /**
  * src/features/manual/ManualDataView.tsx
- * Coordinates manual data cards (linking thresholds, drivers, relief points, depots, deadhead rules).
- * Handles CSV import/export and in-memory updates via GtfsImportProvider.
+ * 連携設定・ドライバー・デポ・交代地点・Deadhead ルールを管理する手動データ画面。
+ * CSV 入出力とインライン編集をまとめ、GtfsImportProvider の状態を更新する。
  */
 import { useCallback } from 'react';
 import { toast } from 'sonner';
@@ -36,9 +36,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const depots = csvToDepots(csv);
         setManual((prev) => ({ ...prev, depots }));
-        toast.success('Depots CSV を読み込みました。');
+        toast.success('デポ CSV を読み込みました。');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Depots CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : 'デポ CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -50,9 +50,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const reliefPoints = csvToReliefPoints(csv);
         setManual((prev) => ({ ...prev, reliefPoints }));
-        toast.success('Relief Points CSV を読み込みました。');
+        toast.success('交代地点 CSV を読み込みました。');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Relief Points CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : '交代地点 CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -64,9 +64,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const deadheadRules = csvToDeadheadRules(csv);
         setManual((prev) => ({ ...prev, deadheadRules }));
-        toast.success('Deadhead Rules CSV を読み込みました。');
+        toast.success('Deadhead ルール CSV を読み込みました。');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Deadhead Rules CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : 'Deadhead ルール CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -78,9 +78,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const drivers = csvToDrivers(csv);
         setManual((prev) => ({ ...prev, drivers }));
-        toast.success(`Drivers CSV を読み込みました（${drivers.length} 件）。`);
+        toast.success(`ドライバー CSV を読み込みました（${drivers.length} 件）。`);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Drivers CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : 'ドライバー CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -88,12 +88,12 @@ export default function ManualDataView(): JSX.Element {
 
   const exportWithGuard = useCallback((label: string, rows: unknown[], builder: () => string, fileName: string) => {
     if (rows.length === 0) {
-      toast.info(`エクスポートできる${label}がありません。`);
+      toast.info(`${label} に出力できるデータがありません。`);
       return;
     }
     const content = builder();
     downloadCsv({ fileName, content });
-    toast.success(`${label} を書き出しました。`);
+    toast.success(`${label} をエクスポートしました。`);
   }, []);
 
   const handleAddDriver = useCallback(
@@ -107,11 +107,11 @@ export default function ManualDataView(): JSX.Element {
         return false;
       }
       if (manual.drivers.some((driver) => driver.driverId === trimmed.driverId)) {
-        toast.error(`driver_id "${trimmed.driverId}" は既に追加されています。`);
+        toast.error(`driver_id "${trimmed.driverId}" は既に登録されています。`);
         return false;
       }
       setManual((prev) => ({ ...prev, drivers: [...prev.drivers, trimmed] }));
-      toast.success(`運転士 ${trimmed.driverId} を追加しました。`);
+      toast.success(`ドライバー ${trimmed.driverId} を追加しました。`);
       return true;
     },
     [manual.drivers, setManual],
@@ -120,7 +120,7 @@ export default function ManualDataView(): JSX.Element {
   const handleDeleteDriver = useCallback(
     (driverId: string) => {
       setManual((prev) => ({ ...prev, drivers: prev.drivers.filter((driver) => driver.driverId !== driverId) }));
-      toast.success(`運転士 ${driverId} を削除しました。`);
+      toast.success(`ドライバー ${driverId} を削除しました。`);
     },
     [setManual],
   );
@@ -160,7 +160,7 @@ export default function ManualDataView(): JSX.Element {
   const handleAddDeadhead = useCallback(
     (rule: DeadheadRule) => {
       setManual((prev) => ({ ...prev, deadheadRules: [...prev.deadheadRules, rule] }));
-      toast.success('Deadhead Rule を追加しました。');
+      toast.success('Deadhead ルールを追加しました。');
     },
     [setManual],
   );
@@ -168,7 +168,7 @@ export default function ManualDataView(): JSX.Element {
   const handleDeleteDeadhead = useCallback(
     (index: number) => {
       setManual((prev) => ({ ...prev, deadheadRules: prev.deadheadRules.filter((_, i) => i !== index) }));
-      toast.success('Deadhead Rule を削除しました。');
+      toast.success('Deadhead ルールを削除しました。');
     },
     [setManual],
   );
@@ -189,7 +189,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDriver}
         onImport={handleImportDrivers}
         onExport={() =>
-          exportWithGuard('Driver', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv')
+          exportWithGuard('ドライバー', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv')
         }
       />
 
@@ -199,7 +199,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteRelief}
         onImport={handleImportReliefPoints}
         onExport={() =>
-          exportWithGuard('Relief Point', manual.reliefPoints, () => reliefPointsToCsv(manual.reliefPoints), 'manual-relief_points.csv')
+          exportWithGuard('交代地点', manual.reliefPoints, () => reliefPointsToCsv(manual.reliefPoints), 'manual-relief_points.csv')
         }
       />
 
@@ -209,7 +209,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDepot}
         onImport={handleImportDepots}
         onExport={() =>
-          exportWithGuard('Depot', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv')
+          exportWithGuard('デポ', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv')
         }
       />
 
@@ -220,7 +220,7 @@ export default function ManualDataView(): JSX.Element {
         onImport={handleImportDeadheads}
         onExport={() =>
           exportWithGuard(
-            'Deadhead Rule',
+            'Deadhead ルール',
             manual.deadheadRules,
             () => deadheadRulesToCsv(manual.deadheadRules),
             'manual-deadhead_rules.csv',

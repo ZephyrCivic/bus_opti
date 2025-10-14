@@ -1,6 +1,6 @@
 /**
  * src/features/dashboard/DashboardView.tsx
- * Presents high-level KPI cards, workload tables, alerts, and KPI settings editing.
+ * 運行ダッシュボード。KPI カード、ドライバー別稼働、未割当 Duty、KPI 設定編集を提供する。
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -126,94 +126,137 @@ export default function DashboardView(): JSX.Element {
       maxNightShiftVariance: Number.parseInt(form.maxNightShiftVariance, 10),
     };
 
-    if ([parsed.maxContinuousMinutes, parsed.minBreakMinutes, parsed.maxDailyMinutes].some((value) => Number.isNaN(value) || value < 0 || value > 1440)) {
+    if (
+      Number.isNaN(parsed.maxContinuousMinutes) ||
+      Number.isNaN(parsed.minBreakMinutes) ||
+      Number.isNaN(parsed.maxDailyMinutes) ||
+      Number.isNaN(parsed.maxUnassignedPercentage) ||
+      Number.isNaN(parsed.maxNightShiftVariance)
+    ) {
+      setFormError('すべての項目を数値で入力してください。');
+      return;
+    }
+    if (
+      parsed.maxContinuousMinutes < 0 ||
+      parsed.maxContinuousMinutes > 1440 ||
+      parsed.minBreakMinutes < 0 ||
+      parsed.minBreakMinutes > 1440 ||
+      parsed.maxDailyMinutes < 0 ||
+      parsed.maxDailyMinutes > 1440
+    ) {
       setFormError('分単位の項目は 0〜1440 の範囲で入力してください。');
       return;
     }
-    if ([parsed.maxUnassignedPercentage, parsed.maxNightShiftVariance].some((value) => Number.isNaN(value) || value < 0 || value > 100)) {
-      setFormError('率の項目は 0〜100 の範囲で入力してください。');
+    if (
+      parsed.maxUnassignedPercentage < 0 ||
+      parsed.maxUnassignedPercentage > 100 ||
+      parsed.maxNightShiftVariance < 0 ||
+      parsed.maxNightShiftVariance > 100
+    ) {
+      setFormError('割合の項目は 0〜100 の範囲で入力してください。');
       return;
     }
 
-    dutyActions.updateSettings(parsed);
+    dutyActions.updateSettings({
+      maxContinuousMinutes: parsed.maxContinuousMinutes,
+      minBreakMinutes: parsed.minBreakMinutes,
+      maxDailyMinutes: parsed.maxDailyMinutes,
+      maxUnassignedPercentage: parsed.maxUnassignedPercentage,
+      maxNightShiftVariance: parsed.maxNightShiftVariance,
+    });
+    toast.success('KPI 設定を更新しました。');
     setIsSettingsOpen(false);
-    toast.success('KPI設定を更新しました。');
+  };
+
+  const alertMessages: Record<string, string> = {
+    'coverage-low': 'カバレッジ率が目標値を下回っています。',
+    'unassigned-exceeds': '未割当 Duty が許容値を超えています。',
+    'fairness-imbalance': 'ドライバー間の公平性に偏りがあります。',
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Dashboard</h2>
-          <p className="text-sm text-muted-foreground">
-            Dutyの割当状況を集計し、労務負荷や未割当の有無を素早く把握します。
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setIsSettingsOpen(true)}>
-          KPI設定
+      <div className="flex flex-col gap-2">
+        <h2 className="text-lg font-semibold">運行指標ダッシュボード</h2>
+        <p className="text-sm text-muted-foreground">
+          Duty の割当状況を集計し、稼働バランスや未割当 Duty を早期に把握します。
+        </p>
+      </div>
+
+      <Alert variant="default">
+        <AlertTitle>最新データ</AlertTitle>
+        <AlertDescription>
+          GTFS 取込と Duty 編集の内容に基づいて指標を算出しています。再計算したい場合は「KPI 設定」からしきい値を調整してください。
+        </AlertDescription>
+      </Alert>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" onClick={() => setIsSettingsOpen(true)}>
+          KPI 設定を編集
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => dutyActions.reset()}>
+          Duty をリセット
         </Button>
       </div>
 
+      {dashboard.alerts.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTitle>注意が必要な項目があります</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc space-y-1 pl-5">
+              {dashboard.alerts.map((alert) => (
+                <li key={alert.id}>{alertMessages[alert.id] ?? alert.message}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {hasData ? (
         <>
-          {dashboard.alerts.length > 0 && (
-            <div className="space-y-2">
-              {dashboard.alerts.map((alert) => (
-                <Alert key={alert.id} variant={alert.severity === 'critical' ? 'destructive' : 'default'}>
-                  <AlertTitle>
-                    {alert.id === 'coverage-low' && 'カバレッジ警告'}
-                    {alert.id === 'unassigned-exceeds' && '未割当の超過'}
-                    {alert.id === 'fairness-imbalance' && '公平性の偏り'}
-                  </AlertTitle>
-                  <AlertDescription>{alert.message}</AlertDescription>
-                </Alert>
-              ))}
-            </div>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <SummaryCard
               title="総シフト数"
               value={dashboard.summary.totalShifts.toLocaleString()}
               description="割当済み Duty の件数"
             />
             <SummaryCard
-              title="総時間"
+              title="総稼働時間"
               value={`${dashboard.summary.totalHours.toLocaleString()} 時間`}
-              description="Dutyの稼働時間合計（Sign-on〜Sign-off相当）"
+              description="Duty の稼働時間合計（Sign-on〜Sign-off 相当）"
             />
             <SummaryCard
-              title="未割当"
+              title="未割当 Duty"
               value={dashboard.summary.unassignedCount.toLocaleString()}
               description="担当ドライバーが未設定の Duty 数"
             />
             <SummaryCard
               title="公平性スコア"
-              value={`${dashboard.summary.fairnessScore}%`}
-              description="シフト数の偏りを 0〜100 で評価（100が最良）"
+              value={`${dashboard.summary.fairnessScore.toFixed(1)}`}
+              description="シフト数の偏りを 0〜100 で評価（100 が最良）"
             />
             <SummaryCard
-              title="カバレッジ"
+              title="カバレッジ率"
               value={`${dashboard.summary.coveragePercentage}%`}
-              description="割当済み Duty の比率（100% が目標）"
+              description="割り当て済み Duty の比率（100% が目標）"
             />
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>ドライバー別の稼働状況</CardTitle>
-              <CardDescription>割当済み Duty 数と累計時間を表示します。</CardDescription>
+              <CardTitle>ドライバー別の稼働</CardTitle>
+              <CardDescription>割り当て済み Duty と稼働時間の内訳を一覧できます。</CardDescription>
             </CardHeader>
             <CardContent>
               {dashboard.workloads.length === 0 ? (
-                <p className="text-sm text-muted-foreground">割当済みのドライバーがまだ存在しません。</p>
+                <p className="text-sm text-muted-foreground">割り当て済みのドライバーはまだありません。</p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>driver_id</TableHead>
-                      <TableHead>Duty数</TableHead>
-                      <TableHead>累計時間 (h)</TableHead>
+                      <TableHead>Duty 件数</TableHead>
+                      <TableHead>稼働時間 (h)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -233,7 +276,7 @@ export default function DashboardView(): JSX.Element {
           <Card>
             <CardHeader>
               <CardTitle>未割当 Duty</CardTitle>
-              <CardDescription>ドライバーが設定されていない Duty の一覧です。</CardDescription>
+              <CardDescription>ドライバーが割り当てられていない Duty のリストです。</CardDescription>
             </CardHeader>
             <CardContent>
               {unassigned.length === 0 ? (
@@ -251,8 +294,8 @@ export default function DashboardView(): JSX.Element {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>データがありません</CardTitle>
-            <CardDescription>GTFSをインポートし、Duties で少なくとも1件のDutyを作成するとダッシュボードが更新されます。</CardDescription>
+            <CardTitle>データが不足しています</CardTitle>
+            <CardDescription>GTFS を取り込んで Duty を少なくとも 1 件追加すると、ダッシュボードが集計されます。</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -260,12 +303,12 @@ export default function DashboardView(): JSX.Element {
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>KPI設定</DialogTitle>
-            <DialogDescription>閾値を編集し、ダッシュボードと警告へ即時反映させます。</DialogDescription>
+            <DialogTitle>KPI 設定</DialogTitle>
+            <DialogDescription>割当ルールを見直し、ダッシュボードの基準値を調整できます。</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-continuous">連続運転上限（分）</label>
+              <label className="text-sm font-medium" htmlFor="kpi-max-continuous">連続稼働の上限 (分)</label>
               <Input
                 id="kpi-max-continuous"
                 inputMode="numeric"
@@ -274,7 +317,7 @@ export default function DashboardView(): JSX.Element {
               />
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-min-break">休憩下限（分）</label>
+              <label className="text-sm font-medium" htmlFor="kpi-min-break">最低休憩時間 (分)</label>
               <Input
                 id="kpi-min-break"
                 inputMode="numeric"
@@ -283,7 +326,7 @@ export default function DashboardView(): JSX.Element {
               />
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-daily">日拘束上限（分）</label>
+              <label className="text-sm font-medium" htmlFor="kpi-max-daily">1 日あたりの上限 (分)</label>
               <Input
                 id="kpi-max-daily"
                 inputMode="numeric"
@@ -292,7 +335,7 @@ export default function DashboardView(): JSX.Element {
               />
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-unassigned">未割当許容率（%）</label>
+              <label className="text-sm font-medium" htmlFor="kpi-max-unassigned">未割当率の上限 (%)</label>
               <Input
                 id="kpi-max-unassigned"
                 inputMode="numeric"
@@ -301,7 +344,7 @@ export default function DashboardView(): JSX.Element {
               />
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-fairness">公平性偏差許容（%）</label>
+              <label className="text-sm font-medium" htmlFor="kpi-fairness">公平性の許容偏差 (%)</label>
               <Input
                 id="kpi-fairness"
                 inputMode="numeric"
@@ -313,10 +356,20 @@ export default function DashboardView(): JSX.Element {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>キャンセル</Button>
-            <Button onClick={handleSettingsSave}>保存</Button>
+            <Button onClick={handleSettingsSave}>保存する</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function coverageBadgeVariant(percentage: number): 'default' | 'secondary' | 'outline' {
+  if (percentage >= 80) {
+    return 'default';
+  }
+  if (percentage >= 60) {
+    return 'secondary';
+  }
+  return 'outline';
 }

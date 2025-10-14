@@ -1,6 +1,7 @@
 /**
  * src/features/dashboard/DiffView.tsx
- * Diff UI to compare current Duty assignments against baseline snapshots with history.
+ * 現在の Duty 状態と保存済み基準値（Baseline）を比較し、差分を可視化する画面。
+ * 基準値の保存・読込・履歴管理を一体的に提供する。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -37,7 +38,7 @@ function loadBaselineFromFile(file: File): Promise<ScheduleState> {
         const parsed = JSON.parse(String(reader.result)) as ScheduleState;
         resolve(parsed);
       } catch {
-        reject(new Error('JSONとして解析できませんでした。'));
+        reject(new Error('JSON 形式として読み込めませんでした。内容をご確認ください。'));
       }
     };
     reader.readAsText(file);
@@ -60,10 +61,7 @@ export default function DiffView(): JSX.Element {
     return dutyState.duties.map((duty) => {
       const segments = enrichDutySegments(duty, tripLookup);
       if (segments.length === 0) {
-        return {
-          id: duty.id,
-          driverId: duty.driverId,
-        };
+        return { id: duty.id, driverId: duty.driverId };
       }
       return {
         id: duty.id,
@@ -82,9 +80,7 @@ export default function DiffView(): JSX.Element {
   );
 
   const diff = useMemo(() => {
-    if (!baseline) {
-      return null;
-    }
+    if (!baseline) return null;
     return diffSchedules(currentState, baseline);
   }, [baseline, currentState]);
 
@@ -102,7 +98,7 @@ export default function DiffView(): JSX.Element {
       const fileName = `duty-baseline-${timestamp}.json`;
       downloadBaseline(currentState, fileName);
       refreshHistory(addBaselineHistory(currentState, { fileName, savedAt: new Date().toISOString() }));
-      toast.success('現在のDutyを基準として保存しました。');
+      toast.success('現在の Duty を基準として保存しました。');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '基準データの保存に失敗しました。');
     }
@@ -110,9 +106,7 @@ export default function DiffView(): JSX.Element {
 
   const handleLoadBaseline = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
+    if (!file) return;
     try {
       const parsed = await loadBaselineFromFile(file);
       setBaseline(parsed);
@@ -127,44 +121,42 @@ export default function DiffView(): JSX.Element {
 
   const handleResetBaseline = () => {
     setBaseline(null);
-  };
-
-  const handleApplyHistory = (entry: BaselineHistoryEntry) => {
-    setBaseline(entry.state);
-    toast.success('履歴から基準を適用しました。');
-  };
-
-  const handleDownloadHistoryEntry = (entry: BaselineHistoryEntry) => {
-    try {
-      downloadBaseline(entry.state, entry.fileName);
-      toast.success('履歴から基準データを再ダウンロードしました。');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '基準データのダウンロードに失敗しました。');
-    }
+    toast.success('基準データの選択を解除しました。');
   };
 
   const handleClearHistory = () => {
     clearBaselineHistory();
-    setHistory([]);
-    toast.success('履歴をクリアしました。');
+    refreshHistory([]);
+    toast.success('基準履歴を削除しました。');
+  };
+
+  const handleApplyHistory = (entry: BaselineHistoryEntry) => {
+    setBaseline(entry.state);
+    toast.success('選択した基準データを適用しました。');
+  };
+
+  const handleDownloadHistoryEntry = (entry: BaselineHistoryEntry) => {
+    const fileName = `${entry.fileName.replace(/\.json$/i, '')}-history.json`;
+    downloadBaseline(entry.state, fileName);
+    toast.success('履歴データをダウンロードしました。');
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Diff</h2>
+        <h2 className="text-lg font-semibold">差分・出力</h2>
         <p className="text-sm text-muted-foreground">
-          Duty割当の差分を比較します。現在の状態を基準として保存し、別案を読み込むことで変更点を確認できます。
+          現在の Duty を基準データと比較し、変更点を確認します。基準を保存しておくと、別案との比較やレポート出力が容易になります。
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>基準データの管理</CardTitle>
-          <CardDescription>DiffはDuty割当をschedule形式に変換し、基準と現在を比較します。</CardDescription>
+          <CardDescription>Duty のスケジュールを JSON 基準データとして保存・読み込みできます。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button onClick={handleSaveBaseline}>現在のDutyを基準として保存</Button>
+          <Button onClick={handleSaveBaseline}>現在の Duty を基準として保存</Button>
           <div className="flex items-center gap-2">
             <input
               ref={fileInputRef}
@@ -177,17 +169,15 @@ export default function DiffView(): JSX.Element {
               基準データを読み込む
             </Button>
             <Button variant="outline" onClick={handleResetBaseline} disabled={!baseline}>
-              基準リセット
+              基準をクリア
             </Button>
           </div>
           {baseline ? (
             <p className="text-xs text-muted-foreground">
-              読み込み済み基準: シフト {baseline.dashboard.summary.totalShifts} 件 / 未割当 {baseline.dashboard.summary.unassignedCount} 件
+              適用中の基準: シフト {baseline.dashboard.summary.totalShifts} 件 / 未割当 {baseline.dashboard.summary.unassignedCount} 件
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              基準が未設定の場合、差分テーブルは空のまま表示されます。
-            </p>
+            <p className="text-xs text-muted-foreground">基準が未設定の場合、差分テーブルは読み取り専用で表示されます。</p>
           )}
         </CardContent>
       </Card>
@@ -195,12 +185,12 @@ export default function DiffView(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>基準履歴</CardTitle>
-          <CardDescription>保存または読み込んだ基準を履歴として残します。最大10件まで保持されます。</CardDescription>
+          <CardDescription>保存・読み込みの履歴を管理します。最新 10 件まで保持されます。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => refreshHistory(loadBaselineHistory())}>
-              最新の履歴を読み込む
+              最新の履歴を読み込み
             </Button>
             <Button variant="ghost" size="sm" onClick={handleClearHistory} disabled={history.length === 0}>
               履歴をクリア
@@ -217,9 +207,9 @@ export default function DiffView(): JSX.Element {
                       <p className="text-sm font-medium">保存日時: {new Date(entry.savedAt).toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">ファイル名: {entry.fileName}</p>
                       <div className="grid gap-1 text-xs sm:grid-cols-2">
-                        <span>シフト: {entry.summary.totalShifts}</span>
+                        <span>シフト数: {entry.summary.totalShifts}</span>
                         <span>未割当: {entry.summary.unassignedCount}</span>
-                        <span>公平性: {entry.summary.fairnessScore}</span>
+                        <span>公平性スコア: {entry.summary.fairnessScore}</span>
                         <span>カバレッジ: {entry.summary.coveragePercentage}%</span>
                       </div>
                       {entry.alerts.length > 0 && (
@@ -227,7 +217,7 @@ export default function DiffView(): JSX.Element {
                           {entry.alerts.map((alert, index) => (
                             <li key={`${entry.id}-alert-${index}`}>
                               <span className={alert.severity === 'critical' ? 'text-destructive font-semibold' : 'text-amber-500'}>
-                                [{alert.severity === 'critical' ? '重大' : '注意'}]
+                                [{alert.severity === 'critical' ? '重要' : '注意'}]
                               </span>{' '}
                               {alert.message}
                             </li>
@@ -237,10 +227,10 @@ export default function DiffView(): JSX.Element {
                     </div>
                     <div className="flex flex-col gap-2 sm:items-end">
                       <Button size="sm" onClick={() => handleApplyHistory(entry)}>
-                        基準として適用
+                        この基準を適用
                       </Button>
                       <Button variant="secondary" size="sm" onClick={() => handleDownloadHistoryEntry(entry)}>
-                        JSONをダウンロード
+                        JSON をダウンロード
                       </Button>
                     </div>
                   </div>
@@ -255,3 +245,4 @@ export default function DiffView(): JSX.Element {
     </div>
   );
 }
+

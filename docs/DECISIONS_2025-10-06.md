@@ -108,3 +108,8 @@
 - QA/テスト
   - `tests/duty.settings.modal.test.tsx`（新設予定）でUI操作と settings 更新をスナップショット＋ロジックで検証。
   - `tests/dashboard.kpi-thresholds.test.ts`（新設予定）で Dashboard KPI が閾値変更を反映することを確認。
+
+## UI 改善候補メモ（2025-10-09）
+- BlocksView: タイムラインの `pixelsPerMinute` を設定可能な UI 追加を検討（将来のユーザー調査項目）。
+- DutiesView: 区間操作にショートカットキーを提示するツールチップを追加予定。
+- ManualDataView: CSV インポート結果の差分表示（プレビュー）を次フェーズ候補として整理。
