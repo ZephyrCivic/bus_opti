@@ -94,7 +94,7 @@ export default function BlocksView(): JSX.Element {
         segments: [
           {
             id: `${summary.blockId}-window`,
-            label: `${summary.firstTripStart} ～ ${summary.lastTripEnd}`,
+            label: `${summary.firstTripStart} ~ ${summary.lastTripEnd}`,
             startMinutes,
             endMinutes: Math.max(endMinutes, startMinutes + 1),
             color,
