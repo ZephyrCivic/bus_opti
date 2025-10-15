@@ -3,10 +3,11 @@
  * Renders MapLibre GL map, updates overlays via service filters, and notifies selection events.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react';
-import maplibregl, { Map, type GeoJSONSource, type MapMouseEvent } from 'maplibre-gl';
+import type { Map, GeoJSONSource, MapMouseEvent } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { buildExplorerGeoJson, type BoundingBox, type ExplorerDataset } from './mapData';
+import { loadMapLibre } from './loadMapLibre';
 
 const STYLE_URL = 'https://tile.openstreetmap.jp/styles/osm-bright/style.json';
 const STOPS_SOURCE_ID = 'explorer-stops';
@@ -69,19 +70,17 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
       return;
     }
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: STYLE_URL,
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
-    });
-    mapRef.current = map;
+    let cancelled = false;
 
     const handleLoad = () => {
+      const activeMap = mapRef.current;
+      if (!activeMap) {
+        return;
+      }
       mapLoadedRef.current = true;
-      initializeSources(map, latestDatasetRef.current, showDepotsRef.current, showReliefPointsRef.current);
-      applyExplorerData(map, latestDatasetRef.current, latestBoundsRef);
-      updateOverlayVisibility(map, showDepotsRef.current, showReliefPointsRef.current);
+      initializeSources(activeMap, latestDatasetRef.current, showDepotsRef.current, showReliefPointsRef.current);
+      applyExplorerData(activeMap, latestDatasetRef.current, latestBoundsRef);
+      updateOverlayVisibility(activeMap, showDepotsRef.current, showReliefPointsRef.current);
     };
 
     const handleClick = (event: MapMouseEvent) => {
@@ -93,32 +92,57 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
       onSelect(selection);
     };
 
-    map.on('load', handleLoad);
-    map.on('styleimagemissing', (event) => {
-      const id = event.id;
-      if (!id || missingImageIdsRef.current.has(id)) {
-        return;
+    const mountMap = async () => {
+      try {
+        const maplibre = await loadMapLibre();
+        if (cancelled || !containerRef.current) {
+          return;
+        }
+        const map = new maplibre.Map({
+          container: containerRef.current,
+          style: STYLE_URL,
+          center: DEFAULT_CENTER,
+          zoom: DEFAULT_ZOOM,
+        });
+        mapRef.current = map;
+
+        map.on('load', handleLoad);
+        map.on('styleimagemissing', (event) => {
+          const id = event.id;
+          if (!id || missingImageIdsRef.current.has(id)) {
+            return;
+          }
+          missingImageIdsRef.current.add(id);
+          // MapLibre styles sometimes reference sprites that are not published.
+          // Register a transparent placeholder so warnings do not flood the console.
+          const width = 1;
+          const height = 1;
+          const transparentPixel = new Uint8Array([0, 0, 0, 0]);
+          if (!map.hasImage(id)) {
+            map.addImage(id, { width, height, data: transparentPixel });
+          }
+        });
+        map.on('click', handleClick);
+        map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
+      } catch (error) {
+        console.error('MapLibre の読み込みに失敗しました', error);
       }
-      missingImageIdsRef.current.add(id);
-      // MapLibre styles sometimes reference sprites that are not published.
-      // Register a transparent placeholder so warnings do not flood the console.
-      const width = 1;
-      const height = 1;
-      const transparentPixel = new Uint8Array([0, 0, 0, 0]);
-      if (!map.hasImage(id)) {
-        map.addImage(id, { width, height, data: transparentPixel });
-      }
-    });
-    map.on('click', handleClick);
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    };
+
+    void mountMap();
 
     return () => {
-      map.off('click', handleClick);
-      map.off('load', handleLoad);
-      map.remove();
+      cancelled = true;
+      const map = mapRef.current;
+      if (map) {
+        map.off('click', handleClick);
+        map.off('load', handleLoad);
+        map.remove();
+      }
       mapRef.current = null;
       mapLoadedRef.current = false;
       latestBoundsRef.current = null;
+      missingImageIdsRef.current.clear();
       onSelect(null);
     };
   }, [onSelect]);
