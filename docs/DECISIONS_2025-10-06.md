@@ -1,5 +1,9 @@
 # 仕様確定事項(2025-10-06)
 
+## 2025-10-15 MCP tooling clean-up
+- Chrome DevTools MCP client now discovers its default entry under `~/.codex/mcp/chrome-dev/` (or `%USERPROFILE%` on Windows). Set `MCP_CHROME_DEVTOOLS_ENTRY` or `MCP_CHROME_DEVTOOLS_ARGS` when the built server lives elsewhere.
+- Added regression test `tests/mcps.chromeDevtools.client.test.ts` to pin the default path behaviour and guard environment resolution.
+
 本ドキュメントは 2025-10-06 に合意したMVPの確定事項をまとめた補遺です。`readme.md`（単一README）を補完します。
 
 - Block候補達成目標は「70〜80%」で据え置き(UIで達成度を表示)。

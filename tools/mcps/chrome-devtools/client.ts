@@ -1,5 +1,5 @@
 // File: tools/mcps/chrome-devtools/client.ts
-// Purpose: Provide a TypeScript wrapper around the Chrome DevTools MCP server.
+// Purpose: Provide a reusable TypeScript wrapper around the Chrome DevTools MCP server.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -14,13 +14,40 @@ function toPlatformPath(candidate: string): string {
   const rest = match.groups?.rest?.replace(/\\/g, "/");
   if (!drive || !rest) return candidate;
 
-  // Windowsの場合はそのまま返す。
+  // Keep absolute Windows paths untouched on native Windows.
   if (process.platform === "win32") {
     return `${drive.toUpperCase()}:\\${rest.replace(/\//g, "\\")}`;
   }
 
-  // WSL / UNIX 系の場合は /mnt/<drive>/rest に変換
+  // Translate Windows-style paths when running under WSL or other Unix environments.
   return path.posix.join("/mnt", drive, rest);
+}
+
+function splitArgs(raw: string): string[] {
+  return raw
+    .split(/\s+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function resolveHomeDirectory(): string {
+  const home = process.env.USERPROFILE ?? process.env.HOME;
+  if (!home) {
+    throw new Error(
+      "Unable to resolve home directory for Chrome DevTools MCP. Set MCP_CHROME_DEVTOOLS_ARGS or MCP_CHROME_DEVTOOLS_ENTRY explicitly.",
+    );
+  }
+  return home;
+}
+
+function buildDefaultEntry(): string {
+  const entryOverride = process.env.MCP_CHROME_DEVTOOLS_ENTRY?.trim();
+  if (entryOverride) {
+    return path.resolve(toPlatformPath(entryOverride));
+  }
+
+  const home = resolveHomeDirectory();
+  return path.resolve(path.join(home, ".codex", "mcp", "chrome-dev", "build", "src", "index.js"));
 }
 
 export class ChromeDevtoolsClient extends StdioMcpClient {
@@ -37,23 +64,16 @@ export class ChromeDevtoolsClient extends StdioMcpClient {
   public static defaultArgs(): string[] {
     const raw = process.env.MCP_CHROME_DEVTOOLS_ARGS;
     if (raw) {
-      return raw
-        .split(/\s+/)
-        .map((segment) => segment.trim())
-        .filter((segment) => segment.length > 0);
+      return splitArgs(raw);
     }
 
-    const entry = "C:/Users/chaka/.codex/mcp/chrome-dev/build/src/index.js";
-    const platformPath = toPlatformPath(entry);
-    const normalized = path.resolve(platformPath);
-
-    if (!fs.existsSync(normalized)) {
-      // ファイルが無い場合でも、呼び出し側で環境変数を上書きできるよう明示的に例外を投げる。
+    const candidate = buildDefaultEntry();
+    if (!fs.existsSync(candidate)) {
       throw new Error(
-        "Chrome DevTools MCP server entry not found. Please set MCP_CHROME_DEVTOOLS_ARGS to point at your chrome-dev server entry (e.g. `/path/to/chrome-dev/build/src/index.js`).",
+        `Chrome DevTools MCP server entry not found at ${candidate}. Set MCP_CHROME_DEVTOOLS_ENTRY or MCP_CHROME_DEVTOOLS_ARGS to point at the built server entry (e.g. /path/to/chrome-dev/build/src/index.js).`,
       );
     }
 
-    return [normalized];
+    return [candidate];
   }
 }
