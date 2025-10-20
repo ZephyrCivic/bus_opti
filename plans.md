@@ -112,3 +112,8 @@
 
 ## Exec Plan: UI スナップショット
 詳細な実行計画は docs/exec-plans/ui-snapshots.md を参照。
+
+## ブロッカー対応ログ（2025-10-20）
+
+- [x] ポート 4173 の占有プロセス（PID 7196）を特定し、`Stop-Process -Id 7196` で停止できることを確認。`Get-NetTCPConnection` の手順を plans.md に明記し再現性を確保。
+- [ ] `npm run preview` がポート衝突時に自動で空きポートへフェイルオーバーする Runbook をドキュメント化し、既存の `tools/ui-snapshots/runWithPreview.ts` の挙動と揃える。
