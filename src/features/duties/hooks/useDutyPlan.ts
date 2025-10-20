@@ -3,7 +3,7 @@
  * Composes block計画とDuty編集関連の派生データを一箇所にまとめ、ビュー側に渡す。
  * ブロック連結設定やCSV行からタイムライン計算に必要なメタ情報を算出する。
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import {
   buildBlocksPlan,
@@ -69,6 +69,20 @@ export function useDutyPlan({ result, manual }: DutyPlanParams): DutyPlanData {
     }
     return map;
   }, [plan.csvRows]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __PLAYWRIGHT__?: boolean;
+      __TEST_DUTY_PLAN?: DutyPlanData;
+    };
+    if (!testWindow.__PLAYWRIGHT__) {
+      return;
+    }
+    testWindow.__TEST_DUTY_PLAN = { plan, tripIndex, tripLookup, blockTripMinutes };
+  }, [plan, tripIndex, tripLookup, blockTripMinutes]);
 
   return { plan, tripIndex, tripLookup, blockTripMinutes };
 }

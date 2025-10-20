@@ -63,6 +63,9 @@ export interface ExplorerDataset {
   selectedServiceId?: string;
   manualOverlay: ExplorerManualOverlay;
   manualSummary: ExplorerManualSummary;
+  routes: Record<string, ExplorerRouteDetail>;
+  routeOptions: ExplorerRouteOption[];
+  alerts: string[];
 }
 
 export interface ExplorerManualOverlay {
@@ -87,6 +90,48 @@ export interface ExplorerManualSummary {
   depotCount: number;
   reliefPointCount: number;
   totalDutyImpacts: number;
+}
+
+export interface ExplorerRouteOption {
+  routeId: string;
+  label: string;
+  shortName?: string;
+  longName?: string;
+  color?: string;
+  textColor?: string;
+  directionIds: string[];
+  tripCount: number;
+  stopCount: number;
+}
+
+export interface ExplorerTimelineTrip {
+  tripId: string;
+  headsign?: string;
+  startTime?: string;
+  endTime?: string;
+  durationMinutes?: number;
+  stopCount: number;
+  serviceId?: string;
+}
+
+export interface ExplorerRouteDirectionDetail {
+  directionId: string;
+  headsigns: string[];
+  tripCount: number;
+  earliestDeparture?: string;
+  latestArrival?: string;
+  trips: ExplorerTimelineTrip[];
+}
+
+export interface ExplorerRouteDetail {
+  routeId: string;
+  shortName?: string;
+  longName?: string;
+  color?: string;
+  textColor?: string;
+  tripCount: number;
+  stopCount: number;
+  directions: Record<string, ExplorerRouteDirectionDetail>;
 }
 
 export interface ExplorerDatasetOptions {
@@ -157,6 +202,16 @@ export function buildExplorerDataset(result?: GtfsImportResult, options?: Explor
   const manualOverlay = buildManualOverlay(manual, dutyStopUsage);
   const manualSummary = buildManualSummary(manualOverlay);
 
+  const routeArtifacts = buildRouteSummaries({
+    routesTable: result.tables['routes.txt'],
+    tripsTable,
+    stopTimesTable,
+    activeTripIds,
+    tripServiceMap,
+  });
+
+  const alerts = Array.isArray(result.alerts) ? result.alerts : [];
+
   const bounds = calculateBounds(stopArtifacts.features, shapeArtifacts.features);
 
   return {
@@ -171,6 +226,9 @@ export function buildExplorerDataset(result?: GtfsImportResult, options?: Explor
     selectedServiceId,
     manualOverlay,
     manualSummary,
+    routes: routeArtifacts.details,
+    routeOptions: routeArtifacts.options,
+    alerts,
   };
 }
 
@@ -188,6 +246,9 @@ function emptyExplorerDataset(selectedServiceId?: string, manual?: ManualInputs)
     selectedServiceId,
     manualOverlay,
     manualSummary: buildManualSummary(manualOverlay),
+    routes: {},
+    routeOptions: [],
+    alerts: [],
   };
 }
 
@@ -564,6 +625,355 @@ function buildShapeArtifacts(options: ShapeArtifactOptions): ShapeArtifactsResul
   }
 
   return { features, details };
+}
+
+interface RouteSummaryOptions {
+  routesTable?: GtfsTable;
+  tripsTable?: GtfsTable;
+  stopTimesTable?: GtfsTable;
+  activeTripIds: Set<string>;
+  tripServiceMap: Map<string, string | undefined>;
+}
+
+interface RouteSummaryArtifacts {
+  details: Record<string, ExplorerRouteDetail>;
+  options: ExplorerRouteOption[];
+}
+
+interface RouteMeta {
+  shortName?: string;
+  longName?: string;
+  color?: string;
+  textColor?: string;
+}
+
+interface RouteAggregate {
+  meta: RouteMeta;
+  tripCount: number;
+  stopIds: Set<string>;
+  directions: Map<string, DirectionAggregate>;
+}
+
+interface DirectionAggregate {
+  directionId: string;
+  headsigns: Set<string>;
+  tripCount: number;
+  earliestStart: number | null;
+  latestEnd: number | null;
+  trips: TripAggregate[];
+}
+
+interface TripAggregate {
+  tripId: string;
+  headsign?: string;
+  startMinutes: number | null;
+  endMinutes: number | null;
+  stopCount: number;
+  serviceId?: string;
+}
+
+interface TripTiming {
+  startMinutes: number | null;
+  endMinutes: number | null;
+  stopCount: number;
+  stopIds: Set<string>;
+}
+
+function buildRouteSummaries(options: RouteSummaryOptions): RouteSummaryArtifacts {
+  const { routesTable, tripsTable, stopTimesTable, activeTripIds, tripServiceMap } = options;
+
+  if (!tripsTable || tripsTable.rows.length === 0 || activeTripIds.size === 0) {
+    return { details: {}, options: [] };
+  }
+
+  const routeMeta = new Map<string, RouteMeta>();
+  if (routesTable) {
+    for (const row of routesTable.rows) {
+      const routeId = sanitizeId(row.route_id);
+      if (!routeId) {
+        continue;
+      }
+      routeMeta.set(routeId, {
+        shortName: sanitizeOptional(row.route_short_name),
+        longName: sanitizeOptional(row.route_long_name),
+        color: sanitizeHexColor(row.route_color),
+        textColor: sanitizeHexColor(row.route_text_color),
+      });
+    }
+  }
+
+  const tripTimings = computeTripTimings(stopTimesTable);
+  const aggregates = new Map<string, RouteAggregate>();
+
+  for (const row of tripsTable.rows) {
+    const tripId = sanitizeId(row.trip_id);
+    if (!tripId || !activeTripIds.has(tripId)) {
+      continue;
+    }
+    const routeId = sanitizeId(row.route_id);
+    if (!routeId) {
+      continue;
+    }
+
+    const routeInfo = routeMeta.get(routeId) ?? {};
+    let aggregate = aggregates.get(routeId);
+    if (!aggregate) {
+      aggregate = {
+        meta: routeInfo,
+        tripCount: 0,
+        stopIds: new Set<string>(),
+        directions: new Map<string, DirectionAggregate>(),
+      };
+      aggregates.set(routeId, aggregate);
+    }
+    aggregate.tripCount += 1;
+
+    const directionId = sanitizeId(row.direction_id) ?? '0';
+    let direction = aggregate.directions.get(directionId);
+    if (!direction) {
+      direction = {
+        directionId,
+        headsigns: new Set<string>(),
+        tripCount: 0,
+        earliestStart: null,
+        latestEnd: null,
+        trips: [],
+      };
+      aggregate.directions.set(directionId, direction);
+    }
+    direction.tripCount += 1;
+
+    const headsign = sanitizeOptional(row.trip_headsign);
+    if (headsign) {
+      direction.headsigns.add(headsign);
+    }
+
+    const timing = tripTimings.get(tripId);
+    if (timing) {
+      for (const stopId of timing.stopIds) {
+        aggregate.stopIds.add(stopId);
+      }
+      if (timing.startMinutes !== null) {
+        if (direction.earliestStart === null || timing.startMinutes < direction.earliestStart) {
+          direction.earliestStart = timing.startMinutes;
+        }
+      }
+      if (timing.endMinutes !== null) {
+        if (direction.latestEnd === null || timing.endMinutes > direction.latestEnd) {
+          direction.latestEnd = timing.endMinutes;
+        }
+      }
+    }
+
+    const serviceId = tripServiceMap.get(tripId) ?? undefined;
+
+    direction.trips.push({
+      tripId,
+      headsign: headsign ?? undefined,
+      startMinutes: timing?.startMinutes ?? null,
+      endMinutes: timing?.endMinutes ?? null,
+      stopCount: timing?.stopCount ?? 0,
+      serviceId,
+    });
+  }
+
+  const details: Record<string, ExplorerRouteDetail> = {};
+  const options: ExplorerRouteOption[] = [];
+
+  for (const [routeId, aggregate] of aggregates) {
+    if (aggregate.tripCount === 0) {
+      continue;
+    }
+
+    const directionEntries = Array.from(aggregate.directions.entries());
+    directionEntries.sort((a, b) => localeCompareString(a[0], b[0]));
+
+    const directionIds: string[] = [];
+    const directionDetails: Record<string, ExplorerRouteDirectionDetail> = {};
+
+    for (const [directionId, dirAggregate] of directionEntries) {
+      directionIds.push(directionId);
+      dirAggregate.trips.sort((a, b) => {
+        const aStart = a.startMinutes ?? Number.POSITIVE_INFINITY;
+        const bStart = b.startMinutes ?? Number.POSITIVE_INFINITY;
+        if (aStart !== bStart) {
+          return aStart - bStart;
+        }
+        return localeCompareString(a.tripId, b.tripId);
+      });
+
+      const trips: ExplorerTimelineTrip[] = dirAggregate.trips.map((trip) => {
+        const duration = trip.startMinutes !== null && trip.endMinutes !== null
+          ? Math.max(Math.round(trip.endMinutes - trip.startMinutes), 0)
+          : undefined;
+        return {
+          tripId: trip.tripId,
+          headsign: trip.headsign,
+          startTime: formatMinutesAsTime(trip.startMinutes),
+          endTime: formatMinutesAsTime(trip.endMinutes),
+          durationMinutes: duration,
+          stopCount: trip.stopCount,
+          serviceId: trip.serviceId,
+        };
+      });
+
+      directionDetails[directionId] = {
+        directionId,
+        headsigns: Array.from(dirAggregate.headsigns).sort((a, b) => a.localeCompare(b, 'ja-JP-u-nu-latn')),
+        tripCount: dirAggregate.tripCount,
+        earliestDeparture: formatMinutesAsTime(dirAggregate.earliestStart),
+        latestArrival: formatMinutesAsTime(dirAggregate.latestEnd),
+        trips,
+      };
+    }
+
+    const meta = aggregate.meta;
+    details[routeId] = {
+      routeId,
+      shortName: meta.shortName,
+      longName: meta.longName,
+      color: meta.color,
+      textColor: meta.textColor,
+      tripCount: aggregate.tripCount,
+      stopCount: aggregate.stopIds.size,
+      directions: directionDetails,
+    };
+
+    options.push({
+      routeId,
+      label: buildRouteLabel(routeId, meta),
+      shortName: meta.shortName,
+      longName: meta.longName,
+      color: meta.color,
+      textColor: meta.textColor,
+      directionIds,
+      tripCount: aggregate.tripCount,
+      stopCount: aggregate.stopIds.size,
+    });
+  }
+
+  options.sort((a, b) => a.label.localeCompare(b.label, 'ja-JP-u-nu-latn'));
+
+  return { details, options };
+}
+
+function computeTripTimings(stopTimesTable?: GtfsTable): Map<string, TripTiming> {
+  const timings = new Map<string, TripTiming>();
+  if (!stopTimesTable) {
+    return timings;
+  }
+
+  const grouped = new Map<string, Record<string, string>[]>();
+  for (const row of stopTimesTable.rows) {
+    const tripId = sanitizeId(row.trip_id);
+    if (!tripId) {
+      continue;
+    }
+    const group = grouped.get(tripId);
+    if (group) {
+      group.push(row);
+    } else {
+      grouped.set(tripId, [row]);
+    }
+  }
+
+  for (const [tripId, rows] of grouped) {
+    rows.sort((a, b) => {
+      const seqA = Number.parseInt(String((a as Record<string, string>).stop_sequence ?? '0'), 10);
+      const seqB = Number.parseInt(String((b as Record<string, string>).stop_sequence ?? '0'), 10);
+      const safeA = Number.isFinite(seqA) ? seqA : 0;
+      const safeB = Number.isFinite(seqB) ? seqB : 0;
+      return safeA - safeB;
+    });
+
+    let startMinutes: number | null = null;
+    let endMinutes: number | null = null;
+    const stopIds = new Set<string>();
+    let stopCount = 0;
+
+    for (const row of rows) {
+      stopCount += 1;
+      const stopId = sanitizeId(row.stop_id);
+      if (stopId) {
+        stopIds.add(stopId);
+      }
+      const departure = parseTimeToMinutes(row.departure_time);
+      const arrival = parseTimeToMinutes(row.arrival_time);
+
+      const candidateStart = departure ?? arrival;
+      if (candidateStart !== null && candidateStart !== undefined) {
+        if (startMinutes === null || candidateStart < startMinutes) {
+          startMinutes = candidateStart;
+        }
+      }
+
+      const candidateEnd = arrival ?? departure;
+      if (candidateEnd !== null && candidateEnd !== undefined) {
+        if (endMinutes === null || candidateEnd > endMinutes) {
+          endMinutes = candidateEnd;
+        }
+      }
+    }
+
+    timings.set(tripId, {
+      startMinutes,
+      endMinutes,
+      stopCount,
+      stopIds,
+    });
+  }
+
+  return timings;
+}
+
+function parseTimeToMinutes(value: string | undefined): number | null {
+  const normalized = sanitizeOptional(value);
+  if (!normalized) {
+    return null;
+  }
+  const match = normalized.match(/^(-?\d+):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return null;
+  }
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const seconds = match[3] ? Number.parseInt(match[3], 10) : 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || minutes < 0 || minutes >= 60) {
+    return null;
+  }
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds >= 60) {
+    return null;
+  }
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+  return totalSeconds / 60;
+}
+
+function formatMinutesAsTime(value: number | null | undefined): string | undefined {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const totalMinutes = Math.round(value);
+  const hours = Math.trunc(totalMinutes / 60);
+  const minutes = Math.abs(totalMinutes % 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function sanitizeHexColor(value: string | undefined): string | undefined {
+  const normalized = sanitizeOptional(value);
+  if (!normalized) {
+    return undefined;
+  }
+  const hex = normalized.replace(/^#/u, '').toUpperCase();
+  return /^[0-9A-F]{6}$/.test(hex) ? `#${hex}` : undefined;
+}
+
+function buildRouteLabel(routeId: string, meta?: RouteMeta): string {
+  const shortName = meta?.shortName;
+  const longName = meta?.longName;
+  if (shortName && longName) {
+    return `${shortName} · ${longName}`;
+  }
+  return shortName ?? longName ?? routeId;
 }
 
 function buildServiceOptions(

@@ -171,6 +171,20 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     setManual: (updater) => setManualState((prev) => updater(prev)),
   }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __PLAYWRIGHT__?: boolean;
+      __TEST_DUTY_ACTIONS?: DutyEditorActions;
+    };
+    if (!testWindow.__PLAYWRIGHT__) {
+      return;
+    }
+    testWindow.__TEST_DUTY_ACTIONS = dutyActions;
+  }, [dutyActions]);
+
   return <GtfsImportContext.Provider value={value}>{children}</GtfsImportContext.Provider>;
 }
 

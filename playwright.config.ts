@@ -11,6 +11,12 @@ function readThreshold(): number {
 const baseURL = process.env.APP_BASE_URL ?? 'http://127.0.0.1:4173';
 const previewURL = new URL('/bus_opti/', `${baseURL.endsWith('/') ? baseURL : `${baseURL}/`}`).toString();
 const shouldStartWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER !== '1';
+const webServerTimeout = (() => {
+  const raw = process.env.PLAYWRIGHT_WEB_SERVER_TIMEOUT;
+  if (!raw) return 120_000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000;
+})();
 
 export default defineConfig({
   testDir: 'tests/playwright',
@@ -28,7 +34,7 @@ export default defineConfig({
     ? {
         command: 'npm run preview',
         reuseExistingServer: true,
-        timeout: 30_000,
+        timeout: webServerTimeout,
         url: previewURL,
       }
     : undefined,

@@ -23,6 +23,14 @@ date: 2025-10-20
 - 単体/統合テスト: `npm test`
 - UI スナップショット + DevTools 検証: `make generate-snapshots`
 - DevTools 単体チェック: `npm run devtools:landing-hero`
+- プレビュー起動: `npm run preview`（Runbook の手順を参照し、ポート衝突時は 4173 を解放する）
+
+## Runbook: Vite Preview ポート衝突の解消
+1. 占有プロセス確認: `Get-NetTCPConnection -LocalPort 4173 | Select-Object -First 5 LocalAddress,LocalPort,OwningProcess,State`
+2. プロセス停止（必要な場合）: `Stop-Process -Id <OwningProcess>`
+3. 再試行: `npm run preview`（`--strictPort` により 4173 を利用）
+4. 自動フォールバックが必要な場合は `tools/ui-snapshots/runWithPreview.ts` と同じロジックで空きポートを探索しているか確認し、Runbook を再更新する
+
 
 ## 注意
 - 文字コードは UTF-8（BOMなし）、改行は LF を徹底。

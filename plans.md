@@ -25,7 +25,7 @@
 
 ## TODO 一覧（上から順に実行）
 
-- [ ] 0. 準備: GTFS ヘルスチェック
+- [x] 0. 準備: GTFS ヘルスチェック（2025-10-20 実施ログ: `logs/2025-10-20-gtfs-health.md`）
   - 参照: docs/specs/requirements-blocks-duties.md
   - 検証: `npx tsx tools/gtfsHealthCli.ts <gtfs.zip>`（blockless/時刻延長を確認）
   - 成果物/DoD: 重大エラー0、警告は記録し logs/ に残す。次工程へ反映。
@@ -81,21 +81,21 @@
   - 満たすGOAL: G7, G9
   - 対応テスト: tests/distribution.approval.test.ts, tests/file.write.audit.test.ts
 
-- [ ] 8. 設定UI（Web主/CSV併用）・初期/一括/Depot/労務
+- [x] 8. 設定UI（Web主/CSV併用）・初期/一括/Depot/労務
   - 参照: docs/specs/settings-ui.md, docs/templates/*.template.csv
   - 検証: コールバック整備、ドラフト適用はロールバック可能
   - 成果物/DoD: 設定が段階/由来で表示
   - 満たすGOAL: G7
   - 対応テスト: tests/settings.ui.draft-apply.test.ts
 
-- [ ] 9. 出力確認（ノンブロッキング）
+- [x] 9. 出力確認（ノンブロッキング）
   - 参照: docs/specs/output-confirmation.md
   - 検証: 配布/CSV出力前に確認ダイアログ（Hard/Soft/差分/根拠）
   - 成果物/DoD: 監査ログに確認者と実行記録
   - 満たすGOAL: G8, G9
   - 対応テスト: tests/output.confirmation.docs.test.ts
 
-- [ ] 10. 監査とプライバシー
+- [x] 10. 監査とプライバシー
   - 参照: docs/specs/file-write-audit.md, readme.md（プライバシー）
   - 検証: 主要イベント100%記録（PIIなし）
   - 成果物/DoD: 匿名化IDと追跡コード
@@ -116,4 +116,7 @@
 ## ブロッカー対応ログ（2025-10-20）
 
 - [x] ポート 4173 の占有プロセス（PID 7196）を特定し、`Stop-Process -Id 7196` で停止できることを確認。`Get-NetTCPConnection` の手順を plans.md に明記し再現性を確保。
-- [ ] `npm run preview` がポート衝突時に自動で空きポートへフェイルオーバーする Runbook をドキュメント化し、既存の `tools/ui-snapshots/runWithPreview.ts` の挙動と揃える。
+- [x] `npm run preview` がポート衝突時に空きポートへフォールバックする手順を Runbook に反映（docs/README.md を更新済み）。`tools/ui-snapshots/runWithPreview.ts` の自動解放ロジックとの差分は継続監視。
+
+- 2025-10-20: 8/9/10 を完了へ更新（tests/settings.ui.draft-apply.test.ts・tests/output.confirmation.docs.test.ts・tests/file.write.audit.test.ts で確認）。
+- 2025-10-20: Exec Plan『警告反映レイテンシ計測ハーネス』を追加（Plan/Read 完了）。
