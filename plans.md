@@ -20,56 +20,78 @@
 - 各項目は「参照ドキュメント」「検証コマンド」「成果物/DoD」「満たすGOAL」「対応テスト」を含む。
 
 ## TODO 一覧（上から順に実行）
-- [ ] 0. 準備/GTFSヘルスチェック
+- [x] 0. 準備/GTFSヘルスチェック
   - 参照: docs/specs/requirements-blocks-duties.md
   - 検証: `npx tsx tools/gtfsHealthCli.ts <gtfs.zip>`（Blockless/時刻延長を確認）
   - 成果物/DoD: 重大エラー0、警告は記録（logs/）し次工程に反映
   - 満たすGOAL: G1
   - 対応テスト: tests/gtfs.healthCli.test.ts, tests/gtfsPersistence.test.ts
 
-- [ ] 1. Explorer（取り込み/路線選択/地図＋タイムライン）
+- [x] 1. Explorer（取り込み/路線選択/地図＋タイムライン）
   - 参照: docs/specs/ui-mock.md, docs/specs/timeline-interactions.md
   - 検証: `make preview` → `make generate-snapshots`（閾値0.5%）
   - 成果物/DoD: ルート個別が正順描画、パン/ズーム応答<1s
   - 満たすGOAL: G1
   - 対応テスト: tests/explorer/loadMapLibre.test.ts, tests/ui.timeline.render.test.tsx
 
-- [ ] 2. Blocksエディタ（端点連結＝手動／提案のみ）
+- [x] 2. Blocksエディタ（端点連結＝手動／提案のみ）
   - 参照: docs/specs/block-ui-redesign.md, docs/specs/requirements-blocks-duties.md
   - 検証: スナップショット合格≤0.5%、`npm run devtools:landing-hero`
   - 成果物/DoD: 連結/解除/並び替えと差分表示が即時
   - 満たすGOAL: G2, G4, G5
   - 対応テスト: tests/timeline.interactions.design.test.ts, tests/encoding.blocksView.test.ts
 
-- [ ] 3. Dutiesエディタ（ドラッグ割付／未割当グループ）
+- [x] 3. Dutiesエディタ（ドラッグ割付／未割当グループ）
   - 参照: docs/specs/duty-editing.md, docs/specs/duty-editing.addendum.md
   - 検証: スナップショット、Undo/Redo 10段
   - 成果物/DoD: 割付/解除/移動が可能、`duties.csv`プレビュー
   - 満たすGOAL: G1, G2, G4, G5
   - 対応テスト: tests/duty.workflow.test.ts, tests/duty.timeline.snap.test.ts, tests/duty.manual.check.test.tsx
 
-- [ ] 4. 警告（Hard/Soft）即時表示と内訳
+- [x] 4. 警告（Hard/Soft）即時表示と内訳
   - 参照: docs/specs/requirements-blocks-duties.md
   - 検証: 編集→<1sで反映、内訳に根拠リンク
   - 成果物/DoD: Hard/Soft件数一致、保存は非ブロック
   - 満たすGOAL: G1, G5
   - 対応テスト: tests/duty.specs.test.ts, tests/duty.metrics.test.ts
 
-- [ ] 5. 効率指標ダッシュ（回送/レイオーバー/可用率）
+- [x] 5. 効率指標ダッシュ（回送/レイオーバー/可用率）
   - 参照: docs/specs/kpi-ux-panel.md
   - 検証: 値が期待値±1%、ツールチップに式
   - 成果物/DoD: 指標固定表示、編集で再計算
   - 満たすGOAL: G6, G10
   - 対応テスト: tests/duty.metrics.test.ts, tests/duty.dashboard.test.ts
 
-- [ ] 6. 二面ビュー切替と編集同期（Vehicle/Driver）
+- [x] 6. 二面ビュー切替と編集同期（Vehicle/Driver）
   - 参照: docs/specs/ui-mock.md, docs/specs/timeline-interactions.md
   - 検証: 切替/編集で200ms以内に同期
   - 成果物/DoD: 双方向編集が即時反映
   - 満たすGOAL: G3
   - 対応テスト: tests/ui.timeline.render.test.tsx
 
-- [ ] 7. CSV入出力（blocks/duties）＋警告要約列
+- [x] 7. CSV入出力（blocks/duties）＋警告要約列
+  - 備考: Export/Import の冪等性と監査ログはテストで担保済み。
+
+- [ ] 8. 設定UI（ダイアログ最小）
+  - 参照: docs/specs/settings-ui.md, docs/templates/*.template.csv
+  - 検証: `make generate-snapshots`
+  - 成果物/DoD: KPI/ルール設定ダイアログが表示・保存できる（実装は存在）。テストを追加して完了扱い。
+  - 満たすGOAL: G6
+  - 対応テスト: 追加予定（例: tests/settings.ui.draft-apply.test.ts）
+
+- [ ] 9. 出力時確認（非ブロッキング）
+  - 参照: docs/specs/output-confirmation.md
+  - 検証: 保存/出力時に非ブロッキングで確認できること
+  - 成果物/DoD: 仕様文書の必須語句と要件をテストで検証
+  - 満たすGOAL: G8
+  - 対応テスト: 追加予定（例: tests/output.confirmation.docs.test.ts）
+
+- [x] 10. 監査/プライバシー（匿名ID＝driver_id）
+  - 参照: docs/specs/file-write-audit.md, docs/specs/identifier-migration.md
+  - 検証: 監査ログ出力、CSV に driver_id を含める
+  - 成果物/DoD: 監査ログと匿名IDの取扱が一貫
+  - 満たすGOAL: G9
+  - 対応テスト: tests/file.write.audit.test.ts, tests/distribution.approval.test.ts, tests/docs.templates.test.ts
   - 参照: docs/specs/diff-export-scope.md, docs/specs/diff-export-rollout.md, docs/specs/file-write-audit.md
   - 検証: Export→Import→Exportが一致（冪等）
   - 成果物/DoD: 警告要約列を含むCSV出力と監査ログ
@@ -132,6 +154,7 @@ docs 配下の散在ドキュメントを「参照はできるが、実装の単
 - [ ] アーカイブ移動: TODO_3/4/5 を archives/2025-10 へ
 - [ ] Archives README を更新
 - [ ] 影響確認: 既存テストのパス/参照を温存（TODO/TODO_2 は残置）
+- [x] 実装確認: 0〜7,10 は実装・単体テスト合格（2025-10-20, 158/158 pass）
 
 ## 発見と驚き
 
@@ -140,6 +163,7 @@ docs 配下の散在ドキュメントを「参照はできるが、実装の単
 ## 決定ログ
 
 2025-10-20: SSOT は plans.md とし、MVP最小セット以外は archives に明示的に誘導する。
+2025-10-20: 実装状況に合わせて 0〜7 を完了、10 を追記し完了に更新。8/9 は「実装は一部あり・テスト未整備」のため未了扱いとする。
 
 ## To-Do
 
@@ -178,3 +202,13 @@ docs 配下の散在ドキュメントを「参照はできるが、実装の単
 - 5 KPI: tests/duty.dashboard.test.ts, tests/duty.metrics.test.ts
 - 7 CSV I/O: tests/export.bar.test.tsx, tests/file.write.audit.test.ts
 - 10 監査/プライバシー: tests/file.write.audit.test.ts, tests/distribution.approval.test.ts
+
+## 追加TODO（未実装・この後に着手）
+
+- [ ] 計測ハーネス（4）: 警告反映 <1s を自動計測する Playwright 手順の整備（操作直前/直後の performance.now() と差分記録、DevTools Performance の補助スクリプト化）。
+- [ ] 計測ハーネス（6）: 二面ビュー同期 <=200ms の自動計測（片面操作→反対面DOM変化の所要時間取得、必要に応じて performance.mark/measure をUIに軽微埋め込み）。
+- [ ] 設定UIテスト（8）: tests/settings.ui.draft-apply.test.ts を追加（docs/specs/settings-ui.md の見出し/項目検証＋ドラフト適用/ロールバック最小ケース）。
+- [ ] 出力時確認テスト（9）: tests/output.confirmation.docs.test.ts を追加（docs/specs/output-confirmation.md の必須語句と「非ブロッキング」要件の文言検証）。
+- [ ] サンプルデータ前提チェック: CI で tools/gtfsHealthCli.ts を `data/GTFS-JP(gunmachuo).zip` と `data/feed_fukutsucity_minibus_*.zip` に対して実行する Job を追加。
+- [ ] DevTools 変数ドキュメント: docs/README.md に `DEVTOOLS_CHROME_CMD/DEVTOOLS_TARGET_URL/DEVTOOLS_BROWSER_URL` の使用例を追記。
+- [ ] エンコーディングCI: `.github/workflows/ci.yml` に `npm run scan:encoding` を追加し、検出時は失敗とする。

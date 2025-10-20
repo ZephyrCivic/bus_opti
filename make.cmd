@@ -13,8 +13,8 @@ if /I "%target%"=="approve-baseline" goto :approve
 goto :help
 
 :preview
-  echo [make] preview -> npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
-  call npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
+  echo [make] preview -> npm run preview
+  call npm run preview
   goto :eof
 
 :snapshots

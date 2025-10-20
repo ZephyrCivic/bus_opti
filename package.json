@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "tsx --test tests/**/*.test.ts",
     "test:visual": "playwright test --config=playwright.config.ts tests/playwright",
     "snapshots:update": "playwright test --update-snapshots=all --config=playwright.config.ts tests/playwright",
@@ -45,6 +45,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/chrome-remote-interface": "^0.31.14",
     "@types/node": "^22.14.0",
     "@types/papaparse": "^5.3.14",
