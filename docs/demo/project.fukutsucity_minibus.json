@@ -2,8 +2,8 @@
   "projectVersion": 1,
   "gtfs": {
     "version": 1,
-    "sourceName": "GTFS-JP(gunmachuo).zip",
-    "importedAt": "2025-10-07T00:00:00.000Z",
+    "sourceName": "feed_fukutsucity_minibus_20251001_20250820163420.zip",
+    "importedAt": "2025-10-17T00:00:00.000Z",
     "tables": {},
     "missingFiles": [],
     "summary": [],

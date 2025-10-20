@@ -118,3 +118,7 @@
 ---
 
 補足: `中拘束 (mid-duty break)` と `交代地点制約 (relief-point constraint)` の表記を併記しています。テストは英語側の語にも反応するようにします。
+> この文書は参考（Reference）です。2025-10-17 時点の正は
+> `docs/specs/requirements-blocks-duties.md` と
+> `docs/specs/requirements-blocks-duties.addendum.blockless.md`。
+> 以降の更新は新要件側を優先してください。

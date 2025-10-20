@@ -49,3 +49,5 @@
 - Undoは最新1件のみ（`settings.undoStackLimit` 初期値50）。実行後はスナップショットを破棄し二重Undoを抑止。
 - `GtfsImportProvider` が `dutyActions` を公開し、GTFSの再読込やリセット時に Duty状態も初期化する。
 - Duty/Segment IDは `DUTY_###` / `SEG_###` フォーマットで採番し、CSVエクスポート・UI双方で再利用する前提。
+> この追補は参考（Reference）です。BlockIDなし前提の最新要件は
+> `docs/specs/requirements-blocks-duties.addendum.blockless.md` を参照してください。

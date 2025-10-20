@@ -76,3 +76,9 @@ $RECYCLE.BIN/
 *.bak
 *.orig
 
+# Project-specific temporary files
+/temp-*.png
+/creating
+/tmp_plans_debug.txt
+/logs/
+

@@ -12,9 +12,17 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:visual": "playwright test --config=playwright.config.ts tests/playwright",
+    "snapshots:update": "playwright test --update-snapshots=all --config=playwright.config.ts tests/playwright",
+    "snapshots:install": "playwright install chromium",
+    "generate-snapshots": "npm run build && npm run snapshots:install && npm run test:visual",
+    "approve-baseline": "npm run snapshots:update",
+    "context7:docs": "tsx tools/mcps/context7/docsCli.ts",
+    "context7:resolve": "tsx tools/mcps/context7/resolveCli.ts",
     "scan:encoding": "tsx tools/encodingScanCli.ts",
     "smoke:chrome": "tsx tools/chromeSmoke.ts",
-    "smoke:ui": "tsx tools/uiSmoke.ts"
+    "smoke:ui": "tsx tools/uiSmoke.ts",
+    "devtools:landing-hero": "tsx tools/devtools/landingHeroCheck.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",

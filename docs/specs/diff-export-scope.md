@@ -39,3 +39,16 @@ Diff 最小 UI と Blocks / Duties の CSV エクスポートは 2025-10-07 時�
 - docs/specs/duty-editing.md / duty-editing.addendum.md  
 - README 「差分とダッシュボード指標」節  
 - tools/chromeDevtoolsCli.ts（スクリーンショット CLI）
+
+## 警告要約列（CSV 仕様・追記）
+- 列名と順序（提案）
+  - violations_summary: 例 "H:3;S:5"（Hard/Soft件数の要約）
+  - violations_hard: 数値（Hard件数）
+  - violations_soft: 数値（Soft件数）
+- 出力箇所
+  - blocks.csv / duties.csv の末尾列として追加（将来変更可）
+- フォーマット規則
+  - 数値は整数、空は0。小数なし
+  - 区切りはセミコロン、キーは固定（H,S）
+- DoD
+  - UIの警告カウンタとCSVが一致

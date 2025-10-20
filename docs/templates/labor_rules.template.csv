@@ -1,0 +1,2 @@
+﻿driver_id,max_continuous_drive_min,min_break_min,max_duty_span_min,max_work_min,night_window_start,night_window_end,qualifications,affiliation
+DRV001,240,45,780,480,22:00:00,05:00:00,large_bus|route,DepotA

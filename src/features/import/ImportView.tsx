@@ -5,7 +5,7 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { UploadCloud, RefreshCcw, FileWarning } from 'lucide-react';
+import { UploadCloud, RefreshCcw, FileWarning, ClipboardCopy } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,13 @@ export default function ImportView(): JSX.Element {
   const savedInputRef = useRef<HTMLInputElement | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const { status, errorMessage, result, importFromFile, reset, loadFromSaved, manual, setManual } = useGtfsImport();
+  const sampleFeeds = useMemo(
+    () => [
+      'data/GTFS-JP(gunmachuo).zip',
+      'data/feed_fukutsucity_minibus_20251001_20250820163420.zip',
+    ],
+    [],
+  );
 
   const handleFiles = useCallback(
     async (fileList: FileList | null) => {
@@ -77,6 +84,14 @@ export default function ImportView(): JSX.Element {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
   };
+
+  const copyToClipboard = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // クリップボード未許可環境では警告を出さず無視
+    }
+  }, []);
 
   const handleSaved = useCallback(
     async (files: FileList | null) => {
@@ -130,6 +145,25 @@ export default function ImportView(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>サンプルフィード（ローカル）</CardTitle>
+          <CardDescription>
+            エクスプローラで次のZIPを見つけて、この画面へドラッグ＆ドロップしてください（相対パス）。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {sampleFeeds.map((name) => (
+            <div key={name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+              <code className="truncate" title={name}>{name}</code>
+              <Button variant="ghost" size="sm" type="button" onClick={() => copyToClipboard(name)}>
+                <ClipboardCopy className="mr-1 h-4 w-4" />コピー
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <Card className="border-dashed">
         <CardHeader>
           <CardTitle>GTFS取込</CardTitle>
