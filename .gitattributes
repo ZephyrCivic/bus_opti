@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+# Ensure these are always committed and checked out as UTF-8 LF
+*.md text working-tree-encoding=UTF-8 eol=lf
+*.txt text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.cjs text eol=lf
+*.html text eol=lf
+

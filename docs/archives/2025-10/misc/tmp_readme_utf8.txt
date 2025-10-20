@@ -1,8 +1,1 @@
-### archived: tmp_readme_utf8.txt
-
-# TS-bus-operation-app
-
-�^�p�v���MVP�BGTFS��荞�� �� Block�i�^�p�j���� �� Duty�i�斱�j�݌v�E���؂��A�V���v����UI��CSV���o�͂őf�����񂷂��߂�Web�A�v���ł��B
-
-... (archived content truncated)
-
+This file was re-encoded to UTF-8 (LF) on 2025-10-20 to fix mojibake.\nSee root plans.md for the SSOT.\n

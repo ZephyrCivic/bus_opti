@@ -1,7 +1,9 @@
 /**
  * tools/encodingScanCli.ts
- * ワークスペース内のテキストファイルをUTF-8として検証し、文字化けの兆候を検出するCLI。
- * 目的は合意済みドキュメントの可読性を保ち、誤ったエンコーディング保存を早期に察知すること。
+ * Minimal encoding hygiene checker for UTF-8 project files.
+ * Detects invalid UTF-8, replacement characters, halfwidth katakana, and
+ * disallowed fullwidth Latin characters. Provides a tiny CLI plus a reusable
+ * `scanPaths` helper for tests.
  */
 
 import { promises as fs } from 'node:fs';
@@ -14,6 +16,7 @@ const REPLACEMENT_PLACEHOLDER = '\uFFFD';
 
 const SKIP_DIRS = new Set([
   '.git',
+  '.github',
   '.husky',
   '.turbo',
   '.vscode',
@@ -23,9 +26,8 @@ const SKIP_DIRS = new Set([
   'build',
   'out',
   'coverage',
-  'playwright-report',
-  'test-results',
   'logs',
+  'tmp',
 ]);
 
 const SKIP_EXTS = new Set([
@@ -53,17 +55,18 @@ const MAX_BYTES = 5 * 1024 * 1024; // 5MB safety guard
 
 const HALFWIDTH_KATAKANA_RANGE = { start: 0xff61, end: 0xff9f };
 const FULLWIDTH_LATIN_RANGE = { start: 0xff01, end: 0xff5e };
-// 許容する全角記号（日本語ドキュメントで一般的に使用され誤検知が多い）
 const ALLOWED_FULLWIDTH_CODEPOINTS = new Set<number>([
-  0xff08, // （ FULLWIDTH LEFT PARENTHESIS
-  0xff09, // ） FULLWIDTH RIGHT PARENTHESIS
-  0xff06, // ＆ FULLWIDTH AMPERSAND (ドラッグ＆ドロップ等)
-  0xff0b, // ＋ FULLWIDTH PLUS SIGN（文中の並列表現で一般的）
-  0xff0f, // ／ FULLWIDTH SOLIDUS（区切りとして一般的）
-  0xff0c, // ， FULLWIDTH COMMA（和文で一般的）
-  0xff1a, // ： FULLWIDTH COLON（和文で一般的）
-  0xff1d, // ＝ FULLWIDTH EQUALS SIGN（和文表記で一般的）
-  0xff1f, // ？ FULLWIDTH QUESTION MARK（和文で一般的）
+  0xff08, // FULLWIDTH LEFT PARENTHESIS
+  0xff09, // FULLWIDTH RIGHT PARENTHESIS
+  0xff06, // FULLWIDTH AMPERSAND
+  0xff0b, // FULLWIDTH PLUS SIGN
+  0xff0f, // FULLWIDTH SOLIDUS
+  0xff0c, // FULLWIDTH COMMA
+  0xff1a, // FULLWIDTH COLON
+  0xff1d, // FULLWIDTH EQUALS SIGN
+  0xff1f, // FULLWIDTH QUESTION MARK
+  0xff3b, // FULLWIDTH LEFT SQUARE BRACKET
+  0xff3d, // FULLWIDTH RIGHT SQUARE BRACKET
 ]);
 
 export type IssueType =
@@ -140,79 +143,79 @@ function locatePosition(text: string, index: number): { line: number; column: nu
   return { line, column };
 }
 
-function makeSnippet(text: string, index: number, radius = 30): string {
+function makeSnippet(text: string, index: number, radius = 12): string {
   const start = Math.max(0, index - radius);
   const end = Math.min(text.length, index + radius);
-  return text.slice(start, end).replace(/\s+/g, ' ').trim();
+  return text.slice(start, end).replace(/\s+/g, ' ');
+}
+
+function detectIssues(buffer: Buffer): ScanIssue[] {
+  const issues: ScanIssue[] = [];
+  let decoded = '';
+
+  try {
+    decoded = decoder.decode(buffer);
+  } catch {
+    issues.push({
+      type: 'INVALID_UTF8',
+      message: 'Invalid UTF-8 sequence detected.',
+    });
+    return issues;
+  }
+
+  const replacementIndex = decoded.indexOf(REPLACEMENT_PLACEHOLDER);
+  if (replacementIndex !== -1) {
+    issues.push({
+      type: 'REPLACEMENT_CHAR',
+      message: 'Replacement character (\uFFFD) found. Check source encoding.',
+      position: locatePosition(decoded, replacementIndex),
+      snippet: makeSnippet(decoded, replacementIndex),
+    });
+  }
+
+  for (let i = 0; i < decoded.length; i += 1) {
+    const code = decoded.charCodeAt(i);
+    if (code >= HALFWIDTH_KATAKANA_RANGE.start && code <= HALFWIDTH_KATAKANA_RANGE.end) {
+      issues.push({
+        type: 'HALFWIDTH_KATAKANA',
+        message: `Halfwidth katakana detected (U+${code.toString(16).toUpperCase()}).`,
+        position: locatePosition(decoded, i),
+        snippet: makeSnippet(decoded, i),
+      });
+      break;
+    }
+  }
+
+  for (let i = 0; i < decoded.length; i += 1) {
+    const code = decoded.charCodeAt(i);
+    if (
+      code >= FULLWIDTH_LATIN_RANGE.start &&
+      code <= FULLWIDTH_LATIN_RANGE.end &&
+      !ALLOWED_FULLWIDTH_CODEPOINTS.has(code)
+    ) {
+      issues.push({
+        type: 'FULLWIDTH_LATIN',
+        message: `Disallowed fullwidth Latin character detected (U+${code.toString(16).toUpperCase()}).`,
+        position: locatePosition(decoded, i),
+        snippet: makeSnippet(decoded, i),
+      });
+      break;
+    }
+  }
+
+  return issues;
 }
 
 export async function scanPaths(paths: string[], root = process.cwd()): Promise<ScanResult[]> {
-  const files = await collectFiles(paths.length > 0 ? paths : ['.'], root);
+  const files = await collectFiles(paths, root);
   const results: ScanResult[] = [];
 
-  for (const filePath of files) {
-    const issues: ScanIssue[] = [];
-    const buffer = await fs.readFile(filePath);
-
-    let text: string | null = null;
-
-    try {
-      text = decoder.decode(buffer);
-    } catch (error) {
-      issues.push({
-        type: 'INVALID_UTF8',
-        message: 'UTF-8としてデコードできないバイト列を検出しました。',
-      });
-    }
-
-    if (text) {
-      const replacementIndex = text.indexOf(REPLACEMENT_PLACEHOLDER);
-      if (replacementIndex !== -1) {
-        const position = locatePosition(text, replacementIndex);
-        issues.push({
-          type: 'REPLACEMENT_CHAR',
-          message: `置換文字（${REPLACEMENT_PLACEHOLDER}）が含まれています。文字化けの可能性があります。`,
-          position,
-          snippet: makeSnippet(text, replacementIndex),
-        });
-      }
-
-      for (let i = 0; i < text.length; i += 1) {
-        const code = text.charCodeAt(i);
-        if (code >= HALFWIDTH_KATAKANA_RANGE.start && code <= HALFWIDTH_KATAKANA_RANGE.end) {
-          const position = locatePosition(text, i);
-          issues.push({
-            type: 'HALFWIDTH_KATAKANA',
-            message: `半角カナ（U+${code.toString(16).toUpperCase()}）が含まれています。文字化け（Shift_JIS→UTF-8変換漏れ）の可能性があります。`,
-            position,
-            snippet: makeSnippet(text, i),
-          });
-          break;
-        }
-      }
-
-      for (let i = 0; i < text.length; i += 1) {
-        const code = text.charCodeAt(i);
-        if (
-          code >= FULLWIDTH_LATIN_RANGE.start &&
-          code <= FULLWIDTH_LATIN_RANGE.end &&
-          !ALLOWED_FULLWIDTH_CODEPOINTS.has(code)
-        ) {
-          const position = locatePosition(text, i);
-          issues.push({
-            type: 'FULLWIDTH_LATIN',
-            message: `全角英数字（U+${code.toString(16).toUpperCase()}）が含まれています。エンコード変換ミスや全角英数字の混入が疑われます。`,
-            position,
-            snippet: makeSnippet(text, i),
-          });
-          break;
-        }
-      }
-    }
-
+  for (const file of files) {
+    const buffer = await fs.readFile(file);
+    const issues = detectIssues(buffer);
     if (issues.length > 0) {
       results.push({
-        file: path.relative(root, filePath) || path.basename(filePath),
+        file: path.relative(root, file) || path.basename(file),
         issues,
       });
     }
@@ -239,8 +242,8 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 async function runCli(): Promise<void> {
-  const { paths, json } = parseArgs(process.argv.slice(2));
-  const defaultTargets = ['docs', 'src', 'tools', 'readme.md'];
+  const { json, paths } = parseArgs(process.argv.slice(2));
+  const defaultTargets = ['docs', 'src', 'tools', 'readme.md', 'plans.md', 'AGENTS.md'];
   const targets = paths.length > 0 ? paths : defaultTargets;
   const results = await scanPaths(targets);
 
@@ -251,17 +254,15 @@ async function runCli(): Promise<void> {
   }
 
   if (results.length === 0) {
-    console.log('文字化けの兆候は見つかりませんでした。');
+    console.log('Encoding check passed.');
     return;
   }
 
-  console.error(`文字化けの可能性があるファイル: ${results.length}件`);
+  console.error(`Encoding issues detected: ${results.length}`);
   for (const result of results) {
     console.error(`- ${result.file}`);
     for (const issue of result.issues) {
-      const location = issue.position
-        ? ` (line ${issue.position.line}, col ${issue.position.column})`
-        : '';
+      const location = issue.position ? ` (line ${issue.position.line}, col ${issue.position.column})` : '';
       console.error(`    • ${issue.message}${location}`);
       if (issue.snippet) {
         console.error(`      snippet: ${issue.snippet}`);
@@ -279,7 +280,7 @@ const isDirectRun = (() => {
 
 if (isDirectRun) {
   runCli().catch((error) => {
-    console.error('encodingScanCli: 実行中にエラーが発生しました。');
+    console.error('encodingScanCli: unexpected failure');
     console.error(error);
     process.exit(1);
   });

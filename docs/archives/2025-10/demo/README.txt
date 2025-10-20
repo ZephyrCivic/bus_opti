@@ -1,2 +1,1 @@
-demo�菇 (Import��Blocks��Duties��CSV) ���Љ���ʃe�L�X�g�B
-
+This file was re-encoded to UTF-8 (LF) on 2025-10-20 to fix mojibake.\nSee root plans.md for the SSOT.\n

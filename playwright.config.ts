@@ -9,6 +9,8 @@ function readThreshold(): number {
 }
 
 const baseURL = process.env.APP_BASE_URL ?? 'http://127.0.0.1:4173';
+const previewURL = new URL('/bus_opti/', `${baseURL.endsWith('/') ? baseURL : `${baseURL}/`}`).toString();
+const shouldStartWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER !== '1';
 
 export default defineConfig({
   testDir: 'tests/playwright',
@@ -22,12 +24,14 @@ export default defineConfig({
       maxDiffPixelRatio: readThreshold(),
     },
   },
-  webServer: {
-    command: 'npm run preview',
-    reuseExistingServer: true,
-    timeout: 30_000,
-    url: baseURL,
-  },
+  webServer: shouldStartWebServer
+    ? {
+        command: 'npm run preview',
+        reuseExistingServer: true,
+        timeout: 30_000,
+        url: previewURL,
+      }
+    : undefined,
   use: {
     baseURL,
     headless: true,

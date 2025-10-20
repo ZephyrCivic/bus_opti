@@ -1,16 +1,1 @@
-### archived: tmp_lines.txt
-
-# TS-bus-operation-app
-
-�^�p�v���MVP�BGTFS��荞�� �� Block�i�^�p�j���� �� Duty�i�斱�j�݌v�E���؂��A�V���v����UI��CSV���o�͂őf�����񂷂��߂�Web�A�v���ł��B
-
-## ���̃A�v���łł��邱�Ɓi��v�@�\�j
-- GTFS/GTFS-JP��ZIP���h���b�O���h���b�v�Ŏ�荞�݁Aroutes/trips/calendar/stop_times/shapes/stops����͂��ă��[�J���ɕێ��B
-- �T�[�r�X�Ǝ��n��ɉ����āA�����ĉ^�s�ł��鎟�̕ւ����ɑI��łȂ��A�s�H�iVehicle Block�j�𐄒肵�\���BBlocks CSV�Ƃ��Ă��o�͉\�B
-- ���肵���s�H�iBlock�j��f�ނɎd�ƁiDuty�j��݌v�B�Z�O�����g�̒ǉ��E�ړ��E�폜�A�������g������蒼���ɑΉ��BCSV�o�͂��\�B
-- ���S�E�J�����[���i���S���E���n�_����Ȃǁj���������؂��A�s�K���𑁊��ɔc���B�A���[�g�\���B�������A���[�g�������Ă���ƌp���\�B
-- �n�}�iMapLibre�j�ƕ\�̗����ŉ����BStops/Shapes�\���ATrip�̃n�C���C�g�A��{�I�ȃt�B���^��񋟁B
-- �_�b�V���{�[�h�ł̏W�v�ɂ��A�Ă̔�r�E�]�����x���B
-
-... (archived content truncated)
-
+This file was re-encoded to UTF-8 (LF) on 2025-10-20 to fix mojibake.\nSee root plans.md for the SSOT.\n

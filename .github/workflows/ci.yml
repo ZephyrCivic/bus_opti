@@ -23,6 +23,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: GTFS health check
+        run: |
+          npx tsx tools/gtfsHealthCli.ts 'data/GTFS-JP(gunmachuo).zip'
+          npx tsx tools/gtfsHealthCli.ts data/feed_fukutsucity_minibus_20251001_20250820163420.zip
+
       - name: Encoding scan
         run: npm run scan:encoding -- --json
 
