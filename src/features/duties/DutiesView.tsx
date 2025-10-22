@@ -4,7 +4,7 @@
  */
 import { useCallback, useMemo, useRef } from 'react';
 
-import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
 import { parseTimeLabel } from '@/features/timeline/timeScale';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { Duty, DutySegment } from '@/types';
@@ -70,39 +70,41 @@ export default function DutiesView(): JSX.Element {
     return plan.summaries
       .map((summary) => {
         const trips = blockTripMinutes.get(summary.blockId) ?? [];
-        const segments =
-          trips.length > 0
-            ? trips.map((trip, index) => ({
-                id: `${summary.blockId}-${trip.tripId}-${index}`,
-                label: trip.tripId,
-                startMinutes: trip.startMinutes,
-                endMinutes: trip.endMinutes,
-                color: 'var(--primary)',
-              }))
-            : (() => {
-                const startMinutes = parseTimeLabel(summary.firstTripStart);
-                const endMinutes = parseTimeLabel(summary.lastTripEnd);
-                if (startMinutes === undefined || endMinutes === undefined) {
-                  return [];
-                }
-                return [
-                  {
-                    id: `${summary.blockId}-window`,
-                    label: `${summary.firstTripStart} → ${summary.lastTripEnd}`,
-                    startMinutes,
-                    endMinutes: Math.max(endMinutes, startMinutes + 1),
-                    color: 'var(--primary)',
-                  },
-                ];
-              })();
-        if (segments.length === 0) {
-          return null;
+
+        let segments: TimelineSegment[];
+        if (trips.length > 0) {
+          segments = trips.map((trip, index) => ({
+            id: `${summary.blockId}-${trip.tripId}-${index}`,
+            label: trip.tripId,
+            startMinutes: trip.startMinutes,
+            endMinutes: trip.endMinutes,
+            color: 'var(--primary)',
+          }));
+        } else {
+          const startMinutes = parseTimeLabel(summary.firstTripStart);
+          const endMinutes = parseTimeLabel(summary.lastTripEnd);
+          if (startMinutes === undefined || endMinutes === undefined) {
+            return null;
+          }
+          segments = [
+            {
+              id: `${summary.blockId}-window`,
+              label: `${summary.firstTripStart} → ${summary.lastTripEnd}`,
+              startMinutes,
+              endMinutes: Math.max(endMinutes, startMinutes + 1),
+              color: 'var(--primary)',
+            },
+          ];
         }
-        return {
+
+        if (segments.length === 0) return null;
+
+        const lane: TimelineLane = {
           id: summary.blockId,
           label: `${summary.blockId}（${summary.tripCount}便）`,
           segments,
         };
+        return lane;
       })
       .filter((lane): lane is TimelineLane => lane !== null);
   }, [blockTripMinutes, plan.summaries]);
