@@ -1,6 +1,6 @@
 /**
  * src/features/blocks/BlocksView.tsx
- * ブロック推定結果を確認し、ターン間隔や重複状況を把握する画面。
+ * ブロック（行路）編集結果を確認し、ターン間隔や重複状況を把握する画面。
  * タイムライン、統計カード、詳細テーブル、未割当便一覧を提供する。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -131,7 +131,7 @@ export default function BlocksView(): JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">行路推定</h2>
+        <h2 className="text-lg font-semibold">行路編集</h2>
         <p className="text-sm text-muted-foreground">
           GTFS 取込データを Greedy アルゴリズムで束ね、ターン間隔（現在 {manualPlan.maxTurnGapMinutes} 分）と重複状況を確認します。
         </p>
@@ -256,7 +256,7 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
     <Card>
       <CardHeader>
         <CardTitle>ブロック一覧</CardTitle>
-        <CardDescription>推定されたブロックの概要やターン間隔、重複量を確認できます。</CardDescription>
+        <CardDescription>編集した行路の概要やターン間隔、重複量を確認できます。</CardDescription>
       </CardHeader>
       <CardContent>
         {summaries.length === 0 ? (

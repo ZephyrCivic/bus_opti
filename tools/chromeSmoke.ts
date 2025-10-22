@@ -10,7 +10,7 @@ import { evaluateChrome, DEFAULT_CHROME_PATH, DEFAULT_REMOTE_PORT } from './chro
 
 const PREVIEW_ARGS = ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4174', '--strictPort'];
 const SMOKE_URL = 'http://127.0.0.1:4174';
-export const EXPECTED_TITLE = 'TS-bus-operation-app';
+export const EXPECTED_TITLE = 'バス運行計画ツール';
 
 function spawnNpm(args: string[]): ChildProcessWithoutNullStreams {
   const npmExecPath = process.env.npm_execpath;

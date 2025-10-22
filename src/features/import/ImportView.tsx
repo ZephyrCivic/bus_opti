@@ -19,7 +19,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
-import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
@@ -37,30 +36,20 @@ const STATUS_COPY: Record<string, string> = {
   error: '失敗',
 };
 
-interface RouteOption {
-  id: string;
-  label: string;
-  description?: string;
-}
-
-function areStringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 export default function ImportView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const savedInputRef = useRef<HTMLInputElement | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [routeFilterQuery, setRouteFilterQuery] = useState('');
-  const { status, errorMessage, result, importFromFile, reset, loadFromSaved, setManual, selectedRouteIds, setSelectedRouteIds } = useGtfsImport();
+  const {
+    status,
+    errorMessage,
+    result,
+    importFromFile,
+    reset,
+    loadFromSaved,
+    setManual,
+    selectedRouteIds,
+  } = useGtfsImport();
   const { navigate } = useSectionNavigation();
   const sampleFeeds = useMemo(
     () => [
@@ -155,81 +144,8 @@ export default function ImportView(): JSX.Element {
     [],
   );
 
-  const routeOptions = useMemo<RouteOption[]>(() => {
-    if (!result) {
-      return [];
-    }
-    const trips = result.tables['trips.txt']?.rows ?? [];
-    const routes = result.tables['routes.txt']?.rows ?? [];
-    const routeNameMap = new Map<string, string>();
-    for (const entry of routes) {
-      const routeId = entry.route_id?.trim();
-      if (!routeId) continue;
-      const shortName = entry.route_short_name?.trim();
-      const longName = entry.route_long_name?.trim();
-      const display = shortName || longName;
-      if (display) {
-        routeNameMap.set(routeId, display);
-      }
-    }
-    const uniqueIds = new Set<string>();
-    for (const trip of trips) {
-      const routeId = trip.route_id?.trim();
-      if (routeId) {
-        uniqueIds.add(routeId);
-      }
-    }
-    return Array.from(uniqueIds)
-      .sort((a, b) => a.localeCompare(b))
-      .map((routeId) => ({
-        id: routeId,
-        label: routeNameMap.get(routeId) ?? routeId,
-        description: routeNameMap.has(routeId) ? routeId : undefined,
-      }));
-  }, [result]);
-
-  const routesKey = useMemo(() => routeOptions.map((option) => option.id).join('|'), [routeOptions]);
-
   const selectedRoutesKey = useMemo(() => selectedRouteIds.join('|'), [selectedRouteIds]);
-  const selectedRoutesSet = useMemo(() => new Set(selectedRouteIds), [selectedRoutesKey]);
-  const lastSourceNameRef = useRef<string | undefined>(undefined);
   const telemetrySelectionRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!result) {
-      lastSourceNameRef.current = undefined;
-      if (selectedRouteIds.length > 0) {
-        setSelectedRouteIds([]);
-      }
-      return;
-    }
-
-    const sourceName = result.sourceName;
-    const availableIds = routeOptions.map((option) => option.id);
-    const availableSet = new Set(availableIds);
-    const filtered = selectedRouteIds.filter((id) => availableSet.has(id));
-    const filteredChanged = filtered.length !== selectedRouteIds.length;
-
-    if (lastSourceNameRef.current !== sourceName) {
-      lastSourceNameRef.current = sourceName;
-      if (!areStringArraysEqual(availableIds, selectedRouteIds)) {
-        setSelectedRouteIds(availableIds);
-        setRouteFilterQuery('');
-      }
-      return;
-    }
-
-    if (filteredChanged) {
-      if (filtered.length === 0 && selectedRouteIds.length > 0 && availableIds.length > 0) {
-        if (!areStringArraysEqual(availableIds, selectedRouteIds)) {
-          setSelectedRouteIds(availableIds);
-          setRouteFilterQuery('');
-        }
-      } else if (!areStringArraysEqual(filtered, selectedRouteIds)) {
-        setSelectedRouteIds(filtered);
-      }
-    }
-  }, [result, routeOptions, selectedRouteIds, setSelectedRouteIds]);
 
   useEffect(() => {
     if (!result) {
@@ -250,17 +166,20 @@ export default function ImportView(): JSX.Element {
     });
   }, [result, selectedRoutesKey, selectedRouteIds.length]);
 
-  const filteredRoutes = useMemo(() => {
-    const query = routeFilterQuery.trim().toLowerCase();
-    if (!query) {
-      return routeOptions;
+  const totalRouteCount = useMemo(() => {
+    if (!result) {
+      return 0;
     }
-    return routeOptions.filter((option) => {
-      const label = option.label.toLowerCase();
-      const description = option.description?.toLowerCase() ?? '';
-      return label.includes(query) || option.id.toLowerCase().includes(query) || description.includes(query);
-    });
-  }, [routeFilterQuery, routeOptions]);
+    const trips = result.tables['trips.txt']?.rows ?? [];
+    const ids = new Set<string>();
+    for (const trip of trips) {
+      const routeId = typeof trip.route_id === 'string' ? trip.route_id.trim() : '';
+      if (routeId) {
+        ids.add(routeId);
+      }
+    }
+    return ids.size;
+  }, [result]);
 
   const hasOptionalWarnings = Boolean(result?.missingFiles.length);
   const hasAlerts = Boolean(result?.alerts && result.alerts.length > 0);
@@ -292,20 +211,17 @@ export default function ImportView(): JSX.Element {
           }
         }}
       />
-
       <Card>
         <CardHeader>
           <CardTitle>サンプルフィード（ローカル）</CardTitle>
-          <CardDescription>
-            エクスプローラで次のZIPを見つけて、この画面へドラッグ＆ドロップしてください（相対パス）。
-          </CardDescription>
+          <CardDescription>エクスプローラで次のZIPを見つけて、この画面へドラッグ＆ドロップしてください（相対パス）。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {sampleFeeds.map((name) => (
             <div key={name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
               <code className="truncate" title={name}>{name}</code>
               <Button variant="ghost" size="sm" type="button" onClick={() => copyToClipboard(name)}>
-                <ClipboardCopy className="mr-1 h-4 w-4" />コピー
+                <ClipboardCopy className="mr-1 h-4 w-4" aria-hidden />コピー
               </Button>
             </div>
           ))}
@@ -318,14 +234,14 @@ export default function ImportView(): JSX.Element {
           <CardDescription>新規開始（GTFS）または保存データから再開する導線を選択してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-3">
-              <div className="space-y-1">
+          <div className="flex flex-col gap-6 md:grid md:grid-cols-[1fr_auto_1fr] md:items-start">
+            <div className="flex h-full flex-col gap-3">
+              <div className="space-y-1 text-left">
                 <h3 className="text-sm font-semibold">GTFSを読み込む</h3>
                 <p className="text-xs text-muted-foreground">ZIP (stops/trips/stop_times/… ) から新規プロジェクトを開始します。</p>
               </div>
               <div
-                className="flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-muted-foreground/40 bg-muted/20 text-center"
+                className="flex min-h-[180px] flex-1 flex-col justify-center gap-4 rounded-lg border border-muted-foreground/40 bg-muted/20 p-6 text-left"
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 role="button"
@@ -340,36 +256,41 @@ export default function ImportView(): JSX.Element {
                   <p className="text-sm font-medium">ここに ZIP をドロップ</p>
                   <p className="text-xs text-muted-foreground">最大 100MB 程度まで想定（ローカル処理）</p>
                 </div>
-                <Button variant="outline" size="sm" type="button" onClick={() => fileInputRef.current?.click()}>
+                <Button variant="outline" size="sm" type="button" className="self-start" onClick={() => fileInputRef.current?.click()}>
                   ファイルを選択
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">状態: {STATUS_COPY[status] ?? status}</p>
+              <p className="text-xs text-muted-foreground text-left">状態: {STATUS_COPY[status] ?? status}</p>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1">
+            <div className="flex items-center justify-center md:col-auto">
+              <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm">OR</span>
+            </div>
+
+            <div className="flex h-full flex-col gap-3">
+              <div className="space-y-1 text-left">
                 <h3 className="text-sm font-semibold">保存データから再開</h3>
                 <p className="text-xs text-muted-foreground">以前の作業（プロジェクトJSON / 取込結果JSON）を開きます。</p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-muted/10 p-4 text-sm">
+              <div className="flex min-h-[180px] flex-1 flex-col justify-between gap-4 rounded-lg border border-border/60 bg-muted/10 p-6 text-left text-sm">
                 <p className="text-muted-foreground">
                   取込結果のみ（取込結果JSON）と手動編集を含むプロジェクトJSONの両方に対応しています。
                 </p>
-                <Button className="mt-4" type="button" onClick={() => savedInputRef.current?.click()}>
+                <Button type="button" className="self-start" onClick={() => savedInputRef.current?.click()}>
                   保存ファイルを選択
                 </Button>
               </div>
-              <div className="rounded-lg border border-border/40 bg-background p-3 text-xs text-muted-foreground">
+              <div className="rounded-lg border border-border/40 bg-background p-3 text-left text-xs text-muted-foreground">
                 Drag & Drop にも対応しています。ファイル選択後に解析が始まり、完了すると下部のサマリーへ遷移します。
               </div>
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>保存・出力は左ナビの「差分・出力」から実行できます。</span>
-          {result?.sourceName ? <Badge variant="secondary">最新の読み込み: {result.sourceName}</Badge> : null}
-        </CardFooter>
+        {result?.sourceName ? (
+          <CardFooter className="justify-start">
+            <Badge variant="secondary">最新の読み込み: {result.sourceName}</Badge>
+          </CardFooter>
+        ) : null}
       </Card>
 
       {localError && (
@@ -446,73 +367,18 @@ export default function ImportView(): JSX.Element {
               </Alert>
             )}
 
-            <section aria-label="路線の絞り込み" className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold">（任意）路線の絞り込み</h3>
-                  <p className="text-xs text-muted-foreground">初期状態ではすべての路線が選択されています。選択を変更すると Explorer でのハイライト対象が更新される予定です。</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    onClick={() => setSelectedRouteIds(routeOptions.map((option) => option.id))}
-                  >
-                    全選択
-                  </Button>
-                  <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedRouteIds([])}>
-                    全解除
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-2 md:grid-cols-[240px_1fr]">
-                <Input
-                  value={routeFilterQuery}
-                  onChange={(event) => setRouteFilterQuery(event.target.value)}
-                  placeholder="系統ID・名称で検索"
-                  aria-label="路線検索"
-                />
-                <p className="text-xs text-muted-foreground self-center">選択中: {selectedRouteIds.length} / {routeOptions.length}</p>
-              </div>
-              <div className="max-h-[320px] overflow-y-auto rounded-md border border-border/40 bg-background/60 p-2">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredRoutes.length === 0 ? (
-                    <p className="col-span-full rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">該当する路線がありません。</p>
-                  ) : (
-                    filteredRoutes.map((option) => {
-                      const checked = selectedRoutesSet.has(option.id);
-                      return (
-                        <label
-                          key={option.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm transition hover:border-border focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4"
-                            checked={checked}
-                            onChange={() => {
-                              setSelectedRouteIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(option.id)) {
-                                  next.delete(option.id);
-                                } else {
-                                  next.add(option.id);
-                                }
-                                return Array.from(next);
-                              });
-                            }}
-                          />
-                          <span className="flex flex-col">
-                            <span className="font-medium text-foreground">{option.label}</span>
-                            <span className="text-xs text-muted-foreground">{option.description ?? option.id}</span>
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+            <section
+              aria-label="行路編集対象の便の選択ガイド"
+              className="space-y-2 rounded-md border border-dashed border-border/60 bg-background/60 p-4"
+            >
+              <h3 className="text-sm font-semibold">行路編集対象の便（系統）の選択</h3>
+              <p className="text-xs text-muted-foreground">
+                選択中: {selectedRouteIds.length.toLocaleString()} / {totalRouteCount.toLocaleString()} 便（系統）。
+                地図画面の「行路編集対象の便を選択」でチェックを更新すると、ハイライトとタイムラインの対象が切り替わります。
+              </p>
+              <p className="text-xs text-muted-foreground">
+                選択内容は保存データにも含まれます。取り込み直後は全便が選択されるため、必要に応じて 「行路編集対象の便を選択」で絞り込んでください。
+              </p>
             </section>
           </CardContent>
           <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -535,7 +401,7 @@ export default function ImportView(): JSX.Element {
               disabled={!hasRouteSelection}
               aria-disabled={!hasRouteSelection}
             >
-              Explorer を開く
+              「行路編集対象の便を選択」を開く
             </Button>
           </CardFooter>
         </Card>
@@ -543,3 +409,5 @@ export default function ImportView(): JSX.Element {
     </div>
   );
 }
+
+

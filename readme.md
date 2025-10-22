@@ -28,7 +28,6 @@ Step1として、人の判断で行路（Block）と交番（Duty）を編集・
 ## 仕様上の決定キーワード（抜粋）
 - Block の目標比（設計目安）: 70~80%
 - MapLibre をデフォルトとする（軽量・OSS）。
-- サンプルフィード: `data/GTFS-JP(gunmachuo).zip`
 - Duty のルール例: 中拘束／交代地点制約
 
 ## 参照

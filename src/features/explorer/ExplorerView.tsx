@@ -3,7 +3,7 @@
  * Explorer のマップ表示・サービスフィルタ・手動オーバーレイの可視化を司るコンテナ。
  * GTFSインポート結果とマニュアル入力をまとめ、MapView へ渡すデータセットを構築する。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
+import type { GtfsImportResult } from '@/services/import/gtfsParser';
 
 import MapView, { type ExplorerMapSelection } from './MapView';
 import {
@@ -34,7 +35,7 @@ import {
 const ALL_SERVICES_VALUE = 'all';
 
 export default function ExplorerView(): JSX.Element {
-  const { result, manual, dutyState, selectedRouteIds } = useGtfsImport();
+  const { result, manual, dutyState, selectedRouteIds, setSelectedRouteIds } = useGtfsImport();
   const [serviceValue, setServiceValue] = useState<string>(ALL_SERVICES_VALUE);
   const [selection, setSelection] = useState<ExplorerMapSelection | null>(null);
   const [showDepots, setShowDepots] = useState(true);
@@ -66,7 +67,7 @@ export default function ExplorerView(): JSX.Element {
     setSelection(null);
   }, [serviceValue, result]);
 
-  const filteredRouteOptions = useMemo(() => {
+  const filteredTimelineRouteOptions = useMemo(() => {
     if (routeSearch.trim().length === 0) {
       return dataset.routeOptions;
     }
@@ -94,16 +95,16 @@ export default function ExplorerView(): JSX.Element {
   }, [dataset.routeOptions]);
 
   useEffect(() => {
-    if (filteredRouteOptions.length === 0) {
+    if (filteredTimelineRouteOptions.length === 0) {
       return;
     }
     setSelectedRouteId((previous) => {
-      if (previous && filteredRouteOptions.some((option) => option.routeId === previous)) {
+      if (previous && filteredTimelineRouteOptions.some((option) => option.routeId === previous)) {
         return previous;
       }
-      return filteredRouteOptions[0]?.routeId;
+      return filteredTimelineRouteOptions[0]?.routeId;
     });
-  }, [filteredRouteOptions]);
+  }, [filteredTimelineRouteOptions]);
 
   useEffect(() => {
     if (!selectedRouteId) {
@@ -125,6 +126,57 @@ export default function ExplorerView(): JSX.Element {
   }, [selectedRouteId, dataset.routes]);
 
   const selectedRoute = selectedRouteId ? dataset.routes[selectedRouteId] : undefined;
+
+  const routeSelectionOptions = useMemo<RouteSelectionOption[]>(() => buildRouteSelectionOptions(result), [result]);
+  const totalRouteCount = routeSelectionOptions.length;
+  const filteredRouteSelectionOptions = useMemo(() => {
+    if (routeSearch.trim().length === 0) {
+      return routeSelectionOptions;
+    }
+    const keyword = routeSearch.trim().toLowerCase();
+    return routeSelectionOptions.filter((option) => {
+      const haystack = [option.id, option.label, option.description].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [routeSearch, routeSelectionOptions]);
+  const selectedRoutesSet = useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
+
+  const handleSelectAllRoutes = useCallback(() => {
+    if (routeSelectionOptions.length === 0) {
+      setSelectedRouteIds([]);
+      return;
+    }
+    setSelectedRouteIds(routeSelectionOptions.map((option) => option.id));
+  }, [routeSelectionOptions, setSelectedRouteIds]);
+
+  const handleClearRoutes = useCallback(() => {
+    setSelectedRouteIds([]);
+  }, [setSelectedRouteIds]);
+
+  const handleToggleRoute = useCallback((routeId: string) => {
+    const alreadySelected = selectedRouteIds.includes(routeId);
+    setSelectedRouteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(routeId)) {
+        next.delete(routeId);
+      } else {
+        next.add(routeId);
+      }
+      if (next.size === 0) {
+        return [];
+      }
+      const ordered = routeSelectionOptions
+        .map((option) => option.id)
+        .filter((id) => next.has(id));
+      if (ordered.length === 0 && next.size > 0) {
+        return Array.from(next);
+      }
+      return ordered;
+    });
+    if (!alreadySelected) {
+      setSelectedRouteId(routeId);
+    }
+  }, [routeSelectionOptions, selectedRouteIds, setSelectedRouteIds, setSelectedRouteId]);
 
   const directionOptions = useMemo(() => {
     if (!selectedRoute) {
@@ -164,13 +216,13 @@ export default function ExplorerView(): JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">地図・便調査</h2>
+        <h2 className="text-lg font-semibold">行路編集対象の便を選択</h2>
         <p className="text-sm text-muted-foreground">
-          GTFS 由来の停留所・経路とマニュアルオーバーレイ（車庫・交代地点）を地図上で確認します。
-          サービスフィルタで対象日を絞り込み、選択パネルで詳細を参照してください。
+          GTFS 由来の停留所・経路とマニュアルオーバーレイ（車庫・交代地点）を地図で確認しながら、行路編集対象となる便（系統）を切り替えます。
+          サービスフィルタで対象日を絞り込み、右側の選択パネルで取込対象を管理してください。
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Import で選択した路線: {selectedRouteIds.length.toLocaleString()} 件
+          選択中: {selectedRouteIds.length.toLocaleString()} / {totalRouteCount.toLocaleString()} 便（系統）
         </p>
       </div>
 
@@ -221,11 +273,21 @@ export default function ExplorerView(): JSX.Element {
           <ManualSummaryCard overlay={dataset.manualOverlay} summary={dataset.manualSummary} />
         </div>
         <div className="space-y-4">
+          <RouteSelectionPanel
+            options={routeSelectionOptions}
+            filteredOptions={filteredRouteSelectionOptions}
+            selectedRouteIds={selectedRoutesSet}
+            selectedCount={selectedRouteIds.length}
+            totalCount={totalRouteCount}
+            searchValue={routeSearch}
+            onSearchChange={setRouteSearch}
+            onSelectAll={handleSelectAllRoutes}
+            onClearAll={handleClearRoutes}
+            onToggleRoute={handleToggleRoute}
+          />
           <RouteTimelinePanel
             routeOptions={dataset.routeOptions}
-            filteredRouteOptions={filteredRouteOptions}
-            routeSearch={routeSearch}
-            onRouteSearchChange={(value) => setRouteSearch(value)}
+            filteredRouteOptions={filteredTimelineRouteOptions}
             selectedRouteId={selectedRouteId}
             onSelectRoute={(routeId) => setSelectedRouteId(routeId)}
             directionOptions={directionOptions}
@@ -248,11 +310,116 @@ interface TimelineSection {
   detail: ExplorerRouteDirectionDetail;
 }
 
+interface RouteSelectionOption {
+  id: string;
+  label: string;
+  description?: string;
+  tripCount: number;
+  color?: string;
+}
+
+interface RouteSelectionPanelProps {
+  options: RouteSelectionOption[];
+  filteredOptions: RouteSelectionOption[];
+  selectedRouteIds: Set<string>;
+  selectedCount: number;
+  totalCount: number;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onToggleRoute: (routeId: string) => void;
+}
+
+function RouteSelectionPanel({
+  options,
+  filteredOptions,
+  selectedRouteIds,
+  selectedCount,
+  totalCount,
+  searchValue,
+  onSearchChange,
+  onSelectAll,
+  onClearAll,
+  onToggleRoute,
+}: RouteSelectionPanelProps): JSX.Element {
+  const hasOptions = options.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>取込対象の便（系統）</CardTitle>
+        <CardDescription>チェックした便だけを地図とタイムラインで表示します。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            選択中: {selectedCount.toLocaleString()} / {totalCount.toLocaleString()} 便（系統）
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" type="button" onClick={onSelectAll} disabled={!hasOptions}>
+              全選択
+            </Button>
+            <Button variant="ghost" size="sm" type="button" onClick={onClearAll} disabled={!hasOptions}>
+              全解除
+            </Button>
+          </div>
+        </div>
+        <Input
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="便ID・系統名で検索"
+          disabled={!hasOptions}
+        />
+        <div className="max-h-80 overflow-y-auto rounded-md border border-border/40 bg-background/60 p-2">
+          {!hasOptions ? (
+            <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              GTFS をインポートすると便（系統）の一覧が表示されます。
+            </p>
+          ) : filteredOptions.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              該当する便が見つかりません。
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {filteredOptions.map((option) => {
+                const checked = selectedRouteIds.has(option.id);
+                return (
+                  <label
+                    key={option.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm transition hover:border-border focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={checked}
+                      onChange={() => onToggleRoute(option.id)}
+                    />
+                    <span className="flex flex-col">
+                      <span className="font-medium text-foreground">
+                        {option.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {option.description ?? option.id}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        便数: {option.tripCount.toLocaleString()}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 interface RouteTimelinePanelProps {
   routeOptions: ExplorerRouteOption[];
   filteredRouteOptions: ExplorerRouteOption[];
-  routeSearch: string;
-  onRouteSearchChange: (value: string) => void;
   selectedRouteId?: string;
   onSelectRoute: (routeId: string) => void;
   directionOptions: string[];
@@ -266,8 +433,6 @@ interface RouteTimelinePanelProps {
 function RouteTimelinePanel({
   routeOptions,
   filteredRouteOptions,
-  routeSearch,
-  onRouteSearchChange,
   selectedRouteId,
   onSelectRoute,
   directionOptions,
@@ -286,33 +451,28 @@ function RouteTimelinePanel({
         <CardDescription>系統別に便の時系列を確認します。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Input
-            value={routeSearch}
-            onChange={(event) => onRouteSearchChange(event.target.value)}
-            placeholder="系統ID / 名称で検索"
-          />
-          <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
-            {filteredRouteOptions.map((option) => {
-              const isSelected = option.routeId === selectedRouteId;
-              const style = option.color ? { borderColor: option.color } : undefined;
-              return (
-                <Button
-                  key={option.routeId}
-                  size="sm"
-                  variant={isSelected ? 'default' : 'outline'}
-                  onClick={() => onSelectRoute(option.routeId)}
-                  className="whitespace-nowrap"
-                  style={style}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-            {filteredRouteOptions.length === 0 && (
-              <p className="text-xs text-muted-foreground">該当するルートが見つかりません。</p>
-            )}
-          </div>
+        <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
+          {filteredRouteOptions.map((option) => {
+            const isSelected = option.routeId === selectedRouteId;
+            const style = option.color ? { borderColor: option.color } : undefined;
+            return (
+              <Button
+                key={option.routeId}
+                size="sm"
+                variant={isSelected ? 'default' : 'outline'}
+                onClick={() => onSelectRoute(option.routeId)}
+                className="whitespace-nowrap"
+                style={style}
+              >
+                {option.label}
+              </Button>
+            );
+          })}
+          {filteredRouteOptions.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              表示する便がありません。上の選択パネルで便（系統）を選択してください。
+            </p>
+          )}
         </div>
         {!hasRoutes ? (
           <p className="text-sm text-muted-foreground">
@@ -622,4 +782,89 @@ function fallbackCard(message: string): JSX.Element {
 
 function formatServiceOptionLabel(option: ExplorerServiceOption): string {
   return `${option.label} · 便 ${option.tripCount.toLocaleString()} / 停留所 ${option.stopCount.toLocaleString()}`;
+}
+
+function buildRouteSelectionOptions(result?: GtfsImportResult): RouteSelectionOption[] {
+  if (!result) {
+    return [];
+  }
+  const trips = result.tables['trips.txt']?.rows ?? [];
+  const routes = result.tables['routes.txt']?.rows ?? [];
+
+  const meta = new Map<string, { label?: string; description?: string; color?: string }>();
+  for (const row of routes) {
+    const routeId = sanitizeId(row.route_id);
+    if (!routeId) {
+      continue;
+    }
+    const shortName = sanitizeText(row.route_short_name);
+    const longName = sanitizeText(row.route_long_name);
+    let label: string | undefined;
+    let description: string | undefined;
+    if (shortName && longName) {
+      label = `${shortName} · ${longName}`;
+      description = routeId;
+    } else if (shortName) {
+      label = shortName;
+      description = longName ?? routeId;
+    } else if (longName) {
+      label = longName;
+      description = routeId;
+    }
+    meta.set(routeId, {
+      label,
+      description,
+      color: sanitizeColor(row.route_color),
+    });
+  }
+
+  const counts = new Map<string, number>();
+  for (const trip of trips) {
+    const routeId = sanitizeId(trip.route_id);
+    if (!routeId) {
+      continue;
+    }
+    counts.set(routeId, (counts.get(routeId) ?? 0) + 1);
+  }
+
+  const ids = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b, 'ja-JP-u-nu-latn'));
+  return ids.map((routeId) => {
+    const metaEntry = meta.get(routeId);
+    const label = metaEntry?.label ?? routeId;
+    const description = metaEntry?.description ?? routeId;
+    return {
+      id: routeId,
+      label,
+      description,
+      tripCount: counts.get(routeId) ?? 0,
+      color: metaEntry?.color,
+    };
+  });
+}
+
+function sanitizeId(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sanitizeText(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sanitizeColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim().replace(/^#/u, '').toUpperCase();
+  if (!/^[0-9A-F]{6}$/u.test(normalized)) {
+    return undefined;
+  }
+  return `#${normalized}`;
 }

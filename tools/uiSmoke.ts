@@ -50,17 +50,26 @@ const checks: Check[] = [
   },
   {
     id: 'import-heading',
-    description: 'Import セクションの見出し',
-    expression: '(() => document.querySelector("main h2")?.textContent?.trim() ?? "")()',
-    validate: (result) => result === 'GTFS取込',
-    failureMessage: 'Import セクションの見出しが期待どおりではありません（GTFS取込）。',
+    description: 'Import セクションのナビゲーションラベル',
+    expression: `
+      (() => {
+        const desktopNav = document.querySelector('aside nav button[data-section="import"] span');
+        if (desktopNav && desktopNav.textContent) {
+          return desktopNav.textContent.trim();
+        }
+        const mobileOption = document.querySelector('#app-mobile-nav option[value="import"]');
+        return mobileOption?.textContent?.trim() ?? '';
+      })()
+    `,
+    validate: (result) => result === 'GTFS取込・保存データから再開',
+    failureMessage: 'Import セクションのナビゲーションラベルが期待どおりではありません（GTFS取込・保存データから再開）。',
   },
   {
     id: 'blocks-heading',
-    description: '行路推定セクションの見出し',
-    expression: buildSectionExpression('blocks', '行路推定'),
-    validate: (result) => result === '行路推定',
-    failureMessage: 'Blocks セクションの見出しが期待どおりではありません（行路推定）。',
+    description: '行路編集セクションの見出し',
+    expression: buildSectionExpression('blocks', '行路編集'),
+    validate: (result) => result === '行路編集',
+    failureMessage: 'Blocks セクションの見出しが期待どおりではありません（行路編集）。',
   },
   {
     id: 'duties-heading',

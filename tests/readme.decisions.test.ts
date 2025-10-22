@@ -19,11 +19,6 @@ test('Duty ルールに 中拘束 と 交代地点制約 を含む', () => {
   assert.match(text, /交代地点制約/);
 });
 
-test('サンプルフィードが gunmachuo で明記', () => {
-  assert.match(text, /GTFS-JP\(gunmachuo\)\.zip/);
-});
-
 test('MapLibre をデフォルトと明記', () => {
   assert.match(text, /MapLibre/);
 });
-

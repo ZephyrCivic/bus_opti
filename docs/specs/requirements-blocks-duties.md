@@ -1,7 +1,7 @@
 <!--
   docs/specs/requirements-blocks-duties.md
   目的: 現状分析Pro.txt（2025-04-01版GTFSを前提）を踏まえ、現状の実装との差分から「小さく安全に進める」修正点を整理する。
-  背景: 本プロジェクトは GTFS 取込→行路（Blocks）推定→Duty編集を中心に構成。追加の業務データ（Depot/Relief/Deadhead 等）はUI入力と地図表示に留まっているため、評価ロジックへの統合が未了。
+  背景: 本プロジェクトは GTFS 取込→行路（Blocks）編集→Duty編集を中心に構成。追加の業務データ（Depot/Relief/Deadhead 等）はUI入力と地図表示に留まっているため、評価ロジックへの統合が未了。
 -->
 
 # 要件定義（現状分析に基づく）— 行路・交番表をUIで組み立てる（2025-10-17）
@@ -22,7 +22,7 @@
 
 ## 現状サマリ（実装の把握）
 - GTFS取込: `stops.txt / trips.txt / stop_times.txt` 必須、`shapes.txt` 任意、`frequencies.txt` は検出して展開済み（`src/services/import/gtfsParser.ts`）。
-- 行路推定（Blocks）: Greedy 連結。条件は「同一 serviceDayIndex かつ gap ≤ maxTurnGapMinutes」。Deadhead/Depot/Relief は未考慮（`src/services/blocks/blockBuilder.ts`）。
+- 行路編集（Blocks）: Greedy 連結。条件は「同一 serviceDayIndex かつ gap ≤ maxTurnGapMinutes」。Deadhead/Depot/Relief は未考慮（`src/services/blocks/blockBuilder.ts`）。
 - Blocks可視化: 日別集約と時間帯重なりの簡易指標（平均gapをoverlapScoreに格納しており命名が実態と不一致）。
 - Duty編集: ブロック区間の追加/移動/削除とCSV入出力。検証は「同一Blockのみ・区間の重複なし」のみ（`src/services/duty/validators.ts`）。労務ルール（連続運転/休憩/拘束）の適用なし。従業員（Drivers）はUI入力可だがDuty割付の評価は最小限。
 - 手動入力（Manual）: Depot/Relief/Deadhead/Drivers/Linking設定はUI入出力・地図重畳のみで、行路連結やDuty検証に未統合。
@@ -107,7 +107,7 @@
     BUS-002,BLOCK_008,0,weekday,07:55,18:05,臨時延長
     ```
 
-## 要件（行路推定ロジック最小拡張）
+## 要件（行路編集ロジック最小拡張）
 - 連結条件の拡張（安全な段階導入・既定OFF）
   1) `linkingEnabled` が true のとき、次の新条件で連結候補をスコアリング：
      - サービス日一致（現行維持）。

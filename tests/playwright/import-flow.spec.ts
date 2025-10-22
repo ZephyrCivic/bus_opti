@@ -133,19 +133,19 @@ test.describe('Import 導線', () => {
 
     await expect(page.getByText('状態: 完了', { exact: false })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('取込サマリー', { exact: true })).toBeVisible();
-    await expect(page.getByText('（任意）路線の絞り込み')).toBeVisible();
+    await expect(page.getByText('行路編集対象の便（系統）の選択')).toBeVisible();
 
     const selectionLocator = page.getByText('選択中:', { exact: false });
     await expect(selectionLocator).toBeVisible();
     const selectionText = await selectionLocator.innerText();
-    expect(selectionText).toMatch(/選択中: \d+ \/ \d+/);
+    expect(selectionText).toMatch(/選択中: \d+ \/ \d+ 便（系統）/);
 
     await expect.poll(async () => {
       const events = await getTelemetryEvents(page);
       return events.filter((event) => event.type === 'import.route-filter.updated').length;
     }).toBeGreaterThan(0);
 
-    const explorerButton = page.getByRole('button', { name: 'Explorer を開く' });
+    const explorerButton = page.getByRole('button', { name: '「行路編集対象の便を選択」を開く' });
     await expect(explorerButton).toBeEnabled();
     await explorerButton.click();
 
@@ -165,14 +165,14 @@ test.describe('Import 導線', () => {
 
     await expect(page.getByText('状態: 完了', { exact: false })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('取込サマリー', { exact: true })).toBeVisible();
-    await expect(page.getByText('選択中: 1 / 1')).toBeVisible();
+    await expect(page.getByText('選択中: 1 / 1 便（系統）')).toBeVisible();
 
     await expect.poll(async () => {
       const events = await getTelemetryEvents(page);
       return events.filter((event) => event.type === 'import.route-filter.updated').length;
     }).toBeGreaterThan(0);
 
-    const explorerButton = page.getByRole('button', { name: 'Explorer を開く' });
+    const explorerButton = page.getByRole('button', { name: '「行路編集対象の便を選択」を開く' });
     await expect(explorerButton).toBeEnabled();
     await explorerButton.click();
 

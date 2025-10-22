@@ -206,6 +206,22 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
   }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual, selectedRouteIds, setSelectedRouteIds]);
 
   useEffect(() => {
+    if (!state.result) {
+      setSelectedRouteIdsState([]);
+      return;
+    }
+    const availableRouteIds = extractRouteIds(state.result);
+    setSelectedRouteIdsState((prev) => {
+      const next = normalizeRouteIds(availableRouteIds);
+      const current = normalizeRouteIds(prev);
+      if (arraysEqual(current, next)) {
+        return prev;
+      }
+      return next;
+    });
+  }, [state.result, normalizeRouteIds]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -238,4 +254,28 @@ export function useGtfsImport(): GtfsImportContextValue {
     throw new Error('useGtfsImport は GtfsImportProvider の内側で使用してください。');
   }
   return context;
+}
+
+function extractRouteIds(result: GtfsImportResult): string[] {
+  const trips = result.tables['trips.txt']?.rows ?? [];
+  const ids = new Set<string>();
+  for (const trip of trips) {
+    const raw = typeof trip.route_id === 'string' ? trip.route_id.trim() : '';
+    if (raw) {
+      ids.add(raw);
+    }
+  }
+  return Array.from(ids).sort((a, b) => a.localeCompare(b, 'ja-JP-u-nu-latn'));
+}
+
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
 }

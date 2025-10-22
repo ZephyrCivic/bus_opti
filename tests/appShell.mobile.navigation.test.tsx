@@ -12,7 +12,7 @@ import type { NavigationSection } from '../src/components/layout/AppShell';
 import AppShell from '../src/components/layout/AppShell';
 
 const SECTIONS_UNDER_TEST: NavigationSection[] = [
-  { id: 'import', label: 'GTFS取込' },
+  { id: 'import', label: 'GTFS取込・保存データから再開' },
   { id: 'blocks', label: '系統計画' },
   { id: 'duties', label: '乗務計画' },
   { id: 'dashboard', label: '指標ダッシュボード' },

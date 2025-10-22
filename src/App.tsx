@@ -20,7 +20,7 @@ const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView')
 
 const SECTIONS: NavigationSection[] = [
   { id: 'import', label: 'GTFS取込' },
-  { id: 'explorer', label: '地図・便調査' },
+  { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'blocks', label: '行路推定' },
   { id: 'duties', label: '勤務編集' },
   { id: 'dashboard', label: '運行指標' },
@@ -42,7 +42,7 @@ export default function App(): JSX.Element {
         return <ImportView />;
       case 'explorer':
         return (
-          <Suspense fallback={<LazyPaneFallback label="地図・便調査を読み込み中…" />}>
+          <Suspense fallback={<LazyPaneFallback label="行路編集対象の便を読み込み中…" />}>
             <ExplorerView />
           </Suspense>
         );
@@ -89,3 +89,4 @@ function ErrorPaneFallback(): JSX.Element {
     </div>
   );
 }
+
