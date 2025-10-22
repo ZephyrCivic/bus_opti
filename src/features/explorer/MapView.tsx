@@ -81,6 +81,8 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
     updateOverlayVisibility(map, showDepots, showReliefPoints);
   }, [showDepots, showReliefPoints]);
 
+  
+
   useEffect(() => {
     if (!containerRef.current) {
       return;
@@ -212,6 +214,8 @@ function initializeSources(
       },
     });
   }
+
+  
 
   if (!map.getSource(DEPOTS_SOURCE_ID)) {
     map.addSource(DEPOTS_SOURCE_ID, {
@@ -502,3 +506,5 @@ function getSelectionFromEvent(map: Map, event: MapMouseEvent): ExplorerMapSelec
 function areBoundsEqual(a: BoundingBox, b: BoundingBox): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
+
+// route ハイライトは未実装（計画中）

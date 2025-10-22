@@ -32,8 +32,8 @@ export function DepotsCard({ rows, onAdd, onDelete, onImport, onExport }: Depots
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>デポ/車庫（Depots）</CardTitle>
-          <CardDescription>入出庫・点呼拠点など。最小折返し時間も保持できます。</CardDescription>
+          <CardTitle>車庫（Depots）</CardTitle>
+          <CardDescription>入出庫・点呼拠点などの情報を管理します。最小折返し時間も保持できます。</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input

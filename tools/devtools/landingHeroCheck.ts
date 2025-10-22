@@ -11,7 +11,7 @@ import { createServer, type Server } from 'node:http';
 import type { Page } from 'playwright';
 
 const PREVIEW_HOST = process.env.DEVTOOLS_HOST ?? '127.0.0.1';
-const PREVIEW_PORT = Number.parseInt(process.env.DEVTOOLS_PORT ?? '4173', 10);
+const PREVIEW_PORT = Number.parseInt(process.env.DEVTOOLS_PORT ?? '4174', 10);
 const BASE_PATH_RAW = process.env.DEVTOOLS_BASE_PATH ?? '/bus_opti/';
 const BASE_PATH = BASE_PATH_RAW.endsWith('/') ? BASE_PATH_RAW : `${BASE_PATH_RAW}/`;
 

@@ -8,7 +8,7 @@ function readThreshold(): number {
   return num > 1 ? num / 100 : num / 100; // allow values like 0.5 => 0.5%
 }
 
-const baseURL = process.env.APP_BASE_URL ?? 'http://127.0.0.1:4173';
+const baseURL = process.env.APP_BASE_URL ?? 'http://127.0.0.1:4174';
 const previewURL = new URL('/bus_opti/', `${baseURL.endsWith('/') ? baseURL : `${baseURL}/`}`).toString();
 const shouldStartWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER !== '1';
 const webServerTimeout = (() => {

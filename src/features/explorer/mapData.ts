@@ -139,6 +139,7 @@ export interface ExplorerDatasetOptions {
   manual?: ManualInputs;
   duties?: Duty[];
   blockPlan?: BlockPlan;
+  routeIds?: string[];
 }
 
 export function buildExplorerDataset(result?: GtfsImportResult, options?: ExplorerDatasetOptions): ExplorerDataset {
@@ -146,6 +147,7 @@ export function buildExplorerDataset(result?: GtfsImportResult, options?: Explor
   const manual = options?.manual;
   const duties = options?.duties ?? [];
   const blockPlan = options?.blockPlan;
+  const routeFilter = normalizeRouteFilter(options?.routeIds);
   if (!result) {
     return emptyExplorerDataset(normalizedFilter, manual);
   }
@@ -154,6 +156,7 @@ export function buildExplorerDataset(result?: GtfsImportResult, options?: Explor
   const shapesTable = result.tables['shapes.txt'];
   const tripsTable = result.tables['trips.txt'];
   const stopTimesTable = result.tables['stop_times.txt'];
+  const routeTripIds = buildRouteTripIds(tripsTable, routeFilter);
 
   const {
     allTripIds,
@@ -175,11 +178,26 @@ export function buildExplorerDataset(result?: GtfsImportResult, options?: Explor
     const serviceTrips = serviceTripIds.get(selectedServiceId);
     activeTripIds = serviceTrips ? new Set(serviceTrips) : new Set<string>();
   } else {
-    activeTripIds = allTripIds;
+    activeTripIds = new Set(allTripIds);
   }
 
-  const allowedStopIds = selectedServiceId ? serviceStopIds.get(selectedServiceId) ?? new Set<string>() : undefined;
-  const allowedShapeIds = selectedServiceId ? serviceShapeIds.get(selectedServiceId) ?? new Set<string>() : undefined;
+  if (routeTripIds && routeTripIds.size > 0) {
+    activeTripIds = intersectTripSets(activeTripIds, routeTripIds);
+  }
+
+  let allowedStopIds = selectedServiceId
+    ? new Set(serviceStopIds.get(selectedServiceId) ?? new Set<string>())
+    : undefined;
+  let allowedShapeIds = selectedServiceId
+    ? new Set(serviceShapeIds.get(selectedServiceId) ?? new Set<string>())
+    : undefined;
+
+  if (routeTripIds && routeTripIds.size > 0) {
+    const routeStopIds = collectIdsForTrips(stopTripIds, routeTripIds);
+    const routeShapeIds = collectIdsForTrips(shapeTripIds, routeTripIds);
+    allowedStopIds = intersectOptionalSets(allowedStopIds, routeStopIds);
+    allowedShapeIds = intersectOptionalSets(allowedShapeIds, routeShapeIds);
+  }
 
   const stopArtifacts = buildStopArtifacts({
     table: stopsTable,
@@ -471,6 +489,77 @@ function buildRelationships(tripsTable?: GtfsTable, stopTimesTable?: GtfsTable):
     stopTripIds,
     shapeTripIds,
   };
+}
+
+function normalizeRouteFilter(routeIds?: string[]): Set<string> | undefined {
+  if (!routeIds || routeIds.length === 0) {
+    return undefined;
+  }
+  const normalized = new Set<string>();
+  for (const raw of routeIds) {
+    const sanitized = sanitizeId(raw);
+    if (sanitized) {
+      normalized.add(sanitized);
+    }
+  }
+  return normalized.size > 0 ? normalized : undefined;
+}
+
+function buildRouteTripIds(tripsTable: GtfsTable | undefined, routeFilter: Set<string> | undefined): Set<string> | undefined {
+  if (!tripsTable || !routeFilter || routeFilter.size === 0) {
+    return undefined;
+  }
+  const tripIds = new Set<string>();
+  for (const row of tripsTable.rows) {
+    const tripId = sanitizeId(row.trip_id);
+    if (!tripId) {
+      continue;
+    }
+    const routeId = sanitizeId(row.route_id);
+    if (routeId && routeFilter.has(routeId)) {
+      tripIds.add(tripId);
+    }
+  }
+  return tripIds;
+}
+
+function collectIdsForTrips(map: Map<string, Set<string>>, allowedTripIds: Set<string>): Set<string> {
+  const ids = new Set<string>();
+  for (const [id, tripIds] of map.entries()) {
+    for (const tripId of tripIds) {
+      if (allowedTripIds.has(tripId)) {
+        ids.add(id);
+        break;
+      }
+    }
+  }
+  return ids;
+}
+
+function intersectTripSets(base: Set<string>, filter: Set<string>): Set<string> {
+  const result = new Set<string>();
+  for (const tripId of base) {
+    if (filter.has(tripId)) {
+      result.add(tripId);
+    }
+  }
+  return result;
+}
+
+function intersectOptionalSets(
+  base: Set<string> | undefined,
+  filter: Set<string>,
+): Set<string> | undefined {
+  if (!base) {
+    return filter.size > 0 ? new Set(filter) : new Set<string>();
+  }
+  const result = new Set<string>();
+  for (const value of base) {
+    if (filter.has(value)) {
+      result.add(value);
+    }
+  }
+  return result;
 }
 
 interface StopArtifactOptions {

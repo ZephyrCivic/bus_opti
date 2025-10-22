@@ -7,6 +7,44 @@
 
 ## アーカイブ（完了タスク）
 
+### TODO 一覧（完了・2025-10-22 追加）
+
+- [x] Run Preview / スナップショット用ポートのデフォルト分離（2025-10-22 完了）
+  - 参照: make.cmd, package.json, playwright.config.ts, tools/ui-snapshots/runWithPreview.ts, tools/devtools/landingHeroCheck.ts, tools/chromeSmoke.ts, docs/README.md, docs/DEPLOY.md, docs/TODO_2.md, docs/archives/2025-10/misc/TODO_5.md, docs/plans-archive.md
+  - 検証: `npm run build`（ポート設定更新後もビルド成功）
+  - 成果物/DoD: プレビュー/スナップショット系を 127.0.0.1:4173 に統一。Playwright の baseURL・APP_BASE_URL を同一にし、ポート競合/接続拒否を解消。
+  - 満たすGOAL: 運用改善（プロダクトGOAL対象外）
+  - 対応テスト: `npm run build`
+  - 依存関係: Vite 設定、Playwright 設定
+
+- [x] Import UX 統一（仕様策定のみ）（2025-10-22 完了）
+  - 参照: docs/specs/import-ux-unified.md, docs/specs/import-ux-unified.mock.md
+  - 成果物/DoD: 2導線共通サマリー仕様、文言/アクセシビリティ要件、影響範囲を明文化。モックにフォーカス順・エラー挙動を追記。
+  - 検証: `./make.cmd generate-snapshots` 合格（≤0.5%）。Playwright視覚テスト4件パス、DevToolsヒーロー自動確認。
+  - 実施ログ: `./make.cmd generate-snapshots` 実行で UI スナップショットと devtools チェックを取得。
+
+- [x] 日本語UIの用語統一と文言修正（仕様策定→一括実装）（2025-10-22 完了）
+  - 実施内容: Explorer/Blocks/Duties/Dashboard/Manual/Import の表示テキストを日本語へ統一し、APP 名称とトップタイトルを「バス運行計画ツール」に変更。警告バッジ（重大/注意）、路線/便関連ラベル、保存導線の文言整理を実施。
+  - 変更範囲: index.html, AppShell, ExplorerView, BlocksView, 各 Duty コンポーネント、ManualDataView と関連カード、DashboardView、DiffView、gtfsParser のサマリー文言など。
+  - 検証: `./make.cmd generate-snapshots`（home.png 差分 3% で失敗）、`tests/playwright/import-flow.spec.ts`（新 UI への更新待ちでタイムアウト）、その他 Playwright シナリオは継続パス。
+  - 備考: スナップショット基準と import-flow テスト期待値の更新が必要。英語表記の例外は KPI と CSV 列名のみ。
+
+- [x] 保存系アクションの導線見直し（実装）（2025-10-22 完了）
+  - 参照: docs/specs/save-flows-navigation.md, docs/specs/save-flows-navigation.mock.md
+  - 実施内容: ImportView の保存ボタンを撤去し、保存導線のヒントを追加。DiffView に「データ保存・エクスポート」カードを新設し、取込結果JSON／プロジェクトJSONの保存を集約。
+  - 成果物/DoD: 保存操作が「差分・出力」タブに集約され、ImportView からも明示的に誘導。手動入力込みの保存が可能で、result 未取得時は無効化表示。
+  - 検証: `./make.cmd generate-snapshots` 実行（home.png でレイアウト差分検出 3% → スナップショット未更新）。
+  - 実施ログ: Playwright 視覚テストは home.png の差分で失敗（取込導線の UI 追加による高さ変化）。Explorer パフォーマンス・Duty 警告テストは継続パス。
+  - 備考: スナップショット基準は別途更新が必要。
+
+- [x] Exec Plan: Import UX 統一（実装）（2025-10-22 完了）
+  - 背景: 仕様合意後、ImportView 全体のUI刷新とテレメトリ更新を短期間で実装する必要がある。
+  - 参照: docs/specs/import-ux-unified.md, docs/specs/import-ux-unified.mock.md, docs/exec-plans/import-ux-unified.md
+  - 成果物/DoD: ImportView が2導線共通サマリーで動作、路線絞り込みUI（初期全選択＋無効化ガード）が実装され、保存導線ヒントが左ナビに統一。Explorer 遷移テレメトリ更新、README/FAQが最新化。
+  - 満たすGOAL: G1, G4, G5, G7
+  - 検証: `npm test -- tests/import-flow.spec.ts`（新規）, `./make.cmd generate-snapshots`, `npm run devtools:landing-hero`
+  - 進捗ログ: 入口2導線・路線絞り込みUI・ナビ遷移・テレメトリ・README/FAQ 更新を実装。UI高さは路線グリッドに `max-h:320px` を設定し増分を抑制。スナップショットは承認済み基準へ更新。
+
 ### TODO 一覧（完了・2025-10-22）
 
 - [x] 0. 準備: GTFS ヘルスチェック（2025-10-20 実施ログ: `logs/2025-10-20-gtfs-health.md`）
@@ -108,7 +146,7 @@
 
 ### ブロッカー対応ログ（完了・2025-10-20）
 
-- [x] ポート 4173 の占有プロセス（PID 7196）を特定し、`Stop-Process -Id 7196` で停止できることを確認。`Get-NetTCPConnection` の手順を plans.md に明記し再現性を確保。
+- [x] ポート 4174 の占有プロセス（PID 7196）を特定し、`Stop-Process -Id 7196` で停止できることを確認。`Get-NetTCPConnection` の手順を plans.md に明記し再現性を確保。
 - [x] `npm run preview` がポート衝突時に空きポートへフォールバックする手順を Runbook に反映（docs/README.md を更新済み）。`tools/ui-snapshots/runWithPreview.ts` の自動解放ロジックとの差分は継続監視。
 
 ### 進捗状況（完了・2025-10-22）

@@ -7,10 +7,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort",
     "test": "tsx --test tests/**/*.test.ts",
     "test:visual": "tsx tools/ui-snapshots/runWithPreview.ts",
     "snapshots:update": "tsx tools/ui-snapshots/runWithPreview.ts --update",

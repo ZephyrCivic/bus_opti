@@ -262,7 +262,7 @@ export default function DashboardView(): JSX.Element {
       id: 'coverage',
       title: 'カバレッジ',
       value: `${dashboard.summary.coveragePercentage}%`,
-      description: '割り当て済み Duty の割合',
+      description: '割り当て済み乗務の割合',
       delta: dailyCoverageTrend,
       deltaLabel: '前日比',
       severity: dashboard.summary.coveragePercentage < 100 - dutyState.settings.maxUnassignedPercentage ? 'warning' : 'neutral',
@@ -270,9 +270,9 @@ export default function DashboardView(): JSX.Element {
     },
     {
       id: 'unassigned',
-      title: '未割当 Duty',
+      title: '未割当 乗務',
       value: `${dashboard.summary.unassignedCount} 件`,
-      description: 'ドライバーがまだ決まっていない Duty',
+      description: '運転士がまだ決まっていない乗務',
       delta: unassignedTrend,
       deltaLabel: '前日差',
       severity: dashboard.summary.unassignedCount > 0 ? 'warning' : 'neutral',
@@ -281,10 +281,10 @@ export default function DashboardView(): JSX.Element {
     {
       id: 'hours',
       title: '総稼働時間',
-      value: `${dashboard.summary.totalHours.toLocaleString()} h`,
-      description: '割当済み Duty の稼働時間',
+      value: `${dashboard.summary.totalHours.toLocaleString()} 時間`,
+      description: '割当済み乗務の稼働時間',
       severity: 'neutral',
-      tooltip: 'ドライバー単位で積算した稼働時間の合計',
+      tooltip: '運転士単位で積算した稼働時間の合計',
     },
     {
       id: 'fairness',
@@ -292,7 +292,7 @@ export default function DashboardView(): JSX.Element {
       value: `${dashboard.summary.fairnessScore}`,
       description: '割当の偏りを 0-100 で評価',
       severity: dashboard.summary.fairnessScore < 100 - dutyState.settings.maxNightShiftVariance ? 'warning' : 'neutral',
-      tooltip: 'ドライバーごとの Duty 件数の偏りを基に算出',
+      tooltip: '運転士ごとの乗務件数の偏りを基に算出',
     },
   ];
 
@@ -303,7 +303,7 @@ export default function DashboardView(): JSX.Element {
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">運行ダッシュボード</h2>
             <p className="text-sm text-muted-foreground">
-              Duty の配分状況を確認し、警告の根拠や詳細データを参照できます。
+              乗務の配分状況を確認し、警告の根拠や詳細データを参照できます。
             </p>
           </div>
           <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
@@ -333,7 +333,7 @@ export default function DashboardView(): JSX.Element {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>ドライバー別稼働 (Top5)</CardTitle>
+                  <CardTitle>運転士別稼働 (Top5)</CardTitle>
                   <CardDescription>割当件数と稼働時間の概況</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -346,13 +346,13 @@ export default function DashboardView(): JSX.Element {
               <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <CardTitle>KPI 詳細テーブル</CardTitle>
-                  <CardDescription>Duty ごとの稼働時間と警告の内訳。検索や絞り込みが可能です。</CardDescription>
+                  <CardDescription>乗務ごとの稼働時間と警告の内訳。検索や絞り込みが可能です。</CardDescription>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="duty_id / driver_id を検索"
+                    placeholder="乗務ID / 運転士ID を検索"
                     className="w-[200px]"
                   />
                   <Button
@@ -365,13 +365,13 @@ export default function DashboardView(): JSX.Element {
                     variant={severityFilter === 'hard' ? 'default' : 'outline'}
                     onClick={() => setSeverityFilter('hard')}
                   >
-                    Hard
+                    重大
                   </Button>
                   <Button
                     variant={severityFilter === 'soft' ? 'default' : 'outline'}
                     onClick={() => setSeverityFilter('soft')}
                   >
-                    Soft
+                    注意
                   </Button>
                   <Button variant="secondary" onClick={handleExportDetails}>
                     CSV エクスポート
@@ -382,11 +382,11 @@ export default function DashboardView(): JSX.Element {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Duty ID</TableHead>
-                      <TableHead>Driver</TableHead>
-                      <TableHead className="text-right">稼働時間</TableHead>
-                      <TableHead className="text-right">Hard</TableHead>
-                      <TableHead className="text-right">Soft</TableHead>
+                    <TableHead>乗務ID</TableHead>
+                    <TableHead>運転士</TableHead>
+                    <TableHead className="text-right">稼働時間</TableHead>
+                    <TableHead className="text-right">重大</TableHead>
+                    <TableHead className="text-right">注意</TableHead>
                       <TableHead>メッセージ</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -404,10 +404,10 @@ export default function DashboardView(): JSX.Element {
                           <TableCell>{row.driverId}</TableCell>
                           <TableCell className="text-right">{row.coverageLabel}</TableCell>
                           <TableCell className="text-right">
-                            <Badge variant={row.hardWarnings > 0 ? 'destructive' : 'outline'}>{row.hardWarnings}</Badge>
+                            <Badge variant={row.hardWarnings > 0 ? 'destructive' : 'outline'}>重大 {row.hardWarnings}</Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Badge variant={row.softWarnings > 0 ? 'secondary' : 'outline'}>{row.softWarnings}</Badge>
+                            <Badge variant={row.softWarnings > 0 ? 'secondary' : 'outline'}>注意 {row.softWarnings}</Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {row.messages.length === 0 ? '問題ありません。' : row.messages.join(' / ')}
@@ -468,7 +468,7 @@ export default function DashboardView(): JSX.Element {
           <Card>
             <CardHeader>
               <CardTitle>データが不足しています</CardTitle>
-              <CardDescription>GTFS を取り込み、Duty を少なくとも 1 件追加するとダッシュボードが集計されます。</CardDescription>
+          <CardDescription>GTFS を取り込み、乗務を少なくとも 1 件追加するとダッシュボードが集計されます。</CardDescription>
             </CardHeader>
           </Card>
         )}
@@ -528,6 +528,7 @@ export default function DashboardView(): JSX.Element {
 function SummaryCard({ title, value, description, delta, deltaLabel, severity = 'neutral', tooltip, onClick }: SummaryCardProps): JSX.Element {
   const severityVariant = severity === 'critical' ? 'destructive' : severity === 'warning' ? 'secondary' : 'outline';
   const deltaDisplay = typeof delta === 'number' ? (delta > 0 ? `+${delta}` : `${delta}`) : null;
+  const severityLabel = severity === 'critical' ? '重大' : severity === 'warning' ? '注意' : '良好';
 
   const body = (
     <Card
@@ -537,7 +538,7 @@ function SummaryCard({ title, value, description, delta, deltaLabel, severity = 
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>{title}</CardTitle>
-          <Badge variant={severityVariant}>{severity === 'neutral' ? 'OK' : severity.toUpperCase()}</Badge>
+          <Badge variant={severityVariant}>{severityLabel}</Badge>
         </div>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
@@ -602,7 +603,7 @@ function Sparkline({ title, subtitle, color, points }: SparklineProps): JSX.Elem
 
 function DriverBarList({ items }: DriverBarListProps): JSX.Element {
   if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground">割当済みのドライバーはまだありません。</p>;
+    return <p className="text-sm text-muted-foreground">割当済みの運転士はまだありません。</p>;
   }
   const sorted = [...items].sort((a, b) => b.shiftCount - a.shiftCount);
   const topFive = sorted.slice(0, 5);
@@ -613,7 +614,7 @@ function DriverBarList({ items }: DriverBarListProps): JSX.Element {
         <div key={item.driverId}>
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">{item.driverId}</span>
-            <span className="text-muted-foreground">{item.shiftCount} 件 / {item.hours.toLocaleString()} h</span>
+            <span className="text-muted-foreground">{item.shiftCount} 件 / {item.hours.toLocaleString()} 時間</span>
           </div>
           <div className="h-2 w-full rounded-full bg-muted">
             <div

@@ -86,7 +86,7 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
               })}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Drivers CSV を読み込むと候補が表示されます。</p>
+            <p className="text-xs text-muted-foreground">運転士 CSV を読み込むと候補が表示されます。</p>
           )}
        </div>
        <QuickStats dutyCount={dutyCount} segmentCount={segmentCount} driverCount={driverCount} />
@@ -154,26 +154,26 @@ function DutyMetricsPanel({
   const showWarnings = summary.hard > 0 || summary.soft > 0;
 
   return (
-    <div className="space-y-3 rounded-md border p-3 text-sm">
-      {showWarnings ? (
-        <div className="flex justify-end">
-          <Button size="sm" variant="secondary" onClick={onAutoCorrect}>
-            自動調整
-          </Button>
+      <div className="space-y-3 rounded-md border p-3 text-sm">
+        {showWarnings ? (
+          <div className="flex justify-end">
+            <Button size="sm" variant="secondary" onClick={onAutoCorrect}>
+              自動調整
+            </Button>
+          </div>
+        ) : null}
+        <h4 className="font-semibold">乗務チェック項目</h4>
+        <MetricRow label="連続運転（最長）" value={formatMinutes(metrics.longestContinuousMinutes)} warn={metrics.warnings.exceedsContinuous} />
+        <MetricRow label="乗務時間（総計）" value={formatMinutes(metrics.totalSpanMinutes)} warn={metrics.warnings.exceedsDailySpan} />
+        <MetricRow
+          label="休憩時間（最短）"
+          value={metrics.shortestBreakMinutes === null ? '未計測' : formatMinutes(metrics.shortestBreakMinutes)}
+          warn={metrics.warnings.insufficientBreak}
+        />
+        <div className="flex items-center gap-2 text-xs">
+          <Badge variant={summary.hard > 0 ? 'destructive' : 'outline'}>重大 {summary.hard}</Badge>
+          <Badge variant={summary.soft > 0 ? 'secondary' : 'outline'}>注意 {summary.soft}</Badge>
         </div>
-      ) : null}
-      <h4 className="font-semibold">乗務チェック項目</h4>
-      <MetricRow label="連続運転（最長）" value={formatMinutes(metrics.longestContinuousMinutes)} warn={metrics.warnings.exceedsContinuous} />
-      <MetricRow label="乗務時間（総計）" value={formatMinutes(metrics.totalSpanMinutes)} warn={metrics.warnings.exceedsDailySpan} />
-      <MetricRow
-        label="休憩時間（最短）"
-        value={metrics.shortestBreakMinutes === null ? '未計測' : formatMinutes(metrics.shortestBreakMinutes)}
-        warn={metrics.warnings.insufficientBreak}
-      />
-      <div className="flex items-center gap-2 text-xs">
-        <Badge variant={summary.hard > 0 ? 'destructive' : 'outline'}>Hard {summary.hard}</Badge>
-        <Badge variant={summary.soft > 0 ? 'secondary' : 'outline'}>Soft {summary.soft}</Badge>
-      </div>
       {summary.messages.length > 0 ? (
         <ul className={`space-y-1 text-xs ${summary.hard > 0 || summary.soft > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
           {summary.messages.map((entry, index) => (
@@ -211,7 +211,7 @@ function SegmentDetails({
       <DetailRow label="乗務ID" value={selection?.dutyId ?? '-'} />
       <DetailRow label="区間ID" value={segment.id} />
       <DetailRow label="ブロックID" value={segment.blockId} />
-      <DetailRow label="Trip区間" value={`${segment.startTripId} → ${segment.endTripId}`} />
+      <DetailRow label="便区間" value={`${segment.startTripId} → ${segment.endTripId}`} />
     </div>
   );
 }

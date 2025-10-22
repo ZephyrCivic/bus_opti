@@ -5,7 +5,7 @@
  */
 import { type ChangeEvent, type PropsWithChildren } from 'react';
 
-export const APP_NAME = 'TS-bus-operation-app';
+export const APP_NAME = 'バス運行計画ツール';
 
 export interface NavigationSection {
   id: string;

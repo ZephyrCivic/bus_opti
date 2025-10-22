@@ -54,6 +54,8 @@ interface GtfsImportContextValue extends GtfsImportState {
   reset: () => void;
   manual: ManualInputs;
   setManual: (updater: (prev: ManualInputs) => ManualInputs) => void;
+  selectedRouteIds: string[];
+  setSelectedRouteIds: (next: string[] | ((prev: string[]) => string[])) => void;
 }
 
 const GtfsImportContext = createContext<GtfsImportContextValue | undefined>(undefined);
@@ -78,6 +80,32 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     drivers: [],
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   }));
+  const [selectedRouteIds, setSelectedRouteIdsState] = useState<string[]>([]);
+
+  const normalizeRouteIds = useCallback((ids: string[]): string[] => {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of ids) {
+      const candidate = typeof raw === 'string' ? raw.trim() : '';
+      if (!candidate) {
+        continue;
+      }
+      if (seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      normalized.push(candidate);
+    }
+    return normalized;
+  }, []);
+
+  const setSelectedRouteIds = useCallback((next: string[] | ((prev: string[]) => string[])) => {
+    if (typeof next === 'function') {
+      setSelectedRouteIdsState((prev) => normalizeRouteIds(next(prev)));
+      return;
+    }
+    setSelectedRouteIdsState(normalizeRouteIds(next));
+  }, [normalizeRouteIds]);
 
   const resetDutyState = useCallback(() => {
     setDutyState((prev) => createDutyEditState(prev.settings));
@@ -93,6 +121,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
       const result = await parseGtfsArchive(file);
       setState({ status: 'ready', result });
       resetDutyState();
+      setSelectedRouteIdsState([]);
     } catch (error) {
       const message = error instanceof GtfsImportError ? error.message : '読み込み中に予期しないエラーが発生しました。';
       setState({ status: 'error', errorMessage: message });
@@ -102,12 +131,14 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
   const loadFromSaved = useCallback((result: GtfsImportResult) => {
     setState({ status: 'ready', result });
     resetDutyState();
+    setSelectedRouteIdsState([]);
   }, [resetDutyState]);
 
   const reset = useCallback(() => {
     setState({ status: 'idle' });
     resetDutyState();
     setManualState((prev) => ({ ...prev, depots: [], reliefPoints: [], deadheadRules: [], drivers: [] }));
+    setSelectedRouteIdsState([]);
   }, [resetDutyState]);
 
   const dutyActions = useMemo<DutyEditorActions>(() => ({
@@ -170,7 +201,9 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     reset,
     manual,
     setManual: (updater) => setManualState((prev) => updater(prev)),
-  }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual]);
+    selectedRouteIds,
+    setSelectedRouteIds,
+  }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual, selectedRouteIds, setSelectedRouteIds]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {

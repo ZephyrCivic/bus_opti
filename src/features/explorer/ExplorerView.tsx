@@ -34,7 +34,7 @@ import {
 const ALL_SERVICES_VALUE = 'all';
 
 export default function ExplorerView(): JSX.Element {
-  const { result, manual, dutyState } = useGtfsImport();
+  const { result, manual, dutyState, selectedRouteIds } = useGtfsImport();
   const [serviceValue, setServiceValue] = useState<string>(ALL_SERVICES_VALUE);
   const [selection, setSelection] = useState<ExplorerMapSelection | null>(null);
   const [showDepots, setShowDepots] = useState(true);
@@ -49,8 +49,9 @@ export default function ExplorerView(): JSX.Element {
       filter,
       manual,
       duties: dutyState.duties,
+      routeIds: selectedRouteIds,
     });
-  }, [result, manual, dutyState.duties, serviceValue]);
+  }, [result, manual, dutyState.duties, serviceValue, selectedRouteIds]);
 
   useEffect(() => {
     if (serviceValue === ALL_SERVICES_VALUE) {
@@ -163,10 +164,13 @@ export default function ExplorerView(): JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Explorer</h2>
+        <h2 className="text-lg font-semibold">地図・便調査</h2>
         <p className="text-sm text-muted-foreground">
-          GTFS 由来の停留所・経路とマニュアルオーバーレイ（デポ・交代地点）を地図上で確認します。
+          GTFS 由来の停留所・経路とマニュアルオーバーレイ（車庫・交代地点）を地図上で確認します。
           サービスフィルタで対象日を絞り込み、選択パネルで詳細を参照してください。
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Import で選択した路線: {selectedRouteIds.length.toLocaleString()} 件
         </p>
       </div>
 
@@ -189,7 +193,7 @@ export default function ExplorerView(): JSX.Element {
         </div>
         {activeServiceOption && (
           <Badge variant="secondary" className="h-6">
-            Trip {activeServiceOption.tripCount.toLocaleString()} / Stop {activeServiceOption.stopCount.toLocaleString()}
+            便 {activeServiceOption.tripCount.toLocaleString()} / 停留所 {activeServiceOption.stopCount.toLocaleString()}
           </Badge>
         )}
         <div className="flex items-center gap-2">
@@ -199,14 +203,14 @@ export default function ExplorerView(): JSX.Element {
             variant={showDepots ? 'default' : 'outline'}
             onClick={() => setShowDepots((prev) => !prev)}
           >
-            Depots
+            車庫
           </Button>
           <Button
             size="sm"
             variant={showReliefPoints ? 'default' : 'outline'}
             onClick={() => setShowReliefPoints((prev) => !prev)}
           >
-            Relief points
+            交代地点
           </Button>
         </div>
       </div>
@@ -278,15 +282,15 @@ function RouteTimelinePanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Route Timeline</CardTitle>
-        <CardDescription>ルート別に便の時系列を確認します。</CardDescription>
+        <CardTitle>系統タイムライン</CardTitle>
+        <CardDescription>系統別に便の時系列を確認します。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Input
             value={routeSearch}
             onChange={(event) => onRouteSearchChange(event.target.value)}
-            placeholder="ルートID / 名称で検索"
+            placeholder="系統ID / 名称で検索"
           />
           <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
             {filteredRouteOptions.map((option) => {
@@ -359,7 +363,7 @@ function RouteTimelinePanel({
                               <div className="text-xs text-muted-foreground">{trip.headsign}</div>
                             )}
                             {trip.serviceId && (
-                              <div className="text-xs text-muted-foreground">Service: {trip.serviceId}</div>
+                              <div className="text-xs text-muted-foreground">運行日ID: {trip.serviceId}</div>
                             )}
                           </div>
                           <div className="space-y-1 text-right text-xs text-muted-foreground">
@@ -423,10 +427,10 @@ function ManualSummaryCard({ overlay, summary }: ManualSummaryCardProps): JSX.El
     <Card>
       <CardHeader>
         <CardTitle>マニュアルオーバーレイ概要</CardTitle>
-        <CardDescription>デポ / 交代地点と duty 影響件数のサマリです。</CardDescription>
+        <CardDescription>車庫 / 交代地点と乗務への影響件数のサマリです。</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm sm:grid-cols-3">
-        <InfoRow label="デポ数" value={summary.depotCount.toLocaleString()} />
+        <InfoRow label="車庫数" value={summary.depotCount.toLocaleString()} />
         <InfoRow label="交代地点数" value={summary.reliefPointCount.toLocaleString()} />
         <InfoRow
           label="Duty 影響件数"
@@ -434,7 +438,7 @@ function ManualSummaryCard({ overlay, summary }: ManualSummaryCardProps): JSX.El
         />
         {overlay.depots.features.length === 0 && overlay.reliefPoints.features.length === 0 && (
           <p className="sm:col-span-3 text-muted-foreground">
-            マニュアル入力が未登録です。Manual タブからデポや交代地点を追加すると表示されます。
+            マニュアル入力が未登録です。手動入力タブから車庫や交代地点を追加すると表示されます。
           </p>
         )}
       </CardContent>
@@ -459,7 +463,7 @@ function SelectionPanel({ dataset, selection, serviceLabel }: SelectionPanelProp
         <CardContent>
           <p className="text-sm text-muted-foreground">
             {dataset.geoJson.stops.features.length === 0
-              ? 'GTFSフィードをインポートすると Explorer にデータが表示されます。'
+              ? 'GTFSフィードを取り込むと地図にデータが表示されます。'
               : '対象を選択してください。'}
           </p>
         </CardContent>
@@ -472,14 +476,14 @@ function SelectionPanel({ dataset, selection, serviceLabel }: SelectionPanelProp
       (feature) => feature.properties?.depotId === selection.id,
     );
     if (!depot) {
-      return fallbackCard('デポ情報を取得できませんでした。入力内容を確認してください。');
+      return fallbackCard('車庫情報を取得できませんでした。入力内容を確認してください。');
     }
     const properties = depot.properties ?? {};
     const coordinates = depot.geometry.coordinates as [number, number];
     return (
       <Card>
         <CardHeader>
-          <CardTitle>デポ {properties.depotId ?? selection.id}</CardTitle>
+          <CardTitle>車庫 {properties.depotId ?? selection.id}</CardTitle>
           <CardDescription>Duty 影響件数: {(properties.dutyImpactCount ?? 0).toLocaleString()}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
@@ -526,15 +530,15 @@ function SelectionPanel({ dataset, selection, serviceLabel }: SelectionPanelProp
       <Card>
         <CardHeader>
           <CardTitle>停留所 {detail.stopId}</CardTitle>
-          <CardDescription>{serviceLabel} のTrip数: {activeTripCount.toLocaleString()}</CardDescription>
+          <CardDescription>{serviceLabel} の便数: {activeTripCount.toLocaleString()}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {detail.name && <InfoRow label="名称" value={detail.name} />}
           {detail.code && <InfoRow label="コード" value={detail.code} />}
           <InfoRow label="座標" value={`${detail.latitude.toFixed(5)}, ${detail.longitude.toFixed(5)}`} />
-          <InfoRow label="総Trip数" value={detail.totalTripCount.toLocaleString()} />
+          <InfoRow label="総便数" value={detail.totalTripCount.toLocaleString()} />
           {dataset.selectedServiceId && (
-            <InfoRow label="フィルタ適用時Trip数" value={detail.activeTripCount.toLocaleString()} />
+            <InfoRow label="フィルタ適用時便数" value={detail.activeTripCount.toLocaleString()} />
           )}
           {detail.serviceIds.length > 0 && (
             <div>
@@ -567,12 +571,12 @@ function SelectionPanel({ dataset, selection, serviceLabel }: SelectionPanelProp
     <Card>
       <CardHeader>
         <CardTitle>経路形状 {detail.shapeId}</CardTitle>
-        <CardDescription>{serviceLabel} のTrip数: {activeTripCount.toLocaleString()}</CardDescription>
+        <CardDescription>{serviceLabel} の便数: {activeTripCount.toLocaleString()}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <InfoRow label="総Trip数" value={detail.tripCount.toLocaleString()} />
+        <InfoRow label="総便数" value={detail.tripCount.toLocaleString()} />
         {dataset.selectedServiceId && (
-          <InfoRow label="フィルタ適用時Trip数" value={detail.activeTripCount.toLocaleString()} />
+          <InfoRow label="フィルタ適用時便数" value={detail.activeTripCount.toLocaleString()} />
         )}
         {detail.serviceIds.length > 0 && (
           <div>
@@ -617,5 +621,5 @@ function fallbackCard(message: string): JSX.Element {
 }
 
 function formatServiceOptionLabel(option: ExplorerServiceOption): string {
-  return `${option.label} · Trips ${option.tripCount.toLocaleString()} / Stops ${option.stopCount.toLocaleString()}`;
+  return `${option.label} · 便 ${option.tripCount.toLocaleString()} / 停留所 ${option.stopCount.toLocaleString()}`;
 }

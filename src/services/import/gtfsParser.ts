@@ -153,22 +153,22 @@ function buildSummary(tables: Record<string, GtfsTable>): GtfsImportSummaryItem[
 
   return [
     {
-      metric: 'Stops',
+      metric: '停留所数',
       value: stops.length,
       description: '停留所（stops.txt 行数）',
     },
     {
-      metric: 'Trips',
+      metric: '便数',
       value: trips.length,
       description: '便数（trips.txt 行数）',
     },
     {
-      metric: 'Routes',
+      metric: '系統数',
       value: routeIds.size,
       description: '路線数（route_id のユニーク数）',
     },
     {
-      metric: 'Service IDs',
+      metric: '運行日ID数',
       value: serviceIds.size,
       description: 'サービス日（service_id のユニーク数）',
     },

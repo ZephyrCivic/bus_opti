@@ -156,10 +156,13 @@ async function main(): Promise<void> {
   if (updateSnapshots) {
     playwrightArgs.splice(2, 0, '--update-snapshots=all');
   }
+  if (process.env.SNAP_SKIP_VISUAL === '1' || process.env.SKIP_VISUAL === '1') {
+    playwrightArgs.push('--grep-invert', 'Visual snapshots');
+  }
 
   const result = await runCommand(PREVIEW_CMD, playwrightArgs, {
     PLAYWRIGHT_SKIP_WEBSERVER: '1',
-    APP_BASE_URL: process.env.APP_BASE_URL ?? 'http://127.0.0.1:4173',
+    APP_BASE_URL: process.env.APP_BASE_URL ?? `http://${PREVIEW_HOST}:${PREVIEW_PORT}`,
   });
 
   await handleExit();

@@ -12,6 +12,7 @@
 - 入力GTFS: `stops.txt / stop_times.txt / trips.txt / routes.txt / shapes.txt / calendar(.txt) / calendar_dates.txt` を使用。
 - `trips.block_id` は列は存在するが値は空（=BlockID無しと見なす）。自動最適化は対象外、UI主導で行路/交番を作る。
 - 追加入力（補助CSV）は `docs/demo/*.csv` の方針に準拠し、本追補で列名と解釈を明文化する。
+ - 制約条件（折返し・交代所・労務ルール等）は設定UIから直接入力・上書き可能。CSVは初期投入/一括更新/バックアップ用途。
 
 ## 用語（本追補での最小定義）
 - ピース（piece）: 便と便の連結単位（見込みDeadheadを含む）で構成する車両側の連なり候補。

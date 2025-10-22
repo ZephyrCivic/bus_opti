@@ -66,8 +66,8 @@ export function BlockSummaryCard({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Block ID</TableHead>
-                <TableHead>Trip 数</TableHead>
+              <TableHead>行路ID</TableHead>
+              <TableHead>便数</TableHead>
                 <TableHead>始発</TableHead>
                 <TableHead>最終</TableHead>
               </TableRow>
@@ -91,10 +91,10 @@ export function BlockSummaryCard({
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">開始 Trip</label>
+            <label className="text-xs font-medium text-muted-foreground">開始便</label>
             <Select value={startTripId ?? ''} onValueChange={onStartTripChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Trip を選択" />
+                <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
@@ -106,10 +106,10 @@ export function BlockSummaryCard({
             </Select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">終了 Trip</label>
+            <label className="text-xs font-medium text-muted-foreground">終了便</label>
             <Select value={endTripId ?? ''} onValueChange={onEndTripChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Trip を選択" />
+                <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
@@ -139,7 +139,7 @@ export function BlockSummaryCard({
         </div>
 
         <div className="space-y-2">
-          <h4 className="text-sm font-semibold">ブロック内の Trip 詳細</h4>
+        <h4 className="text-sm font-semibold">ブロック内の便詳細</h4>
           <div className="max-h-[220px] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
@@ -161,9 +161,9 @@ export function BlockSummaryCard({
                 ))}
                 {filteredTrips.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
-                      ブロックを選択すると該当する Trip が表示されます。
-                    </TableCell>
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                    ブロックを選択すると該当する便が表示されます。
+                  </TableCell>
                   </TableRow>
                 )}
               </TableBody>

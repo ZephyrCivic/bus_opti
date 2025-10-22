@@ -1,6 +1,6 @@
 /**
  * src/features/manual/ManualDataView.tsx
- * 連携設定・ドライバー・デポ・交代地点・Deadhead ルールを管理する手動データ画面。
+ * 連携設定・運転士・車庫・交代地点・回送ルールを管理する手動データ画面。
  * CSV 入出力とインライン編集をまとめ、GtfsImportProvider の状態を更新する。
  */
 import { useCallback } from 'react';
@@ -36,9 +36,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const depots = csvToDepots(csv);
         setManual((prev) => ({ ...prev, depots }));
-        toast.success('デポ CSV を読み込みました。');
+        toast.success('車庫 CSV を読み込みました。');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'デポ CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : '車庫 CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -64,9 +64,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const deadheadRules = csvToDeadheadRules(csv);
         setManual((prev) => ({ ...prev, deadheadRules }));
-        toast.success('Deadhead ルール CSV を読み込みました。');
+        toast.success('回送ルール CSV を読み込みました。');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Deadhead ルール CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : '回送ルール CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -78,9 +78,9 @@ export default function ManualDataView(): JSX.Element {
         const csv = await readFileAsText(file);
         const drivers = csvToDrivers(csv);
         setManual((prev) => ({ ...prev, drivers }));
-        toast.success(`ドライバー CSV を読み込みました（${drivers.length} 件）。`);
+        toast.success(`運転士 CSV を読み込みました（${drivers.length} 件）。`);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'ドライバー CSV の読み込みに失敗しました。');
+        toast.error(error instanceof Error ? error.message : '運転士 CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -111,7 +111,7 @@ export default function ManualDataView(): JSX.Element {
         return false;
       }
       setManual((prev) => ({ ...prev, drivers: [...prev.drivers, trimmed] }));
-      toast.success(`ドライバー ${trimmed.driverId} を追加しました。`);
+      toast.success(`運転士 ${trimmed.driverId} を追加しました。`);
       return true;
     },
     [manual.drivers, setManual],
@@ -120,7 +120,7 @@ export default function ManualDataView(): JSX.Element {
   const handleDeleteDriver = useCallback(
     (driverId: string) => {
       setManual((prev) => ({ ...prev, drivers: prev.drivers.filter((driver) => driver.driverId !== driverId) }));
-      toast.success(`ドライバー ${driverId} を削除しました。`);
+      toast.success(`運転士 ${driverId} を削除しました。`);
     },
     [setManual],
   );
@@ -144,7 +144,7 @@ export default function ManualDataView(): JSX.Element {
   const handleAddDepot = useCallback(
     (depot: Depot) => {
       setManual((prev) => ({ ...prev, depots: [...prev.depots, depot] }));
-      toast.success(`デポ ${depot.depotId} を追加しました。`);
+      toast.success(`車庫 ${depot.depotId} を追加しました。`);
     },
     [setManual],
   );
@@ -152,7 +152,7 @@ export default function ManualDataView(): JSX.Element {
   const handleDeleteDepot = useCallback(
     (depotId: string) => {
       setManual((prev) => ({ ...prev, depots: prev.depots.filter((depot) => depot.depotId !== depotId) }));
-      toast.success(`デポ ${depotId} を削除しました。`);
+      toast.success(`車庫 ${depotId} を削除しました。`);
     },
     [setManual],
   );
@@ -160,7 +160,7 @@ export default function ManualDataView(): JSX.Element {
   const handleAddDeadhead = useCallback(
     (rule: DeadheadRule) => {
       setManual((prev) => ({ ...prev, deadheadRules: [...prev.deadheadRules, rule] }));
-      toast.success('Deadhead ルールを追加しました。');
+      toast.success('回送ルールを追加しました。');
     },
     [setManual],
   );
@@ -168,7 +168,7 @@ export default function ManualDataView(): JSX.Element {
   const handleDeleteDeadhead = useCallback(
     (index: number) => {
       setManual((prev) => ({ ...prev, deadheadRules: prev.deadheadRules.filter((_, i) => i !== index) }));
-      toast.success('Deadhead ルールを削除しました。');
+      toast.success('回送ルールを削除しました。');
     },
     [setManual],
   );
@@ -189,7 +189,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDriver}
         onImport={handleImportDrivers}
         onExport={() =>
-          exportWithGuard('ドライバー', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv')
+          exportWithGuard('運転士', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv')
         }
       />
 
@@ -209,7 +209,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDepot}
         onImport={handleImportDepots}
         onExport={() =>
-          exportWithGuard('デポ', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv')
+          exportWithGuard('車庫', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv')
         }
       />
 
@@ -220,7 +220,7 @@ export default function ManualDataView(): JSX.Element {
         onImport={handleImportDeadheads}
         onExport={() =>
           exportWithGuard(
-            'Deadhead ルール',
+            '回送ルール',
             manual.deadheadRules,
             () => deadheadRulesToCsv(manual.deadheadRules),
             'manual-deadhead_rules.csv',

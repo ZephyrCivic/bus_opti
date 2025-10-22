@@ -50,8 +50,8 @@
 ## 3. ローカルプレビュー
 
 1. `npm run build` 実行。
-2. `npm run preview -- --host 127.0.0.1 --port 4173 --strictPort`  
-   `http://127.0.0.1:4173` で確認。
+2. `npm run preview -- --host 127.0.0.1 --port 4174 --strictPort`  
+   `http://127.0.0.1:4174` で確認。
 3. Chrome DevTools スモーク: `npm run smoke:chrome` でタイトル確認。
 
 ## 4. デプロイ前チェックリスト

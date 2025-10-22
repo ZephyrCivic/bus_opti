@@ -25,6 +25,7 @@ import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
 import { fromSaved, fromSavedProject } from '@/services/import/gtfsPersistence';
 import { useSectionNavigation } from '@/components/layout/SectionNavigationContext';
+import { recordTelemetryEvent } from '@/services/telemetry/telemetry';
 
 const ACCEPTED_MIME = ['application/zip', 'application/x-zip-compressed'];
 const ACCEPTED_SAVED = ['application/json'];
@@ -42,13 +43,24 @@ interface RouteOption {
   description?: string;
 }
 
+function areStringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export default function ImportView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const savedInputRef = useRef<HTMLInputElement | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [routeFilterQuery, setRouteFilterQuery] = useState('');
-  const [selectedRoutes, setSelectedRoutes] = useState<Set<string>>(new Set());
-  const { status, errorMessage, result, importFromFile, reset, loadFromSaved, setManual } = useGtfsImport();
+  const { status, errorMessage, result, importFromFile, reset, loadFromSaved, setManual, selectedRouteIds, setSelectedRouteIds } = useGtfsImport();
   const { navigate } = useSectionNavigation();
   const sampleFeeds = useMemo(
     () => [
@@ -178,14 +190,65 @@ export default function ImportView(): JSX.Element {
 
   const routesKey = useMemo(() => routeOptions.map((option) => option.id).join('|'), [routeOptions]);
 
+  const selectedRoutesKey = useMemo(() => selectedRouteIds.join('|'), [selectedRouteIds]);
+  const selectedRoutesSet = useMemo(() => new Set(selectedRouteIds), [selectedRoutesKey]);
+  const lastSourceNameRef = useRef<string | undefined>(undefined);
+  const telemetrySelectionRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (routeOptions.length === 0) {
-      setSelectedRoutes(new Set());
+    if (!result) {
+      lastSourceNameRef.current = undefined;
+      if (selectedRouteIds.length > 0) {
+        setSelectedRouteIds([]);
+      }
       return;
     }
-    setSelectedRoutes(new Set(routeOptions.map((option) => option.id)));
-    setRouteFilterQuery('');
-  }, [routesKey]);
+
+    const sourceName = result.sourceName;
+    const availableIds = routeOptions.map((option) => option.id);
+    const availableSet = new Set(availableIds);
+    const filtered = selectedRouteIds.filter((id) => availableSet.has(id));
+    const filteredChanged = filtered.length !== selectedRouteIds.length;
+
+    if (lastSourceNameRef.current !== sourceName) {
+      lastSourceNameRef.current = sourceName;
+      if (!areStringArraysEqual(availableIds, selectedRouteIds)) {
+        setSelectedRouteIds(availableIds);
+        setRouteFilterQuery('');
+      }
+      return;
+    }
+
+    if (filteredChanged) {
+      if (filtered.length === 0 && selectedRouteIds.length > 0 && availableIds.length > 0) {
+        if (!areStringArraysEqual(availableIds, selectedRouteIds)) {
+          setSelectedRouteIds(availableIds);
+          setRouteFilterQuery('');
+        }
+      } else if (!areStringArraysEqual(filtered, selectedRouteIds)) {
+        setSelectedRouteIds(filtered);
+      }
+    }
+  }, [result, routeOptions, selectedRouteIds, setSelectedRouteIds]);
+
+  useEffect(() => {
+    if (!result) {
+      telemetrySelectionRef.current = null;
+      return;
+    }
+    const key = `${result.sourceName}|${selectedRoutesKey}`;
+    if (telemetrySelectionRef.current === key) {
+      return;
+    }
+    telemetrySelectionRef.current = key;
+    recordTelemetryEvent({
+      type: 'import.route-filter.updated',
+      payload: {
+        sourceName: result.sourceName,
+        routeCount: selectedRouteIds.length,
+      },
+    });
+  }, [result, selectedRoutesKey, selectedRouteIds.length]);
 
   const filteredRoutes = useMemo(() => {
     const query = routeFilterQuery.trim().toLowerCase();
@@ -201,7 +264,7 @@ export default function ImportView(): JSX.Element {
 
   const hasOptionalWarnings = Boolean(result?.missingFiles.length);
   const hasAlerts = Boolean(result?.alerts && result.alerts.length > 0);
-  const hasRouteSelection = selectedRoutes.size > 0;
+  const hasRouteSelection = selectedRouteIds.length > 0;
 
   return (
     <div className="space-y-6">
@@ -390,10 +453,15 @@ export default function ImportView(): JSX.Element {
                   <p className="text-xs text-muted-foreground">初期状態ではすべての路線が選択されています。選択を変更すると Explorer でのハイライト対象が更新される予定です。</p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedRoutes(new Set(routeOptions.map((option) => option.id)))}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={() => setSelectedRouteIds(routeOptions.map((option) => option.id))}
+                  >
                     全選択
                   </Button>
-                  <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedRoutes(new Set())}>
+                  <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedRouteIds([])}>
                     全解除
                   </Button>
                 </div>
@@ -405,49 +473,68 @@ export default function ImportView(): JSX.Element {
                   placeholder="系統ID・名称で検索"
                   aria-label="路線検索"
                 />
-                <p className="text-xs text-muted-foreground self-center">選択中: {selectedRoutes.size} / {routeOptions.length}</p>
+                <p className="text-xs text-muted-foreground self-center">選択中: {selectedRouteIds.length} / {routeOptions.length}</p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredRoutes.length === 0 ? (
-                  <p className="col-span-full rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">該当する路線がありません。</p>
-                ) : (
-                  filteredRoutes.map((option) => {
-                    const checked = selectedRoutes.has(option.id);
-                    return (
-                      <label
-                        key={option.id}
-                        className="flex cursor-pointer items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm transition hover:border-border focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={checked}
-                          onChange={() => {
-                            setSelectedRoutes((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(option.id)) {
-                                next.delete(option.id);
-                              } else {
-                                next.add(option.id);
-                              }
-                              return next;
-                            });
-                          }}
-                        />
-                        <span className="flex flex-col">
-                          <span className="font-medium text-foreground">{option.label}</span>
-                          <span className="text-xs text-muted-foreground">{option.description ?? option.id}</span>
-                        </span>
-                      </label>
-                    );
-                  })
-                )}
+              <div className="max-h-[320px] overflow-y-auto rounded-md border border-border/40 bg-background/60 p-2">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredRoutes.length === 0 ? (
+                    <p className="col-span-full rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">該当する路線がありません。</p>
+                  ) : (
+                    filteredRoutes.map((option) => {
+                      const checked = selectedRoutesSet.has(option.id);
+                      return (
+                        <label
+                          key={option.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm transition hover:border-border focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedRouteIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(option.id)) {
+                                  next.delete(option.id);
+                                } else {
+                                  next.add(option.id);
+                                }
+                                return Array.from(next);
+                              });
+                            }}
+                          />
+                          <span className="flex flex-col">
+                            <span className="font-medium text-foreground">{option.label}</span>
+                            <span className="text-xs text-muted-foreground">{option.description ?? option.id}</span>
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </section>
           </CardContent>
           <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">保存・出力は左ナビの「差分・出力」から行えます。</p>
-            <Button type="button" onClick={() => navigate('explorer')} disabled={!hasRouteSelection} aria-disabled={!hasRouteSelection}>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!hasRouteSelection) {
+                  return;
+                }
+                recordTelemetryEvent({
+                  type: 'import.open-explorer',
+                  payload: {
+                    sourceName: result.sourceName,
+                    routeCount: selectedRouteIds.length,
+                  },
+                });
+                navigate('explorer');
+              }}
+              disabled={!hasRouteSelection}
+              aria-disabled={!hasRouteSelection}
+            >
               Explorer を開く
             </Button>
           </CardFooter>

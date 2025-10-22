@@ -130,8 +130,8 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           {warningTotals ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">警告件数</span>
-              <Badge variant={warningTotals.hard > 0 ? 'destructive' : 'outline'}>Hard {warningTotals.hard}</Badge>
-              <Badge variant={warningTotals.soft > 0 ? 'secondary' : 'outline'}>Soft {warningTotals.soft}</Badge>
+              <Badge variant={warningTotals.hard > 0 ? 'destructive' : 'outline'}>重大 {warningTotals.hard}</Badge>
+              <Badge variant={warningTotals.soft > 0 ? 'secondary' : 'outline'}>注意 {warningTotals.soft}</Badge>
             </div>
           ) : null}
           <ExportBar
@@ -147,7 +147,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           {hasBlockTimeline ? (
             <div className="space-y-2" data-testid="vehicle-timeline">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Vehicleビュー（Blockタイムライン）</span>
+                <span>車両ビュー（行路タイムライン）</span>
                 <span>Shift+スクロールでズーム、Alt+スクロールでパン</span>
               </div>
               <TimelineGantt
@@ -164,7 +164,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           ) : null}
           <div className="space-y-2" data-testid="driver-timeline">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Driverビュー（Dutyタイムライン）</span>
+              <span>乗務ビュー（Dutyタイムライン）</span>
               <span>Shift+スクロールでズーム、Alt+スクロールでパン</span>
             </div>
             <TimelineGantt

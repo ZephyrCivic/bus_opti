@@ -19,11 +19,11 @@
 ## P0（緊急対応）
 - [ ] 項目サンプル: 例）「プレビューでのレイアウト崩れ再発」  
   - DoD: Chrome DevTools CLI で再現幅のスクリーンショットを取得し、修正後に差分確認。  
-  - コマンド: `npx tsx tools/chromeDevtoolsCli.ts screenshot --url http://127.0.0.1:4173 --output docs/screenshots/layout-regression.png --full-page`
+  - コマンド: `npx tsx tools/chromeDevtoolsCli.ts screenshot --url http://127.0.0.1:4174 --output docs/screenshots/layout-regression.png --full-page`
 
 ## P1（重要改善）
 - [ ] 項目サンプル: 例）「Playwright スモークのモバイル断面追加」  
-  - DoD: `npx tsx tools/playwrightCli.ts screenshot --browser chromium --url http://127.0.0.1:4173 --output docs/screenshots/mobile.png --full-page` が成功する。
+  - DoD: `npx tsx tools/playwrightCli.ts screenshot --browser chromium --url http://127.0.0.1:4174 --output docs/screenshots/mobile.png --full-page` が成功する。
 
 ## P2（継続改善）
 - [ ] 項目サンプル: 例）「i18n テキストの用語統一」  

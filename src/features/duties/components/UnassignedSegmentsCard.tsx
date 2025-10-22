@@ -20,7 +20,7 @@ export function UnassignedSegmentsCard({ ranges, onSelectRange }: UnassignedSegm
     <Card>
       <CardHeader>
         <CardTitle>未割当グループ</CardTitle>
-        <CardDescription>Duty に割り当てられていない区間をまとめています。</CardDescription>
+        <CardDescription>乗務に割り当てられていない区間をまとめています。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="text-sm text-muted-foreground">
@@ -30,8 +30,8 @@ export function UnassignedSegmentsCard({ ranges, onSelectRange }: UnassignedSegm
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Block</TableHead>
-                <TableHead>Trip 範囲</TableHead>
+                <TableHead>行路</TableHead>
+                <TableHead>便範囲</TableHead>
                 <TableHead>所要</TableHead>
                 <TableHead>件数</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -68,7 +68,7 @@ export function UnassignedSegmentsCard({ ranges, onSelectRange }: UnassignedSegm
         </div>
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground">
-        「範囲を選択」を押すとブロックの開始・終了Tripが設定されます。続けて「区間を追加」を実行してください。
+        「範囲を選択」を押すとブロックの開始・終了便が設定されます。続けて「区間を追加」を実行してください。
       </CardFooter>
     </Card>
   );

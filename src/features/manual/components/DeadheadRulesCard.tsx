@@ -32,8 +32,8 @@ export function DeadheadRulesCard({ rows, onAdd, onDelete, onImport, onExport }:
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>回送近似（Deadhead Rules）</CardTitle>
-          <CardDescription>最短経路は後続対応。まずは固定分/距離などで近似します。</CardDescription>
+          <CardTitle>回送近似（回送ルール）</CardTitle>
+          <CardDescription>最短経路の精緻化は後続対応。まずは固定分や距離などで回送時間を近似します。</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -62,15 +62,15 @@ export function DeadheadRulesCard({ rows, onAdd, onDelete, onImport, onExport }:
           <LabeledInput id="dh-from" label="from_id" value={draft.fromId} onChange={(value) => setDraft({ ...draft, fromId: value })} />
           <LabeledInput id="dh-to" label="to_id" value={draft.toId} onChange={(value) => setDraft({ ...draft, toId: value })} />
           <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">mode</label>
+            <label className="text-xs font-medium text-muted-foreground">回送手段</label>
             <Select value={draft.mode} onValueChange={(value) => setDraft({ ...draft, mode: value as DeadheadRule['mode'] })}>
               <SelectTrigger>
-                <SelectValue placeholder="mode" />
+                <SelectValue placeholder="回送手段" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="walk">walk</SelectItem>
-                <SelectItem value="bus">bus</SelectItem>
-                <SelectItem value="other">other</SelectItem>
+                <SelectItem value="walk">徒歩（walk）</SelectItem>
+                <SelectItem value="bus">バス（bus）</SelectItem>
+                <SelectItem value="other">その他（other）</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -110,7 +110,7 @@ export function DeadheadRulesCard({ rows, onAdd, onDelete, onImport, onExport }:
         </Button>
 
         <DataTable
-          headers={['from_id', 'to_id', 'mode', '所要(分)', '距離(km)', '許可時間帯', '']}
+          headers={['from_id', 'to_id', '回送手段', '所要(分)', '距離(km)', '許可時間帯', '']}
           rows={rows.map((rule, index) => [
             rule.fromId,
             rule.toId,

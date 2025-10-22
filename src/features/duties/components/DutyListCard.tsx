@@ -59,8 +59,8 @@ export function DutyListCard({
                     <Badge variant="secondary">{duty.segments.length} 区間</Badge>
                     {warningSummary ? (
                       <div className="flex items-center gap-1 text-[10px]">
-                        <Badge variant={warningSummary.hard > 0 ? 'destructive' : 'outline'}>H {warningSummary.hard}</Badge>
-                        <Badge variant={warningSummary.soft > 0 ? 'secondary' : 'outline'}>S {warningSummary.soft}</Badge>
+                        <Badge variant={warningSummary.hard > 0 ? 'destructive' : 'outline'}>重大 {warningSummary.hard}</Badge>
+                        <Badge variant={warningSummary.soft > 0 ? 'secondary' : 'outline'}>注意 {warningSummary.soft}</Badge>
                       </div>
                     ) : null}
                   </div>

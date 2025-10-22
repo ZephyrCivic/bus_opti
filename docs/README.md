@@ -17,19 +17,25 @@ date: 2025-10-20
 
 ## サンプルとスキーマ
 - デモ用データ: `docs/demo/*`, `data/*.zip`
-- CSV テンプレート: `docs/templates/*.template.csv`
+- CSV テンプレート: `docs/templates/*.template.csv`（初期投入/一括更新/バックアップ用途）
+- 制約条件（折返し/交代所/労務ルール 等）は Web UI から直接編集可能（CSVは補助）。
 
 ## 主要コマンド
 - 単体/統合テスト: `npm test`
 - UI スナップショット + DevTools 検証: `make generate-snapshots`
 - DevTools 単体チェック: `npm run devtools:landing-hero`
-- プレビュー起動: `npm run preview`（Runbook の手順を参照し、ポート衝突時は 4173 を解放する）
+- Import フロー（Playwright）検証: `PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/playwright/import-flow.spec.ts`
+- プレビュー起動: `npm run preview`（Runbook の手順を参照し、ポート衝突時は 4174 を解放する）
 
 ## Runbook: Vite Preview ポート衝突の解消
-1. 占有プロセス確認: `Get-NetTCPConnection -LocalPort 4173 | Select-Object -First 5 LocalAddress,LocalPort,OwningProcess,State`
+1. 占有プロセス確認: `Get-NetTCPConnection -LocalPort 4174 | Select-Object -First 5 LocalAddress,LocalPort,OwningProcess,State`
 2. プロセス停止（必要な場合）: `Stop-Process -Id <OwningProcess>`
-3. 再試行: `npm run preview`（`--strictPort` により 4173 を利用）
+3. 再試行: `npm run preview`（`--strictPort` により 4174 を利用）
 4. 自動フォールバックが必要な場合は `tools/ui-snapshots/runWithPreview.ts` と同じロジックで空きポートを探索しているか確認し、Runbook を再更新する
+
+## Telemetry ログの確認
+- Import サマリー上で路線選択を変更すると `import.route-filter.updated`、Explorer へ遷移すると `import.open-explorer` が記録される。
+- ブラウザコンソールで `window.__TELEMETRY__` または `localStorage.getItem('bus-opti.telemetry.events')` を確認すると最新100件までのイベント内容を確認可能。
 
 
 ## 注意

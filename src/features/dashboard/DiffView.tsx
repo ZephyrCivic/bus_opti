@@ -1,6 +1,6 @@
 /**
  * src/features/dashboard/DiffView.tsx
- * 現在の Duty 状態と保存済み基準値（Baseline）を比較し、差分を可視化する画面。
+ * 現在の乗務状態と保存済み基準値（Baseline）を比較し、差分を可視化する画面。
  * 基準値の保存・読込・履歴管理を一体的に提供する。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -28,6 +28,12 @@ import {
   loadBaselineHistory,
   type BaselineHistoryEntry,
 } from '@/services/dashboard/baselineHistory';
+import {
+  downloadProjectJson,
+  downloadSavedJson,
+  toSaved,
+  toSavedProject,
+} from '@/services/import/gtfsPersistence';
 
 function loadBaselineFromFile(file: File): Promise<ScheduleState> {
   return new Promise((resolve, reject) => {
@@ -84,6 +90,36 @@ export default function DiffView(): JSX.Element {
     return diffSchedules(currentState, baseline);
   }, [baseline, currentState]);
 
+  const hasImportResult = Boolean(result);
+
+  const handleDownloadSavedResult = () => {
+    if (!result) {
+      toast.info('GTFSフィードを取り込むと保存できます。');
+      return;
+    }
+    try {
+      downloadSavedJson(toSaved(result));
+      toast.success('取込結果JSONを保存しました。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
+      toast.error(message);
+    }
+  };
+
+  const handleDownloadProject = () => {
+    if (!result) {
+      toast.info('GTFSフィードを取り込むと保存できます。');
+      return;
+    }
+    try {
+      downloadProjectJson(toSavedProject(result, manual));
+      toast.success('プロジェクトJSONを保存しました。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
+      toast.error(message);
+    }
+  };
+
   useEffect(() => {
     setHistory(loadBaselineHistory());
   }, []);
@@ -98,7 +134,7 @@ export default function DiffView(): JSX.Element {
       const fileName = `duty-baseline-${timestamp}.json`;
       downloadBaseline(currentState, fileName);
       refreshHistory(addBaselineHistory(currentState, { fileName, savedAt: new Date().toISOString() }));
-      toast.success('現在の Duty を基準として保存しました。');
+      toast.success('現在の乗務を基準として保存しました。');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '基準データの保存に失敗しました。');
     }
@@ -146,17 +182,40 @@ export default function DiffView(): JSX.Element {
       <div>
         <h2 className="text-lg font-semibold">差分・出力</h2>
         <p className="text-sm text-muted-foreground">
-          現在の Duty を基準データと比較し、変更点を確認します。基準を保存しておくと、別案との比較やレポート出力が容易になります。
+          現在の乗務を基準データと比較し、変更点を確認します。基準を保存しておくと、別案との比較やレポート出力が容易になります。
         </p>
       </div>
 
       <Card>
         <CardHeader>
+          <CardTitle>データ保存・エクスポート</CardTitle>
+          <CardDescription>取込結果や手動入力を JSON として保存し、後から作業を再開できます。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            「取込結果を保存」は GTFS の解析結果のみを保存します。「プロジェクト保存」は手動入力（車庫・交代地点・運転士など）を含めた再開用データです。
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleDownloadSavedResult} disabled={!hasImportResult}>
+              取込結果を保存
+            </Button>
+            <Button variant="outline" onClick={handleDownloadProject} disabled={!hasImportResult}>
+              プロジェクト保存
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {hasImportResult ? '保存した JSON は次回「Import」タブの「保存データから再開」で読み込めます。' : 'GTFSフィードを取り込むと保存操作が有効になります。'}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>基準データの管理</CardTitle>
-          <CardDescription>Duty のスケジュールを JSON 基準データとして保存・読み込みできます。</CardDescription>
+          <CardDescription>乗務のスケジュールを JSON 基準データとして保存・読み込みできます。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button onClick={handleSaveBaseline}>現在の Duty を基準として保存</Button>
+          <Button onClick={handleSaveBaseline}>現在の乗務を基準として保存</Button>
           <div className="flex items-center gap-2">
             <input
               ref={fileInputRef}

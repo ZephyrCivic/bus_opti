@@ -1,7 +1,7 @@
 /**
  * src/features/blocks/BlocksView.tsx
  * ブロック推定結果を確認し、ターン間隔や重複状況を把握する画面。
- * タイムライン、統計カード、詳細テーブル、未割当 Trip 一覧を提供する。
+ * タイムライン、統計カード、詳細テーブル、未割当便一覧を提供する。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -100,9 +100,9 @@ export default function BlocksView(): JSX.Element {
       }
       const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
       const color = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
-      const lane: TimelineLane = {
-        id: summary.blockId,
-        label: `${summary.blockId}（Trip ${summary.tripCount} 件）`,
+        const lane: TimelineLane = {
+          id: summary.blockId,
+          label: `${summary.blockId}（便 ${summary.tripCount} 件）`,
         segments: [
           {
             id: `${summary.blockId}-window`,
@@ -142,7 +142,7 @@ export default function BlocksView(): JSX.Element {
           <div className="space-y-1">
             <CardTitle>ターン設定の確認</CardTitle>
             <CardDescription>
-              取込済みの Trip に対してターン間隔を適用します。数値を変更すると即座に再計算されます。
+              取込済みの便に対してターン間隔を適用します。数値を変更すると即座に再計算されます。
             </CardDescription>
           </div>
           <div className="flex items-center gap-3">
@@ -162,8 +162,8 @@ export default function BlocksView(): JSX.Element {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="割り当て済み Trip" value={manualPlan.assignedTripCount.toLocaleString()} />
-            <StatCard label="対象 Trip 件数" value={manualPlan.totalTripCount.toLocaleString()} />
+            <StatCard label="割り当て済み便" value={manualPlan.assignedTripCount.toLocaleString()} />
+            <StatCard label="対象便件数" value={manualPlan.totalTripCount.toLocaleString()} />
             <StatCard
               label="カバレッジ率"
               value={`${coveragePercentage}%`}
@@ -266,10 +266,10 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Block ID</TableHead>
-                  <TableHead>サービス ID</TableHead>
+                  <TableHead>行路ID</TableHead>
+                  <TableHead>サービスID</TableHead>
                   <TableHead>サービス日</TableHead>
-                  <TableHead>Trip 数</TableHead>
+                  <TableHead>便数</TableHead>
                   <TableHead>始発時刻</TableHead>
                   <TableHead>最終時刻</TableHead>
                   <TableHead>平均ターン (分)</TableHead>
@@ -329,12 +329,12 @@ function UnassignedTable({ unassigned }: UnassignedTableProps): JSX.Element {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>未割当 Trip</CardTitle>
-        <CardDescription>ブロックに割り当てられていない Trip を一覧で確認できます。</CardDescription>
+      <CardTitle>未割当 便</CardTitle>
+      <CardDescription>ブロックに割り当てられていない便を一覧で確認できます。</CardDescription>
       </CardHeader>
       <CardContent>
         {unassigned.length === 0 ? (
-          <p className="text-sm text-muted-foreground">未割当の Trip はありません。</p>
+          <p className="text-sm text-muted-foreground">未割当の便はありません。</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>

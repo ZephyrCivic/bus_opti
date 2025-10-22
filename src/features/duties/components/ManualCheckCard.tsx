@@ -56,28 +56,28 @@ export default function ManualCheckCard({ manual, plan, duties }: ManualCheckCar
       <CardHeader className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <CardTitle>Relief / Deadhead チェック</CardTitle>
-            <CardDescription>手動設定が Duty 編集に反映されているかを可視化します。</CardDescription>
+            <CardTitle>交代地点 / 回送チェック</CardTitle>
+            <CardDescription>手動設定が乗務編集に反映されているかを可視化します。</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <Badge variant="secondary">
-              Relief {manual.reliefPoints.length} / Duty使用 {usedReliefCount}
+              交代地点 {manual.reliefPoints.length} / 使用中 {usedReliefCount}
             </Badge>
             <Badge variant="outline">
-              Deadhead {manual.deadheadRules.length}
+              回送 {manual.deadheadRules.length}
             </Badge>
             <Badge variant="outline">
-              Depots {manual.depots.length}
+              車庫 {manual.depots.length}
             </Badge>
             <Badge variant="outline">
-              Drivers {manual.drivers.length}
+              運転士 {manual.drivers.length}
             </Badge>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <section>
-          <h3 className="mb-2 text-sm font-semibold">Relief Points</h3>
+          <h3 className="mb-2 text-sm font-semibold">交代地点</h3>
           <Table>
             <TableHeader>
               <TableRow>
@@ -101,7 +101,7 @@ export default function ManualCheckCard({ manual, plan, duties }: ManualCheckCar
               {reliefRows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
-                    Relief Point が未登録です。
+                    交代地点が未登録です。
                   </TableCell>
                 </TableRow>
               )}
@@ -110,7 +110,7 @@ export default function ManualCheckCard({ manual, plan, duties }: ManualCheckCar
         </section>
 
         <section>
-          <h3 className="mb-2 text-sm font-semibold">Deadhead Rules</h3>
+          <h3 className="mb-2 text-sm font-semibold">回送ルール</h3>
           <Table>
             <TableHeader>
               <TableRow>
@@ -132,7 +132,7 @@ export default function ManualCheckCard({ manual, plan, duties }: ManualCheckCar
               {manual.deadheadRules.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
-                    Deadhead Rule が未登録です。
+                    回送ルールが未登録です。
                   </TableCell>
                 </TableRow>
               )}

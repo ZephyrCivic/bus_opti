@@ -23,7 +23,8 @@ goto :help
   echo [make] generate-snapshots starting
   call npm run build || goto :fail
   call npm run snapshots:install || goto :fail
-  set APP_BASE_URL=http://127.0.0.1:4173/bus_opti/
+  rem Align preview/test base URL with tools/ui-snapshots (4173)
+  set APP_BASE_URL=http://127.0.0.1:4173
   if not exist tests\playwright\visual.spec.ts-snapshots (
     echo [make] no baseline found -> creating initial snapshots
     call npm run snapshots:update || goto :fail
@@ -42,7 +43,7 @@ goto :help
 
 :help
   echo Usage: make ^<target^>
-  echo   preview               Start Vite preview on 127.0.0.1:4173
+  echo   preview               Start Vite preview on 127.0.0.1:4174
   echo   generate-snapshots    Build app, install browsers, run visual tests and devtools check
   echo   approve-baseline      Update Playwright snapshot baselines
   exit /b 2

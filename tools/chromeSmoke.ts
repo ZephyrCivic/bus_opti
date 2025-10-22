@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { evaluateChrome, DEFAULT_CHROME_PATH, DEFAULT_REMOTE_PORT } from './chromeDevtoolsCli';
 
-const PREVIEW_ARGS = ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4173', '--strictPort'];
-const SMOKE_URL = 'http://127.0.0.1:4173';
+const PREVIEW_ARGS = ['run', 'preview', '--', '--host', '127.0.0.1', '--port', '4174', '--strictPort'];
+const SMOKE_URL = 'http://127.0.0.1:4174';
 export const EXPECTED_TITLE = 'TS-bus-operation-app';
 
 function spawnNpm(args: string[]): ChildProcessWithoutNullStreams {

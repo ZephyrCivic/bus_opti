@@ -31,11 +31,11 @@
 - 見出し: 取込サマリー
 - 情報: Imported at, Source name, 指標テーブル（Stops/Trips/Routes/Service IDs）, 注意（任意ファイル欠落・24時超など）
 - アクション:
-  - （任意）路線の絞り込み: 初期は全選択。リストで選択すると地図プレビューで強調表示（実装は後続Exec Plan）。
+  - （任意）路線の絞り込み: 初期は全選択。チェックボックス・検索で切り替えた選択状態は `GtfsImportProvider` に保持し、Explorer/Blocks/Duties へ遷移しても維持する。
   - 次へ: Explorer を開く（Blocks/Dutiesへは上部ナビから遷移）
 - マイクロコピー: 例「Imported at: 2025-10-22 10:30／Source: feed_xxx.zip」「注意: 24時超表記あり 12件」
 - データ欠損時はテーブルに `—` を表示し、警告欄で不足項目を列挙。
-- Explorer ボタンは選択路線が0件のとき `disabled` + 補足メッセージを表示。
+- Explorer ボタンは選択路線が0件のとき `disabled` + 補足メッセージを表示し、押下時はテレメトリイベント `import.open-explorer`（選択路線数/Source 名を含む）をローカルに記録する。
 
 ## 保存系アクションの導線（A案採用）
 - 決定: 2025-10-22 時点で A案（左ナビ「差分・出力」に集約）を採用。
@@ -79,11 +79,12 @@
 - サマリー下部の「任意の路線絞り込み」UIはモックで表現され、初期は全選択であることが明記されている。
 - 保存系アクションの導線（A/B案）が比較可能な形で提示されている。
 - アクセシビリティ要件と影響範囲が明文化され、レビュアーが抜け漏れを識別できる状態である。
+- テレメトリ（Explorer 遷移・路線選択変更）が記録され、最大100件を localStorage に保持する仕様が定義されている。
 
 ## 影響範囲
-- 対象コンポーネント: `ImportView`, `ImportSummaryCard`, `DiffExportNav`
-- 間接影響: Explorer への遷移導線、Diff/Export タブの文言調整。
-- テレメトリ: 「Explorer を開く」ボタン押下イベントのラベル再検討（サマリー導線統一後）。
+- 対象コンポーネント: `ImportView`, `GtfsImportProvider`, `ExplorerView`, `Explorer MapView`
+- 間接影響: Explorer への遷移導線、Diff/Export タブの文言調整、Playwright フローの追加。
+- テレメトリ: 「Explorer を開く」ボタン押下と路線選択変更を `src/services/telemetry/telemetry.ts` で収集し、localStorage と `window.__TELEMETRY__` に最大100件保持。
 
 ## 非機能（影響）
 - 実装時は ImportView のUI分岐とテキスト変更が中心。既存解析ロジックは再利用。

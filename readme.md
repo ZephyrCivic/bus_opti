@@ -20,6 +20,11 @@ Step1として、人の判断で行路（Block）と交番（Duty）を編集・
 - 流れ: Import → Explorer確認 → Blocks連結 → Duties割付 → CSV出力
 - 留意点: デモ用データは `docs/demo/*` を使用。Reset で初期状態に戻せます。
 
+## Import画面の導線（2025-10 更新）
+- 「読み込みメニュー」で `GTFSを読み込む` と `保存データから再開` の2ボタンを提示し、どちらから始めても共通の「取込サマリー」へ遷移します。
+- 取込サマリーには読み込み日時・ソース名・指標テーブル・注意事項・（任意）路線の絞り込みを表示します。路線選択は初期状態ですべて選択され、0件になると Explorer ボタンが自動で無効化されます。
+- 保存・出力は左ナビ「差分・出力」に集約しました。Import 画面ではヒントのみ提示し、操作ログは `bus-opti.telemetry.events`（localStorage）へ `import.route-filter.updated` / `import.open-explorer` として記録します。
+
 ## 仕様上の決定キーワード（抜粋）
 - Block の目標比（設計目安）: 70~80%
 - MapLibre をデフォルトとする（軽量・OSS）。
@@ -30,4 +35,3 @@ Step1として、人の判断で行路（Block）と交番（Duty）を編集・
 - SSOT: `plans.md`
 - 主要仕様: `docs/specs/requirements-blocks-duties.md`, `docs/specs/ui-mock.md`, `docs/specs/timeline-interactions.md`
 - スナップショット設定: `playwright.config.ts`
-

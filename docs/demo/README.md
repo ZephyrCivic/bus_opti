@@ -14,6 +14,9 @@
 - `docs/demo/deadhead_rules.csv`
 - `docs/demo/drivers.csv`
 
+補足
+- これらのCSVは初期投入・一括更新・バックアップ用途です。制約条件（折返し/交代所/労務ルール 等）は設定UIから直接入力・上書きも可能です。
+
 ## 旧デモ（gunmachuo）
 - 旧バージョンのプロジェクトJSONは `docs/archives/2025-10/demo/project.gunmachuo.json` に移動しました。
 - 旧ZIPも `docs/archives/2025-10/demo/project.gunmachuo.zip` に移動しました。

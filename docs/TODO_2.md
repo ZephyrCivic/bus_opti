@@ -28,7 +28,7 @@ Motto: "Small, clear, safe steps — always grounded in real docs."
 - [x] タイトル表記の統一（Smoke不一致の解消）
   - DoD: `npm run smoke:chrome` が成功し、`document.title` に期待値が含まれる。
   - 対象: `index.html:12`、`src/components/layout/AppShell.tsx:7`（`APP_NAME`）、`tools/chromeSmoke.ts`（`EXPECTED_TITLE`）
-  - コマンド: `npx tsx tools/chromeDevtoolsCli.ts evaluate --url http://127.0.0.1:4173 --expression "document.title"`
+  - コマンド: `npx tsx tools/chromeDevtoolsCli.ts evaluate --url http://127.0.0.1:4174 --expression "document.title"`
 
 - [x] CI に型検査を追加（型破綻の早期検知）
   - DoD: CI で `npm run typecheck` が通る。ローカルでも `tsc --noEmit` が緑。
@@ -82,9 +82,9 @@ Motto: "Small, clear, safe steps — always grounded in real docs."
 - 単体テスト: `npm test`
 - 型検査: `npm run typecheck`
 - 本番ビルド: `npm run build`
-- プレビュー: `npm run preview` → http://127.0.0.1:4173
-- DevTools スモーク: `npx tsx tools/chromeDevtoolsCli.ts evaluate --url http://127.0.0.1:4173 --expression "document.title"`
-- Playwright スクショ: `npx tsx tools/playwrightCli.ts screenshot --url http://127.0.0.1:4173 --output docs/screenshots/playwright-cli.png`
+- プレビュー: `npm run preview` → http://127.0.0.1:4174
+- DevTools スモーク: `npx tsx tools/chromeDevtoolsCli.ts evaluate --url http://127.0.0.1:4174 --expression "document.title"`
+- Playwright スクショ: `npx tsx tools/playwrightCli.ts screenshot --url http://127.0.0.1:4174 --output docs/screenshots/playwright-cli.png`
 
 ---
 
