@@ -21,6 +21,7 @@ function baseResult(): GtfsImportResult {
     },
     missingFiles: [],
     summary: [],
+    alerts: [],
   } as GtfsImportResult;
 }
 
@@ -235,4 +236,65 @@ test('buildExplorerDataset aggregates manual overlay duty impacts', () => {
   assert.equal(dataset.manualSummary.depotCount, 1);
   assert.equal(dataset.manualSummary.reliefPointCount, 1);
   assert.equal(dataset.manualSummary.totalDutyImpacts, 5);
+});
+
+test('buildExplorerDataset summarizes routes and timelines', () => {
+  const result = baseResult();
+  result.tables['stops.txt'].rows = [
+    { stop_id: 'STOP_A', stop_name: 'A', stop_lat: '35.60', stop_lon: '139.70' },
+    { stop_id: 'STOP_B', stop_name: 'B', stop_lat: '35.61', stop_lon: '139.71' },
+    { stop_id: 'STOP_C', stop_name: 'C', stop_lat: '35.62', stop_lon: '139.72' },
+  ];
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_1', service_id: 'WEEKDAY', route_id: 'R-01', direction_id: '0', trip_headsign: 'Outbound' },
+    { trip_id: 'TRIP_2', service_id: 'WEEKDAY', route_id: 'R-01', direction_id: '1', trip_headsign: 'Inbound' },
+    { trip_id: 'TRIP_3', service_id: 'WEEKDAY', route_id: 'R-02', direction_id: '0', trip_headsign: 'Shuttle' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_1', stop_id: 'STOP_A', stop_sequence: '1', departure_time: '08:10', arrival_time: '08:10' },
+    { trip_id: 'TRIP_1', stop_id: 'STOP_B', stop_sequence: '2', arrival_time: '08:40', departure_time: '08:42' },
+    { trip_id: 'TRIP_1', stop_id: 'STOP_C', stop_sequence: '3', arrival_time: '09:05' },
+    { trip_id: 'TRIP_2', stop_id: 'STOP_C', stop_sequence: '1', departure_time: '09:30', arrival_time: '09:30' },
+    { trip_id: 'TRIP_2', stop_id: 'STOP_B', stop_sequence: '2', arrival_time: '09:55', departure_time: '09:57' },
+    { trip_id: 'TRIP_2', stop_id: 'STOP_A', stop_sequence: '3', arrival_time: '10:20' },
+    { trip_id: 'TRIP_3', stop_id: 'STOP_A', stop_sequence: '1', departure_time: '11:00', arrival_time: '11:00' },
+    { trip_id: 'TRIP_3', stop_id: 'STOP_B', stop_sequence: '2', arrival_time: '11:20', departure_time: '11:25' },
+  ];
+  result.tables['routes.txt'] = {
+    name: 'routes.txt',
+    rows: [
+      { route_id: 'R-01', route_short_name: '01', route_long_name: 'Main Line', route_color: '3366FF', route_text_color: 'FFFFFF' },
+      { route_id: 'R-02', route_short_name: '02', route_long_name: 'Branch Line' },
+    ],
+  };
+
+  const dataset = buildExplorerDataset(result, { filter: { serviceId: 'WEEKDAY' } });
+
+  assert.ok(dataset.routeOptions.length >= 2);
+  const mainRoute = dataset.routes['R-01'];
+  assert.ok(mainRoute);
+  assert.equal(mainRoute.tripCount, 2);
+  assert.equal(mainRoute.stopCount, 3);
+  const directionZero = mainRoute.directions['0'];
+  assert.ok(directionZero);
+  assert.equal(directionZero.tripCount, 1);
+  assert.deepEqual(directionZero.headsigns, ['Outbound']);
+  assert.equal(directionZero.trips.length, 1);
+  assert.equal(directionZero.trips[0]?.startTime, '08:10');
+  assert.equal(directionZero.trips[0]?.endTime, '09:05');
+  assert.equal(directionZero.trips[0]?.durationMinutes, 55);
+  assert.equal(directionZero.trips[0]?.stopCount, 3);
+  assert.equal(directionZero.trips[0]?.serviceId, 'WEEKDAY');
+
+  const directionOne = mainRoute.directions['1'];
+  assert.ok(directionOne);
+  assert.equal(directionOne.trips[0]?.startTime, '09:30');
+  assert.equal(directionOne.trips[0]?.endTime, '10:20');
+
+  const shuttleRoute = dataset.routes['R-02'];
+  assert.ok(shuttleRoute);
+  assert.equal(shuttleRoute.tripCount, 1);
+  assert.equal(shuttleRoute.stopCount, 2);
+
+  assert.deepEqual(dataset.alerts, []);
 });

@@ -23,6 +23,12 @@ const FILE_NAME_PREFIX = 'blocks';
 export function buildBlocksCsv(plan: BlockPlan, options: BuildBlocksCsvOptions): BlocksCsvExport {
   const generatedAt = (options.generatedAt ?? new Date()).toISOString();
   const settingsHash = createSettingsHash(plan, options.linking);
+  const warningCountsByBlock = new Map(
+    plan.summaries.map((summary) => [
+      summary.blockId,
+      summary.warningCounts ?? { critical: 0, warn: 0, info: 0 },
+    ]),
+  );
 
   const header = [
     'block_id',
@@ -35,9 +41,16 @@ export function buildBlocksCsv(plan: BlockPlan, options: BuildBlocksCsvOptions):
     'service_id',
     'generated_at',
     'settings_hash',
+    'violations_summary',
+    'violations_hard',
+    'violations_soft',
   ].join(',');
 
   const rows = plan.csvRows.map((row) => {
+    const warningCounts = warningCountsByBlock.get(row.blockId) ?? { critical: 0, warn: 0, info: 0 };
+    const violationsHard = warningCounts.critical ?? 0;
+    const violationsSoft = warningCounts.warn ?? 0;
+    const violationsSummary = `H:${violationsHard};S:${violationsSoft}`;
     const cells = [
       row.blockId,
       String(row.seq),
@@ -49,6 +62,9 @@ export function buildBlocksCsv(plan: BlockPlan, options: BuildBlocksCsvOptions):
       row.serviceId ?? '',
       generatedAt,
       settingsHash,
+      violationsSummary,
+      String(violationsHard),
+      String(violationsSoft),
     ];
     return cells.map(csvEscape).join(',');
   });

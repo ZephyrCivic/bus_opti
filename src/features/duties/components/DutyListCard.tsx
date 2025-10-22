@@ -13,9 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 import type { Duty, DutySegment } from '@/types';
+import type { DutyWarningSummary } from '@/services/duty/dutyMetrics';
 
 interface DutyListCardProps {
   duties: Duty[];
+  dutyWarnings: Map<string, DutyWarningSummary>;
   selectedDutyId: string | null;
   selectedSegmentId: string | null;
   onSelectDuty: (duty: Duty) => void;
@@ -24,6 +26,7 @@ interface DutyListCardProps {
 
 export function DutyListCard({
   duties,
+  dutyWarnings,
   selectedDutyId,
   selectedSegmentId,
   onSelectDuty,
@@ -39,45 +42,56 @@ export function DutyListCard({
         {duties.length === 0 ? (
           <p className="text-sm text-muted-foreground">まだ乗務がありません。区間を追加してください。</p>
         ) : (
-          duties.map((duty) => (
-            <div
-              key={duty.id}
-              className={cn('rounded-lg border p-4', selectedDutyId === duty.id && 'border-primary')}
-              onClick={() => onSelectDuty(duty)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h4 className="font-semibold">{duty.id}</h4>
-                  <p className="text-xs text-muted-foreground">運転士ID: {duty.driverId ?? '未設定'}</p>
+          duties.map((duty) => {
+            const warningSummary = dutyWarnings.get(duty.id);
+            return (
+              <div
+                key={duty.id}
+                className={cn('rounded-lg border p-4', selectedDutyId === duty.id && 'border-primary')}
+                onClick={() => onSelectDuty(duty)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h4 className="font-semibold">{duty.id}</h4>
+                    <p className="text-xs text-muted-foreground">運転士ID: {duty.driverId ?? '未設定'}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="secondary">{duty.segments.length} 区間</Badge>
+                    {warningSummary ? (
+                      <div className="flex items-center gap-1 text-[10px]">
+                        <Badge variant={warningSummary.hard > 0 ? 'destructive' : 'outline'}>H {warningSummary.hard}</Badge>
+                        <Badge variant={warningSummary.soft > 0 ? 'secondary' : 'outline'}>S {warningSummary.soft}</Badge>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-                <Badge variant="secondary">{duty.segments.length} 区間</Badge>
+                <div className="mt-3 space-y-2">
+                  {duty.segments.map((segment) => (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      className={cn(
+                        'w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted',
+                        selectedSegmentId === segment.id && 'border-primary bg-primary/5',
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectSegment(duty, segment);
+                      }}
+                    >
+                      <div className="flex justify-between">
+                        <span>{segment.blockId}</span>
+                        <span>{segment.id}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {segment.startTripId} → {segment.endTripId}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="mt-3 space-y-2">
-                {duty.segments.map((segment) => (
-                  <button
-                    key={segment.id}
-                    type="button"
-                    className={cn(
-                      'w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted',
-                      selectedSegmentId === segment.id && 'border-primary bg-primary/5',
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectSegment(duty, segment);
-                    }}
-                  >
-                    <div className="flex justify-between">
-                      <span>{segment.blockId}</span>
-                      <span>{segment.id}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {segment.startTripId} → {segment.endTripId}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </CardContent>
     </Card>

@@ -1,6 +1,6 @@
 /**
  * src/features/dashboard/DashboardView.tsx
- * 運行ダッシュボード。KPI カード、ドライバー別稼働、未割当 Duty、KPI 設定編集を提供する。
+ * 運行ダッシュボード。KPI カード、可視化、詳細テーブル、警告タイムラインを提供する。
  */
 import { useEffect, useMemo, useState } from 'react';
 
@@ -30,34 +30,55 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import { buildBlocksPlan, DEFAULT_MAX_TURN_GAP_MINUTES } from '@/services/blocks/blockBuilder';
-import { buildTripLookup, enrichDutySegments } from '@/services/duty/dutyMetrics';
-import { computeDutyDashboard } from '@/services/dashboard/dutyDashboard';
+import { buildTripLookup, enrichDutySegments, computeDutyMetrics, summarizeDutyWarnings, formatMinutes } from '@/services/duty/dutyMetrics';
+import { computeDutyDashboard, type DutyTimelineSummary } from '@/services/dashboard/dutyDashboard';
+import { downloadCsv } from '@/utils/downloadCsv';
 import { toast } from 'sonner';
 
 interface SummaryCardProps {
+  id: string;
   title: string;
   value: string;
   description: string;
+  delta?: number;
+  deltaLabel?: string;
+  severity?: 'neutral' | 'warning' | 'critical';
+  tooltip?: string;
+  onClick?: () => void;
 }
 
-function SummaryCard({ title, value, description }: SummaryCardProps): JSX.Element {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-semibold">{value}</p>
-      </CardContent>
-    </Card>
-  );
+interface SparklineProps {
+  title: string;
+  subtitle: string;
+  color: string;
+  points: Array<{ label: string; value: number }>;
+}
+
+interface DriverBarListProps {
+  items: Array<{ driverId: string; shiftCount: number; hours: number }>; 
+}
+
+interface DutyDetailRow {
+  dutyId: string;
+  driverId: string;
+  totalMinutes: number;
+  coverageLabel: string;
+  hardWarnings: number;
+  softWarnings: number;
+  messages: string[];
 }
 
 export default function DashboardView(): JSX.Element {
-  const { result, dutyState, manual, dutyActions } = useGtfsImport();
+  const { result, dutyState, manual } = useGtfsImport();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -68,14 +89,20 @@ export default function DashboardView(): JSX.Element {
     maxUnassignedPercentage: '',
     maxNightShiftVariance: '',
   });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [severityFilter, setSeverityFilter] = useState<'all' | 'hard' | 'soft'>('all');
 
   const plan = useMemo(
-    () => buildBlocksPlan(result, { maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES, linkingEnabled: manual.linking.enabled }),
+    () =>
+      buildBlocksPlan(result, {
+        maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
+        linkingEnabled: manual.linking.enabled,
+      }),
     [result, manual.linking.enabled],
   );
   const tripLookup = useMemo(() => buildTripLookup(plan.csvRows), [plan.csvRows]);
 
-  const dutySummaries = useMemo(() => {
+  const dutySummaries = useMemo<DutyTimelineSummary[]>(() => {
     return dutyState.duties.map((duty) => {
       const segments = enrichDutySegments(duty, tripLookup);
       if (segments.length === 0) {
@@ -83,10 +110,10 @@ export default function DashboardView(): JSX.Element {
       }
       return {
         id: duty.id,
-        driverId: duty.driverId,
+        driverId: duty.driverId ?? undefined,
         startMinutes: segments[0]?.startMinutes,
         endMinutes: segments[segments.length - 1]?.endMinutes,
-      };
+      } satisfies DutyTimelineSummary;
     });
   }, [dutyState.duties, tripLookup]);
 
@@ -99,8 +126,75 @@ export default function DashboardView(): JSX.Element {
     [dutySummaries, dutyState.settings.maxNightShiftVariance, dutyState.settings.maxUnassignedPercentage],
   );
 
+  const dutyDetails = useMemo<DutyDetailRow[]>(() => {
+    return dutyState.duties.map((duty) => {
+      const metrics = computeDutyMetrics(duty, tripLookup, dutyState.settings);
+      const summary = summarizeDutyWarnings(metrics);
+      const totalMinutes = metrics.totalSpanMinutes ?? 0;
+      const coverageLabel = metrics.totalSpanMinutes ? formatMinutes(metrics.totalSpanMinutes) : '-';
+      return {
+        dutyId: duty.id,
+        driverId: duty.driverId ?? '未割当',
+        totalMinutes,
+        coverageLabel,
+        hardWarnings: summary.hard,
+        softWarnings: summary.soft,
+        messages: summary.messages.map((entry) => entry.message),
+      };
+    });
+  }, [dutyState.duties, dutyState.settings, tripLookup]);
+
+  const filteredDetails = useMemo(() => {
+    const normalized = searchTerm.trim().toLowerCase();
+    const matchesSearch = (row: DutyDetailRow) => {
+      if (!normalized) return true;
+      return row.dutyId.toLowerCase().includes(normalized) || row.driverId.toLowerCase().includes(normalized);
+    };
+    const matchesSeverity = (row: DutyDetailRow) => {
+      if (severityFilter === 'all') return true;
+      if (severityFilter === 'hard') return row.hardWarnings > 0;
+      return row.hardWarnings === 0 && row.softWarnings > 0;
+    };
+    return dutyDetails.filter((row) => matchesSearch(row) && matchesSeverity(row));
+  }, [dutyDetails, searchTerm, severityFilter]);
+
+  const dailyCoverageTrend = useMemo(() => {
+    if (dashboard.dailyMetrics.length < 2) {
+      return undefined;
+    }
+    const sorted = [...dashboard.dailyMetrics].sort((a, b) => a.dayIndex - b.dayIndex);
+    const latest = sorted[sorted.length - 1]!.coveragePercentage;
+    const previous = sorted[sorted.length - 2]!.coveragePercentage;
+    return latest - previous;
+  }, [dashboard.dailyMetrics]);
+
+  const unassignedTrend = useMemo(() => {
+    if (dashboard.dailyMetrics.length < 2) {
+      return undefined;
+    }
+    const sorted = [...dashboard.dailyMetrics].sort((a, b) => a.dayIndex - b.dayIndex);
+    const latest = sorted[sorted.length - 1]!.unassignedCount;
+    const previous = sorted[sorted.length - 2]!.unassignedCount;
+    return latest - previous;
+  }, [dashboard.dailyMetrics]);
+
+  const coverageSeries = useMemo(
+    () =>
+      dashboard.dailyMetrics
+        .sort((a, b) => a.dayIndex - b.dayIndex)
+        .map((metric) => ({ label: metric.label, value: metric.coveragePercentage })),
+    [dashboard.dailyMetrics],
+  );
+  const unassignedSeries = useMemo(
+    () =>
+      dashboard.dailyMetrics
+        .sort((a, b) => a.dayIndex - b.dayIndex)
+        .map((metric) => ({ label: metric.label, value: metric.unassignedCount })),
+    [dashboard.dailyMetrics],
+  );
+
   const hasData = dutySummaries.length > 0;
-  const unassigned = useMemo(
+  const unassignedDutyIds = useMemo(
     () => dutySummaries.filter((duty) => !duty.driverId).map((duty) => duty.id),
     [dutySummaries],
   );
@@ -126,250 +220,426 @@ export default function DashboardView(): JSX.Element {
       maxNightShiftVariance: Number.parseInt(form.maxNightShiftVariance, 10),
     };
 
-    if (
-      Number.isNaN(parsed.maxContinuousMinutes) ||
-      Number.isNaN(parsed.minBreakMinutes) ||
-      Number.isNaN(parsed.maxDailyMinutes) ||
-      Number.isNaN(parsed.maxUnassignedPercentage) ||
-      Number.isNaN(parsed.maxNightShiftVariance)
-    ) {
-      setFormError('すべての項目を数値で入力してください。');
-      return;
-    }
-    if (
-      parsed.maxContinuousMinutes < 0 ||
-      parsed.maxContinuousMinutes > 1440 ||
-      parsed.minBreakMinutes < 0 ||
-      parsed.minBreakMinutes > 1440 ||
-      parsed.maxDailyMinutes < 0 ||
-      parsed.maxDailyMinutes > 1440
-    ) {
-      setFormError('分単位の項目は 0〜1440 の範囲で入力してください。');
-      return;
-    }
-    if (
-      parsed.maxUnassignedPercentage < 0 ||
-      parsed.maxUnassignedPercentage > 100 ||
-      parsed.maxNightShiftVariance < 0 ||
-      parsed.maxNightShiftVariance > 100
-    ) {
-      setFormError('割合の項目は 0〜100 の範囲で入力してください。');
+    const hasNaN = Object.values(parsed).some((value) => !Number.isFinite(value));
+    if (hasNaN) {
+      setFormError('すべての項目に数値を入力してください。');
       return;
     }
 
-    dutyActions.updateSettings({
-      maxContinuousMinutes: parsed.maxContinuousMinutes,
-      minBreakMinutes: parsed.minBreakMinutes,
-      maxDailyMinutes: parsed.maxDailyMinutes,
-      maxUnassignedPercentage: parsed.maxUnassignedPercentage,
-      maxNightShiftVariance: parsed.maxNightShiftVariance,
-    });
+    dutyState.settings.maxContinuousMinutes = parsed.maxContinuousMinutes;
+    dutyState.settings.minBreakMinutes = parsed.minBreakMinutes;
+    dutyState.settings.maxDailyMinutes = parsed.maxDailyMinutes;
+    dutyState.settings.maxUnassignedPercentage = parsed.maxUnassignedPercentage;
+    dutyState.settings.maxNightShiftVariance = parsed.maxNightShiftVariance;
     toast.success('KPI 設定を更新しました。');
     setIsSettingsOpen(false);
   };
 
-  const alertMessages: Record<string, string> = {
-    'coverage-low': 'カバレッジ率が目標値を下回っています。',
-    'unassigned-exceeds': '未割当 Duty が許容値を超えています。',
-    'fairness-imbalance': 'ドライバー間の公平性に偏りがあります。',
+  const handleExportDetails = () => {
+    if (filteredDetails.length === 0) {
+      toast.info('エクスポートできる行がありません。');
+      return;
+    }
+    const header = ['duty_id', 'driver_id', 'total_minutes', 'hard_warnings', 'soft_warnings', 'messages'];
+    const rows = filteredDetails.map((row) => [
+      row.dutyId,
+      row.driverId,
+      String(row.totalMinutes),
+      String(row.hardWarnings),
+      String(row.softWarnings),
+      row.messages.join(' | '),
+    ]);
+    const csv = [header, ...rows]
+      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+    downloadCsv({ fileName: `duty-kpi-details-${timestamp}.csv`, content: csv });
+    toast.success('KPI 詳細をエクスポートしました。');
   };
 
+  const summaryCards: SummaryCardProps[] = [
+    {
+      id: 'coverage',
+      title: 'カバレッジ',
+      value: `${dashboard.summary.coveragePercentage}%`,
+      description: '割り当て済み Duty の割合',
+      delta: dailyCoverageTrend,
+      deltaLabel: '前日比',
+      severity: dashboard.summary.coveragePercentage < 100 - dutyState.settings.maxUnassignedPercentage ? 'warning' : 'neutral',
+      tooltip: `割当 ${dashboard.summary.totalShifts} / ${dashboard.summary.totalShifts + dashboard.summary.unassignedCount}`,
+    },
+    {
+      id: 'unassigned',
+      title: '未割当 Duty',
+      value: `${dashboard.summary.unassignedCount} 件`,
+      description: 'ドライバーがまだ決まっていない Duty',
+      delta: unassignedTrend,
+      deltaLabel: '前日差',
+      severity: dashboard.summary.unassignedCount > 0 ? 'warning' : 'neutral',
+      tooltip: unassignedDutyIds.join(', ') || '未割当なし',
+    },
+    {
+      id: 'hours',
+      title: '総稼働時間',
+      value: `${dashboard.summary.totalHours.toLocaleString()} h`,
+      description: '割当済み Duty の稼働時間',
+      severity: 'neutral',
+      tooltip: 'ドライバー単位で積算した稼働時間の合計',
+    },
+    {
+      id: 'fairness',
+      title: '公平性スコア',
+      value: `${dashboard.summary.fairnessScore}`,
+      description: '割当の偏りを 0-100 で評価',
+      severity: dashboard.summary.fairnessScore < 100 - dutyState.settings.maxNightShiftVariance ? 'warning' : 'neutral',
+      tooltip: 'ドライバーごとの Duty 件数の偏りを基に算出',
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">運行指標ダッシュボード</h2>
-        <p className="text-sm text-muted-foreground">
-          Duty の割当状況を集計し、稼働バランスや未割当 Duty を早期に把握します。
-        </p>
-      </div>
-
-      <Alert variant="default">
-        <AlertTitle>最新データ</AlertTitle>
-        <AlertDescription>
-          GTFS 取込と Duty 編集の内容に基づいて指標を算出しています。再計算したい場合は「KPI 設定」からしきい値を調整してください。
-        </AlertDescription>
-      </Alert>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" onClick={() => setIsSettingsOpen(true)}>
-          KPI 設定を編集
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => dutyActions.reset()}>
-          Duty をリセット
-        </Button>
-      </div>
-
-      {dashboard.alerts.length > 0 && (
-        <Alert variant="destructive">
-          <AlertTitle>注意が必要な項目があります</AlertTitle>
-          <AlertDescription>
-            <ul className="list-disc space-y-1 pl-5">
-              {dashboard.alerts.map((alert) => (
-                <li key={alert.id}>{alertMessages[alert.id] ?? alert.message}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {hasData ? (
-        <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <SummaryCard
-              title="総シフト数"
-              value={dashboard.summary.totalShifts.toLocaleString()}
-              description="割当済み Duty の件数"
-            />
-            <SummaryCard
-              title="総稼働時間"
-              value={`${dashboard.summary.totalHours.toLocaleString()} 時間`}
-              description="Duty の稼働時間合計（Sign-on〜Sign-off 相当）"
-            />
-            <SummaryCard
-              title="未割当 Duty"
-              value={dashboard.summary.unassignedCount.toLocaleString()}
-              description="担当ドライバーが未設定の Duty 数"
-            />
-            <SummaryCard
-              title="公平性スコア"
-              value={`${dashboard.summary.fairnessScore.toFixed(1)}`}
-              description="シフト数の偏りを 0〜100 で評価（100 が最良）"
-            />
-            <SummaryCard
-              title="カバレッジ率"
-              value={`${dashboard.summary.coveragePercentage}%`}
-              description="割り当て済み Duty の比率（100% が目標）"
-            />
+    <TooltipProvider>
+      <div className="space-y-6">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">運行ダッシュボード</h2>
+            <p className="text-sm text-muted-foreground">
+              Duty の配分状況を確認し、警告の根拠や詳細データを参照できます。
+            </p>
           </div>
+          <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
+            KPI 設定を編集
+          </Button>
+        </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>ドライバー別の稼働</CardTitle>
-              <CardDescription>割り当て済み Duty と稼働時間の内訳を一覧できます。</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {dashboard.workloads.length === 0 ? (
-                <p className="text-sm text-muted-foreground">割り当て済みのドライバーはまだありません。</p>
-              ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card) => (
+            <SummaryCard key={card.id} {...card} />
+          ))}
+        </div>
+
+        {hasData ? (
+          <>
+            <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>カバレッジ推移</CardTitle>
+                  <CardDescription>日別のカバレッジと未割当件数の推移</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-6 md:grid-cols-2">
+                  <Sparkline title="カバレッジ" subtitle="%" color="#16a34a" points={coverageSeries} />
+                  <Sparkline title="未割当" subtitle="件" color="#ef4444" points={unassignedSeries} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>ドライバー別稼働 (Top5)</CardTitle>
+                  <CardDescription>割当件数と稼働時間の概況</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DriverBarList items={dashboard.workloads} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle>KPI 詳細テーブル</CardTitle>
+                  <CardDescription>Duty ごとの稼働時間と警告の内訳。検索や絞り込みが可能です。</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="duty_id / driver_id を検索"
+                    className="w-[200px]"
+                  />
+                  <Button
+                    variant={severityFilter === 'all' ? 'default' : 'outline'}
+                    onClick={() => setSeverityFilter('all')}
+                  >
+                    全て
+                  </Button>
+                  <Button
+                    variant={severityFilter === 'hard' ? 'default' : 'outline'}
+                    onClick={() => setSeverityFilter('hard')}
+                  >
+                    Hard
+                  </Button>
+                  <Button
+                    variant={severityFilter === 'soft' ? 'default' : 'outline'}
+                    onClick={() => setSeverityFilter('soft')}
+                  >
+                    Soft
+                  </Button>
+                  <Button variant="secondary" onClick={handleExportDetails}>
+                    CSV エクスポート
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="max-h-[320px] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>driver_id</TableHead>
-                      <TableHead>Duty 件数</TableHead>
-                      <TableHead>稼働時間 (h)</TableHead>
+                      <TableHead>Duty ID</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead className="text-right">稼働時間</TableHead>
+                      <TableHead className="text-right">Hard</TableHead>
+                      <TableHead className="text-right">Soft</TableHead>
+                      <TableHead>メッセージ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dashboard.workloads.map((item) => (
-                      <TableRow key={item.driverId}>
-                        <TableCell className="font-medium">{item.driverId}</TableCell>
-                        <TableCell>{item.shiftCount}</TableCell>
-                        <TableCell>{item.hours.toLocaleString()}</TableCell>
+                    {filteredDetails.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
+                          条件に合致する行がありません。
+                        </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      filteredDetails.map((row) => (
+                        <TableRow key={row.dutyId}>
+                          <TableCell className="font-medium">{row.dutyId}</TableCell>
+                          <TableCell>{row.driverId}</TableCell>
+                          <TableCell className="text-right">{row.coverageLabel}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={row.hardWarnings > 0 ? 'destructive' : 'outline'}>{row.hardWarnings}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={row.softWarnings > 0 ? 'secondary' : 'outline'}>{row.softWarnings}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {row.messages.length === 0 ? '問題ありません。' : row.messages.join(' / ')}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>警告タイムライン</CardTitle>
+                <CardDescription>日別のアラート履歴。対応が必要なケースを把握します。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dashboard.alertHistory.length === 0 && dashboard.alerts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">直近の警告はありません。</p>
+                ) : (
+                  <>
+                    {dashboard.alerts.length > 0 ? (
+                      <Alert>
+                        <AlertTitle>現在の警告</AlertTitle>
+                        <AlertDescription>
+                          <ul className="list-disc space-y-1 pl-5 text-sm">
+                            {dashboard.alerts.map((alert) => (
+                              <li key={`current-${alert.id}-${alert.message}`}>{alert.message}</li>
+                            ))}
+                          </ul>
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+                    <div className="space-y-2">
+                      {dashboard.alertHistory.map((entry) => (
+                        <div key={entry.label} className="rounded-md border p-3 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold">{entry.label}</span>
+                            <Badge variant={entry.alerts.some((alert) => alert.severity === 'critical') ? 'destructive' : 'secondary'}>
+                              {entry.alerts.length} 件
+                            </Badge>
+                          </div>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                            {entry.alerts.map((alert) => (
+                              <li key={`${entry.label}-${alert.id}`}>{alert.message}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        ) : (
           <Card>
             <CardHeader>
-              <CardTitle>未割当 Duty</CardTitle>
-              <CardDescription>ドライバーが割り当てられていない Duty のリストです。</CardDescription>
+              <CardTitle>データが不足しています</CardTitle>
+              <CardDescription>GTFS を取り込み、Duty を少なくとも 1 件追加するとダッシュボードが集計されます。</CardDescription>
             </CardHeader>
-            <CardContent>
-              {unassigned.length === 0 ? (
-                <p className="text-sm text-muted-foreground">未割当の Duty はありません。</p>
-              ) : (
-                <ul className="list-disc space-y-1 pl-5 text-sm">
-                  {unassigned.map((id) => (
-                    <li key={id}>{id}</li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
           </Card>
-        </>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>データが不足しています</CardTitle>
-            <CardDescription>GTFS を取り込んで Duty を少なくとも 1 件追加すると、ダッシュボードが集計されます。</CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+        )}
 
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>KPI 設定</DialogTitle>
-            <DialogDescription>割当ルールを見直し、ダッシュボードの基準値を調整できます。</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-continuous">連続稼働の上限 (分)</label>
-              <Input
-                id="kpi-max-continuous"
-                inputMode="numeric"
+        <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>KPI 設定</DialogTitle>
+              <DialogDescription>割当ルールを見直し、ダッシュボードの基準値を調整できます。</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4">
+              <NumberField
+                label="連続稼働の上限 (分)"
                 value={form.maxContinuousMinutes}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxContinuousMinutes: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, maxContinuousMinutes: value }))}
+                inputId="kpi-max-continuous"
               />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-min-break">最低休憩時間 (分)</label>
-              <Input
-                id="kpi-min-break"
-                inputMode="numeric"
+              <NumberField
+                label="最低休憩時間 (分)"
                 value={form.minBreakMinutes}
-                onChange={(event) => setForm((prev) => ({ ...prev, minBreakMinutes: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, minBreakMinutes: value }))}
+                inputId="kpi-min-break"
               />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-daily">1 日あたりの上限 (分)</label>
-              <Input
-                id="kpi-max-daily"
-                inputMode="numeric"
+              <NumberField
+                label="1 日あたりの上限 (分)"
                 value={form.maxDailyMinutes}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxDailyMinutes: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, maxDailyMinutes: value }))}
+                inputId="kpi-max-daily"
               />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-max-unassigned">未割当率の上限 (%)</label>
-              <Input
-                id="kpi-max-unassigned"
-                inputMode="numeric"
+              <NumberField
+                label="未割当率の上限 (%)"
                 value={form.maxUnassignedPercentage}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxUnassignedPercentage: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, maxUnassignedPercentage: value }))}
+                inputId="kpi-max-unassigned"
               />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium" htmlFor="kpi-fairness">公平性の許容偏差 (%)</label>
-              <Input
-                id="kpi-fairness"
-                inputMode="numeric"
+              <NumberField
+                label="公平性の許容偏差 (%)"
                 value={form.maxNightShiftVariance}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxNightShiftVariance: event.target.value }))}
+                onChange={(value) => setForm((prev) => ({ ...prev, maxNightShiftVariance: value }))}
+                inputId="kpi-fairness"
               />
+              {formError && <p className="text-sm text-destructive">{formError}</p>}
             </div>
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>キャンセル</Button>
-            <Button onClick={handleSettingsSave}>保存する</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setIsSettingsOpen(false)}>
+                キャンセル
+              </Button>
+              <Button onClick={handleSettingsSave}>保存する</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function SummaryCard({ title, value, description, delta, deltaLabel, severity = 'neutral', tooltip, onClick }: SummaryCardProps): JSX.Element {
+  const severityVariant = severity === 'critical' ? 'destructive' : severity === 'warning' ? 'secondary' : 'outline';
+  const deltaDisplay = typeof delta === 'number' ? (delta > 0 ? `+${delta}` : `${delta}`) : null;
+
+  const body = (
+    <Card
+      className={onClick ? 'cursor-pointer transition hover:border-primary/60' : undefined}
+      onClick={onClick}
+    >
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>{title}</CardTitle>
+          <Badge variant={severityVariant}>{severity === 'neutral' ? 'OK' : severity.toUpperCase()}</Badge>
+        </div>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="text-2xl font-semibold">{value}</p>
+        {deltaDisplay !== null && deltaLabel ? (
+          <p className="text-xs text-muted-foreground">{deltaLabel}: {deltaDisplay}</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{body}</TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    );
+  }
+  return body;
+}
+
+function Sparkline({ title, subtitle, color, points }: SparklineProps): JSX.Element {
+  if (points.length === 0) {
+    return (
+      <div className="rounded-md border p-3 text-sm text-muted-foreground">データが不足しています。</div>
+    );
+  }
+  const maxValue = Math.max(...points.map((point) => point.value));
+  const minValue = Math.min(...points.map((point) => point.value));
+  const normalized = points.map((point, index) => ({
+    x: (index / Math.max(1, points.length - 1)) * 100,
+    y: maxValue === minValue ? 50 : ((maxValue - point.value) / (maxValue - minValue)) * 100,
+  }));
+  const path = normalized.map((point) => `${point.x},${point.y}`).join(' ');
+  const latest = points[points.length - 1]!;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-semibold">{title}</span>
+        <span className="text-muted-foreground">{latest.value} {subtitle}</span>
+      </div>
+      <svg viewBox="0 0 100 100" className="h-24 w-full">
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          points={path}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle cx={normalized[normalized.length - 1]!.x} cy={normalized[normalized.length - 1]!.y} r={2.5} fill={color} />
+      </svg>
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>{points[0]?.label}</span>
+        <span>{latest.label}</span>
+      </div>
     </div>
   );
 }
 
-function coverageBadgeVariant(percentage: number): 'default' | 'secondary' | 'outline' {
-  if (percentage >= 80) {
-    return 'default';
+function DriverBarList({ items }: DriverBarListProps): JSX.Element {
+  if (items.length === 0) {
+    return <p className="text-sm text-muted-foreground">割当済みのドライバーはまだありません。</p>;
   }
-  if (percentage >= 60) {
-    return 'secondary';
-  }
-  return 'outline';
+  const sorted = [...items].sort((a, b) => b.shiftCount - a.shiftCount);
+  const topFive = sorted.slice(0, 5);
+  const maxShift = Math.max(...topFive.map((item) => item.shiftCount));
+  return (
+    <div className="space-y-3">
+      {topFive.map((item) => (
+        <div key={item.driverId}>
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium">{item.driverId}</span>
+            <span className="text-muted-foreground">{item.shiftCount} 件 / {item.hours.toLocaleString()} h</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted">
+            <div
+              className="h-2 rounded-full bg-primary"
+              style={{ width: `${maxShift === 0 ? 0 : Math.round((item.shiftCount / maxShift) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+      {sorted.length > 5 ? (
+        <p className="text-xs text-muted-foreground">他 {sorted.length - 5} 名</p>
+      ) : null}
+    </div>
+  );
+}
+
+function NumberField({ label, value, onChange, inputId }: { label: string; value: string; onChange: (value: string) => void; inputId: string }): JSX.Element {
+  return (
+    <div className="grid gap-2">
+      <label className="text-sm font-medium" htmlFor={inputId}>{label}</label>
+      <Input
+        id={inputId}
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
 }

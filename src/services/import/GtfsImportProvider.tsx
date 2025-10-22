@@ -24,6 +24,7 @@ import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 import { loadDutyState, saveDutyState } from '@/services/duty/dutyPersistence';
 
 import { GtfsImportError, type GtfsImportResult, parseGtfsArchive } from './gtfsParser';
+import { buildDutyPlanData } from '@/features/duties/hooks/useDutyPlan';
 
 export type GtfsImportStatus = 'idle' | 'parsing' | 'ready' | 'error';
 
@@ -176,14 +177,24 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
       return;
     }
     const testWindow = window as typeof window & {
-      __PLAYWRIGHT__?: boolean;
       __TEST_DUTY_ACTIONS?: DutyEditorActions;
     };
-    if (!testWindow.__PLAYWRIGHT__) {
-      return;
-    }
     testWindow.__TEST_DUTY_ACTIONS = dutyActions;
   }, [dutyActions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_DUTY_PLAN?: ReturnType<typeof buildDutyPlanData>;
+    };
+    if (!state.result) {
+      delete testWindow.__TEST_DUTY_PLAN;
+      return;
+    }
+    testWindow.__TEST_DUTY_PLAN = buildDutyPlanData(state.result, manual);
+  }, [state.result, manual]);
 
   return <GtfsImportContext.Provider value={value}>{children}</GtfsImportContext.Provider>;
 }

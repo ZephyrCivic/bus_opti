@@ -47,8 +47,8 @@ test('buildBlocksCsv outputs metadata columns and deterministic hash', () => {
   const exportData = buildBlocksCsv(plan, { linking: linkingSettings, generatedAt });
 
   const expectedCsv = [
-    'block_id,seq,trip_id,trip_start,trip_end,from_stop_id,to_stop_id,service_id,generated_at,settings_hash',
-    'BLOCK_001,1,TRIP_1,05:00,05:30,STOP_A,STOP_B,WEEKDAY,2025-10-07T12:34:56.000Z,195fa463',
+    'block_id,seq,trip_id,trip_start,trip_end,from_stop_id,to_stop_id,service_id,generated_at,settings_hash,violations_summary,violations_hard,violations_soft',
+    'BLOCK_001,1,TRIP_1,05:00,05:30,STOP_A,STOP_B,WEEKDAY,2025-10-07T12:34:56.000Z,195fa463,H:0;S:0,0,0',
   ].join('\n');
 
   assert.equal(exportData.rowCount, 1);

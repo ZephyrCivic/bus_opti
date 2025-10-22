@@ -3,10 +3,12 @@
  * Builds Duties CSV content with export metadata and duty configuration hash.
  */
 import type { Duty, DutySegment, DutySettings } from '@/types';
+import { computeDutyMetrics, type BlockTripLookup } from '@/services/duty/dutyMetrics';
 
 export interface BuildDutiesCsvOptions {
   generatedAt?: Date;
   dutySettings: DutySettings;
+  tripLookup?: BlockTripLookup;
 }
 
 export interface DutiesCsvExport {
@@ -32,12 +34,17 @@ export function buildDutiesCsv(duties: Duty[], options: BuildDutiesCsvOptions): 
     'driver_id',
     'generated_at',
     'settings_hash',
+    'violations_summary',
+    'violations_hard',
+    'violations_soft',
   ].join(',');
 
   const rows: string[] = [];
   for (const duty of duties) {
     const driverId = duty.driverId ?? '';
     const segments = sortSegments(duty.segments);
+    const dutyWarnings = summarizeDutyWarnings(duty, options.tripLookup, options.dutySettings);
+    const violationsSummary = `H:${dutyWarnings.critical};S:${dutyWarnings.warn}`;
     segments.forEach((segment, index) => {
       rows.push(
         [
@@ -49,6 +56,9 @@ export function buildDutiesCsv(duties: Duty[], options: BuildDutiesCsvOptions): 
           driverId,
           generatedAt,
           settingsHash,
+          violationsSummary,
+          String(dutyWarnings.critical),
+          String(dutyWarnings.warn),
         ].map(csvEscape).join(','),
       );
     });
@@ -64,6 +74,9 @@ export function buildDutiesCsv(duties: Duty[], options: BuildDutiesCsvOptions): 
           driverId,
           generatedAt,
           settingsHash,
+          violationsSummary,
+          String(dutyWarnings.critical),
+          String(dutyWarnings.warn),
         ].map(csvEscape).join(','),
       );
     }
@@ -127,4 +140,26 @@ function formatTimestampForFileName(iso: string): string {
   }
   const [, yyyy, mm, dd, hh, mi, ss] = match;
   return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+}
+
+interface DutyWarningCounts {
+  critical: number;
+  warn: number;
+  info: number;
+}
+
+function summarizeDutyWarnings(
+  duty: Duty,
+  lookup: BlockTripLookup | undefined,
+  settings: DutySettings,
+): DutyWarningCounts {
+  if (!lookup) {
+    return { critical: 0, warn: 0, info: 0 };
+  }
+  const metrics = computeDutyMetrics(duty, lookup, settings);
+  const critical =
+    (metrics.warnings.exceedsContinuous ? 1 : 0) +
+    (metrics.warnings.exceedsDailySpan ? 1 : 0);
+  const warn = metrics.warnings.insufficientBreak ? 1 : 0;
+  return { critical, warn, info: 0 };
 }

@@ -35,54 +35,57 @@ interface DutyPlanParams {
   manual: ManualInputs;
 }
 
+export function buildDutyPlanData(result: GtfsImportResult | undefined, manual: ManualInputs): DutyPlanData {
+  const plan = buildBlocksPlan(result, {
+    maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
+    linkingEnabled: manual.linking.enabled,
+    minTurnaroundMinutes: manual.linking.minTurnaroundMin,
+  });
+  const tripIndex = buildTripIndexFromPlan(plan);
+  const tripLookup = buildTripLookup(plan.csvRows);
+  const blockTripMinutes = computeBlockTripMinutes(plan);
+  return { plan, tripIndex, tripLookup, blockTripMinutes };
+}
+
 export function useDutyPlan({ result, manual }: DutyPlanParams): DutyPlanData {
-  const plan = useMemo<BlockPlan>(
-    () =>
-      buildBlocksPlan(result, {
-        maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
-        linkingEnabled: manual.linking.enabled,
-      }),
-    [result, manual.linking.enabled],
+  const data = useMemo(
+    () => buildDutyPlanData(result, manual),
+    [result, manual],
   );
 
-  const tripIndex = useMemo<BlockTripSequenceIndex>(() => buildTripIndexFromPlan(plan), [plan]);
-  const tripLookup = useMemo<BlockTripLookup>(() => buildTripLookup(plan.csvRows), [plan.csvRows]);
-
-  const blockTripMinutes = useMemo(() => {
-    const map = new Map<string, DutyTimelineTrip[]>();
-    for (const row of plan.csvRows) {
-      const startMinutes = parseTimeLabel(row.tripStart);
-      const endMinutes = parseTimeLabel(row.tripEnd);
-      if (startMinutes === undefined || endMinutes === undefined) {
-        continue;
-      }
-      const list = map.get(row.blockId) ?? [];
-      list.push({
-        tripId: row.tripId,
-        startMinutes,
-        endMinutes,
-      });
-      map.set(row.blockId, list);
-    }
-    for (const trips of map.values()) {
-      trips.sort((a, b) => a.startMinutes - b.startMinutes);
-    }
-    return map;
-  }, [plan.csvRows]);
+  const { plan, tripIndex, tripLookup, blockTripMinutes } = data;
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
     const testWindow = window as typeof window & {
-      __PLAYWRIGHT__?: boolean;
       __TEST_DUTY_PLAN?: DutyPlanData;
     };
-    if (!testWindow.__PLAYWRIGHT__) {
-      return;
-    }
     testWindow.__TEST_DUTY_PLAN = { plan, tripIndex, tripLookup, blockTripMinutes };
   }, [plan, tripIndex, tripLookup, blockTripMinutes]);
 
   return { plan, tripIndex, tripLookup, blockTripMinutes };
+}
+
+function computeBlockTripMinutes(plan: BlockPlan): Map<string, DutyTimelineTrip[]> {
+  const map = new Map<string, DutyTimelineTrip[]>();
+  for (const row of plan.csvRows) {
+    const startMinutes = parseTimeLabel(row.tripStart);
+    const endMinutes = parseTimeLabel(row.tripEnd);
+    if (startMinutes === undefined || endMinutes === undefined) {
+      continue;
+    }
+    const list = map.get(row.blockId) ?? [];
+    list.push({
+      tripId: row.tripId,
+      startMinutes,
+      endMinutes,
+    });
+    map.set(row.blockId, list);
+  }
+  for (const trips of map.values()) {
+    trips.sort((a, b) => a.startMinutes - b.startMinutes);
+  }
+  return map;
 }

@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 import type { Duty, DutySegment, ManualDriver } from '@/types';
-import type { DutyMetrics } from '@/services/duty/dutyMetrics';
+import type { DutyMetrics, DutyWarningSummary } from '@/services/duty/dutyMetrics';
 import { formatMinutes } from '@/services/duty/dutyMetrics';
 
 interface InspectorCardProps {
@@ -27,6 +27,7 @@ interface InspectorCardProps {
   selectedSegment: { dutyId: string; segmentId: string } | null;
   selectedSegmentDetail: DutySegment | null;
   selectedMetrics?: DutyMetrics;
+  warningSummary?: DutyWarningSummary;
   onAutoCorrect: () => void;
   driverOptions: ManualDriver[];
 }
@@ -42,6 +43,7 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
     selectedSegment,
     selectedSegmentDetail,
     selectedMetrics,
+    warningSummary,
     onAutoCorrect,
     driverOptions,
   } = props;
@@ -86,10 +88,10 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
           ) : (
             <p className="text-xs text-muted-foreground">Drivers CSV を読み込むと候補が表示されます。</p>
           )}
-        </div>
-        <QuickStats dutyCount={dutyCount} segmentCount={segmentCount} driverCount={driverCount} />
-        {selectedDuty ? (
-          <DutyMetricsPanel metrics={selectedMetrics} onAutoCorrect={onAutoCorrect} />
+       </div>
+       <QuickStats dutyCount={dutyCount} segmentCount={segmentCount} driverCount={driverCount} />
+       {selectedDuty ? (
+          <DutyMetricsPanel metrics={selectedMetrics} warningSummary={warningSummary} onAutoCorrect={onAutoCorrect} />
         ) : (
           <p className="text-sm text-muted-foreground">乗務を選ぶと、安全チェック結果が表示されます。</p>
         )}
@@ -130,7 +132,15 @@ function QuickStats({
   );
 }
 
-function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | undefined; onAutoCorrect: () => void }): JSX.Element {
+function DutyMetricsPanel({
+  metrics,
+  warningSummary,
+  onAutoCorrect,
+}: {
+  metrics: DutyMetrics | undefined;
+  warningSummary?: DutyWarningSummary;
+  onAutoCorrect: () => void;
+}): JSX.Element {
   if (!metrics) {
     return (
       <div className="rounded-md border p-3 text-sm">
@@ -140,18 +150,8 @@ function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | u
     );
   }
 
-  const warningMessages: string[] = [];
-  if (metrics.warnings.exceedsContinuous) {
-    warningMessages.push('連続運転時間が上限を超えています。');
-  }
-  if (metrics.warnings.exceedsDailySpan) {
-    warningMessages.push('一日の拘束時間が上限を超えています。');
-  }
-  if (metrics.warnings.insufficientBreak && metrics.shortestBreakMinutes !== null) {
-    warningMessages.push('休憩時間が規定より短い区間があります。');
-  }
-
-  const showWarnings = metrics.warnings.exceedsContinuous || metrics.warnings.exceedsDailySpan || metrics.warnings.insufficientBreak;
+  const summary = warningSummary ?? { hard: 0, soft: 0, messages: [] };
+  const showWarnings = summary.hard > 0 || summary.soft > 0;
 
   return (
     <div className="space-y-3 rounded-md border p-3 text-sm">
@@ -170,10 +170,16 @@ function DutyMetricsPanel({ metrics, onAutoCorrect }: { metrics: DutyMetrics | u
         value={metrics.shortestBreakMinutes === null ? '未計測' : formatMinutes(metrics.shortestBreakMinutes)}
         warn={metrics.warnings.insufficientBreak}
       />
-      {warningMessages.length > 0 ? (
-        <ul className="space-y-1 text-xs text-destructive">
-          {warningMessages.map((message) => (
-            <li key={message}>{message}</li>
+      <div className="flex items-center gap-2 text-xs">
+        <Badge variant={summary.hard > 0 ? 'destructive' : 'outline'}>Hard {summary.hard}</Badge>
+        <Badge variant={summary.soft > 0 ? 'secondary' : 'outline'}>Soft {summary.soft}</Badge>
+      </div>
+      {summary.messages.length > 0 ? (
+        <ul className={`space-y-1 text-xs ${summary.hard > 0 || summary.soft > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+          {summary.messages.map((entry, index) => (
+            <li key={`${entry.message}-${index}`} className={entry.level === 'hard' ? 'font-semibold' : ''}>
+              {entry.message}
+            </li>
           ))}
         </ul>
       ) : (
@@ -218,3 +224,6 @@ function DetailRow({ label, value }: { label: string; value: string }): JSX.Elem
     </div>
   );
 }
+
+
+

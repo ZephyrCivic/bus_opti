@@ -778,7 +778,7 @@ function buildRouteSummaries(options: RouteSummaryOptions): RouteSummaryArtifact
   }
 
   const details: Record<string, ExplorerRouteDetail> = {};
-  const options: ExplorerRouteOption[] = [];
+  const routeOptions: ExplorerRouteOption[] = [];
 
   for (const [routeId, aggregate] of aggregates) {
     if (aggregate.tripCount === 0) {
@@ -839,7 +839,7 @@ function buildRouteSummaries(options: RouteSummaryOptions): RouteSummaryArtifact
       directions: directionDetails,
     };
 
-    options.push({
+    routeOptions.push({
       routeId,
       label: buildRouteLabel(routeId, meta),
       shortName: meta.shortName,
@@ -852,9 +852,9 @@ function buildRouteSummaries(options: RouteSummaryOptions): RouteSummaryArtifact
     });
   }
 
-  options.sort((a, b) => a.label.localeCompare(b.label, 'ja-JP-u-nu-latn'));
+  routeOptions.sort((a, b) => a.label.localeCompare(b.label, 'ja-JP-u-nu-latn'));
 
-  return { details, options };
+  return { details, options: routeOptions };
 }
 
 function computeTripTimings(stopTimesTable?: GtfsTable): Map<string, TripTiming> {

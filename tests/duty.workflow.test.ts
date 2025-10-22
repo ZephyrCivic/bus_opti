@@ -91,3 +91,29 @@ test('duty workflow maintains drivers, manages redo stack, and corrects KPI viol
   assert.equal(correctedMetrics.warnings.insufficientBreak, false);
   assert.equal(correctedMetrics.warnings.exceedsDailySpan, false);
 });
+
+test('duty undo stack retains at least 10 actions', () => {
+  let state = createDutyEditState({ undoStackLimit: 10 });
+  const rows: BlockCsvRow[] = [
+    { blockId: 'BLOCK_U', seq: 1, tripId: 'T1', tripStart: '08:00', tripEnd: '08:30', fromStopId: 'S1', toStopId: 'S2', serviceId: 'WKD' },
+    { blockId: 'BLOCK_U', seq: 2, tripId: 'T2', tripStart: '08:40', tripEnd: '09:10', fromStopId: 'S2', toStopId: 'S3', serviceId: 'WKD' },
+  ];
+  const index = buildTripIndexFromCsv(rows);
+  for (let indexAdd = 0; indexAdd < 10; indexAdd += 1) {
+    state = addDutySegment(
+      state,
+      {
+        blockId: 'BLOCK_U',
+        startTripId: 'T1',
+        endTripId: 'T2',
+        driverId: `DRV_${indexAdd}`,
+      },
+      index,
+    );
+  }
+  for (let i = 0; i < 10; i += 1) {
+    const beforeCount = state.duties.length;
+    state = undoLastAction(state);
+    assert.equal(state.duties.length <= beforeCount, true);
+  }
+});

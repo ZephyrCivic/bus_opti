@@ -2,7 +2,7 @@
  * src/features/duties/components/DutyTimelineCard.tsx
  * Duty タイムライン操作用のカード。CSV 入出力と区間操作、タイムライン描画をまとめて提供する。
  */
-import { forwardRef } from 'react';
+import { forwardRef, useCallback, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import ExportBar from '@/components/export/ExportBar';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
 import type {
@@ -39,6 +40,12 @@ interface DutyTimelineCardProps {
   onInteraction: (event: TimelineInteractionEvent) => void;
   onSegmentDrag: (event: TimelineSegmentDragEvent<DutyTimelineMeta>) => void;
   onSelect: (selection: TimelineSelection) => void;
+  warningTotals?: { hard: number; soft: number };
+  blockLanes?: TimelineLane[];
+  onBlockSelect?: (blockId: string) => void;
+  selectedBlockId?: string | null;
+  selectedDutyId?: string | null;
+  selectedSegmentId?: string | null;
 }
 
 export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardProps>(
@@ -60,9 +67,38 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
       onInteraction,
       onSegmentDrag,
       onSelect,
+      warningTotals,
+      blockLanes,
+      onBlockSelect,
+      selectedBlockId,
+      selectedDutyId,
+      selectedSegmentId,
     },
     fileInputRef,
   ) => {
+    const [scrollLeft, setScrollLeft] = useState(0);
+
+    const hasBlockTimeline = useMemo(() => (blockLanes?.length ?? 0) > 0, [blockLanes]);
+
+    const handleScrollSync = useCallback((offset: number) => {
+      setScrollLeft((previous) => {
+        if (Math.abs(previous - offset) < 1) {
+          return previous;
+        }
+        return offset;
+      });
+    }, []);
+
+    const handleBlockTimelineSelect = useCallback(
+      (selection: TimelineSelection) => {
+        if (!onBlockSelect) {
+          return;
+        }
+        onBlockSelect(selection.laneId);
+      },
+      [onBlockSelect],
+    );
+
     return (
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -91,6 +127,13 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {warningTotals ? (
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="text-muted-foreground">警告件数</span>
+              <Badge variant={warningTotals.hard > 0 ? 'destructive' : 'outline'}>Hard {warningTotals.hard}</Badge>
+              <Badge variant={warningTotals.soft > 0 ? 'secondary' : 'outline'}>Soft {warningTotals.soft}</Badge>
+            </div>
+          ) : null}
           <ExportBar
             actions={[
               { id: 'add', label: '区間を追加', onClick: onAdd },
@@ -101,14 +144,42 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
               { id: 'redo', label: 'やり直す', onClick: onRedo },
             ]}
           />
-          <TimelineGantt
-            lanes={lanes}
-            pixelsPerMinute={pixelsPerMinute}
-            emptyMessage="Duty を追加するとタイムラインに表示されます。"
-            onInteraction={onInteraction}
-            onSegmentDrag={onSegmentDrag}
-            onSelect={onSelect}
-          />
+          {hasBlockTimeline ? (
+            <div className="space-y-2" data-testid="vehicle-timeline">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Vehicleビュー（Blockタイムライン）</span>
+                <span>Shift+スクロールでズーム、Alt+スクロールでパン</span>
+              </div>
+              <TimelineGantt
+                lanes={blockLanes!}
+                pixelsPerMinute={pixelsPerMinute}
+                onInteraction={onInteraction}
+                selectedLaneId={selectedBlockId ?? undefined}
+                onSelect={handleBlockTimelineSelect}
+                emptyMessage="ブロックのタイムラインがありません。"
+                scrollLeft={scrollLeft}
+                onScrollLeftChange={handleScrollSync}
+              />
+            </div>
+          ) : null}
+          <div className="space-y-2" data-testid="driver-timeline">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Driverビュー（Dutyタイムライン）</span>
+              <span>Shift+スクロールでズーム、Alt+スクロールでパン</span>
+            </div>
+            <TimelineGantt
+              lanes={lanes}
+              pixelsPerMinute={pixelsPerMinute}
+              emptyMessage="Duty を追加するとタイムラインに表示されます。"
+              onInteraction={onInteraction}
+              onSegmentDrag={onSegmentDrag}
+              onSelect={onSelect}
+              selectedLaneId={selectedDutyId ?? undefined}
+              selectedSegmentId={selectedSegmentId ?? undefined}
+              scrollLeft={scrollLeft}
+              onScrollLeftChange={handleScrollSync}
+            />
+          </div>
         </CardContent>
       </Card>
     );

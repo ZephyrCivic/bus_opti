@@ -2,8 +2,12 @@
  * src/features/timeline/TimelineGantt.tsx
  * Blocks/Duties で共通利用する最小限のSVGガント描画コンポーネント。
  */
-import { Fragment, useMemo, useRef, useCallback, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react';
+import { Fragment, useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import type {
+  PointerEvent as ReactPointerEvent,
+  UIEvent as ReactUIEvent,
+  WheelEvent as ReactWheelEvent,
+} from 'react';
 import clsx from 'clsx';
 
 import type {
@@ -51,6 +55,8 @@ interface TimelineGanttProps<Meta = unknown> {
   pixelsPerMinute?: number;
   onInteraction?(event: TimelineInteractionEvent): void;
   onSegmentDrag?(event: TimelineSegmentDragEvent<Meta>): void;
+  scrollLeft?: number;
+  onScrollLeftChange?(offset: number): void;
 }
 
 export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JSX.Element {
@@ -64,6 +70,8 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
     pixelsPerMinute = DEFAULT_PIXELS_PER_MINUTE,
     onInteraction,
     onSegmentDrag,
+    scrollLeft,
+    onScrollLeftChange,
   } = props;
 
   const nonEmptyLanes = useMemo(
@@ -96,6 +104,19 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
     [bounds, pixelsPerMinute],
   );
 
+  useEffect(() => {
+    if (scrollLeft === undefined) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    if (Math.abs(container.scrollLeft - scrollLeft) > 1) {
+      container.scrollLeft = scrollLeft;
+    }
+  }, [scrollLeft]);
+
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
       if (event.shiftKey) {
@@ -108,11 +129,19 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
         const container = scrollContainerRef.current;
         if (container) {
           container.scrollLeft += event.deltaY;
+          onScrollLeftChange?.(container.scrollLeft);
         }
         onInteraction?.({ type: 'pan', delta: event.deltaY });
       }
     },
-    [onInteraction],
+    [onInteraction, onScrollLeftChange],
+  );
+
+  const handleScroll = useCallback(
+    (event: ReactUIEvent<HTMLDivElement>) => {
+      onScrollLeftChange?.(event.currentTarget.scrollLeft);
+    },
+    [onScrollLeftChange],
   );
 
   const updatePreviewRect = useCallback(
@@ -250,6 +279,7 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
         ref={scrollContainerRef}
         className="flex-1 overflow-x-auto"
         onWheel={handleWheel}
+        onScroll={handleScroll}
       >
         <div style={{ width: timelineWidth }}>
           <svg width={timelineWidth} height={AXIS_HEIGHT} role="presentation">

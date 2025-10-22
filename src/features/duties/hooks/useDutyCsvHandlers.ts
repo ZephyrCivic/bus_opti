@@ -10,13 +10,17 @@ import { buildDutiesCsv } from '@/services/export/dutiesCsv';
 import { parseDutiesCsv } from '@/services/import/dutiesCsv';
 import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
 import type { DutyEditState } from '@/types';
+import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
+import { computeDutyMetrics, summarizeDutyWarnings } from '@/services/duty/dutyMetrics';
 import { downloadCsv } from '@/utils/downloadCsv';
+import { recordAuditEvent } from '@/services/audit/auditLog';
 import type { SegmentSelection } from './useDutySelectionState';
 
 interface DutyCsvParams {
   dutyActions: DutyEditorActions;
   dutyState: DutyEditState;
   tripIndex: Parameters<typeof parseDutiesCsv>[1];
+  tripLookup: BlockTripLookup;
   setSelectedDutyId: (id: string | null) => void;
   setSelectedSegment: (selection: SegmentSelection | null) => void;
   setSelectedBlockId: (id: string | null) => void;
@@ -44,6 +48,7 @@ export function useDutyCsvHandlers(params: DutyCsvParams): DutyCsvResult {
     dutyActions,
     dutyState,
     tripIndex,
+    tripLookup,
     setSelectedDutyId,
     setSelectedSegment,
     setSelectedBlockId,
@@ -92,10 +97,32 @@ export function useDutyCsvHandlers(params: DutyCsvParams): DutyCsvResult {
       toast.info('エクスポート可能な Duty がありません。');
       return;
     }
-    const exportData = buildDutiesCsv(dutyState.duties, { dutySettings: dutyState.settings });
+    const exportData = buildDutiesCsv(dutyState.duties, {
+      dutySettings: dutyState.settings,
+      tripLookup,
+    });
     downloadCsv({ fileName: exportData.fileName, content: exportData.csv });
+    const aggregateWarnings = dutyState.duties.reduce(
+      (accumulator, duty) => {
+        const metrics = computeDutyMetrics(duty, tripLookup, dutyState.settings);
+        const summary = summarizeDutyWarnings(metrics);
+        return {
+          hard: accumulator.hard + summary.hard,
+          soft: accumulator.soft + summary.soft,
+        };
+      },
+      { hard: 0, soft: 0 },
+    );
+    recordAuditEvent({
+      entity: 'duties',
+      fileName: exportData.fileName,
+      rowCount: exportData.rowCount,
+      generatedAt: exportData.generatedAt,
+      settingsHash: exportData.settingsHash,
+      warnings: aggregateWarnings,
+    });
     toast.success(`Duties CSV をダウンロードしました（${exportData.rowCount} 行）`);
-  }, [dutyState.duties, dutyState.settings]);
+  }, [dutyState.duties, dutyState.settings, tripLookup]);
 
   const handleImportClick = useCallback((input: HTMLInputElement | null) => {
     input?.click();

@@ -2,9 +2,10 @@
  * src/features/duties/DutiesView.tsx
  * 勤務（Duty）編集のハブとなる画面。タイムライン操作、ブロック一覧、Duty リスト、詳細インスペクターを統合する。
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
-import type { TimelineInteractionEvent, TimelineSelection, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import { parseTimeLabel } from '@/features/timeline/timeScale';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { Duty, DutySegment } from '@/types';
 
@@ -13,17 +14,27 @@ import { DutyListCard } from './components/DutyListCard';
 import ManualCheckCard from './components/ManualCheckCard';
 import { InspectorCard } from './components/InspectorCard';
 import { DutyTimelineCard } from './components/DutyTimelineCard';
+import { UnassignedSegmentsCard } from './components/UnassignedSegmentsCard';
+import { DutyCsvPreview } from './components/DutyCsvPreview';
 import { useDutyPlan } from './hooks/useDutyPlan';
+import { computeUnassignedRanges } from '@/services/duty/unassigned';
 import { useDutySelectionState, type SegmentSelection } from './hooks/useDutySelectionState';
 import { useDutyTimelineData, type DutyTimelineMeta } from './hooks/useDutyTimelineData';
 import { useDutyTimelineControls } from './hooks/useDutyTimelineControls';
 import { useDutyKeyboardShortcuts } from './hooks/useDutyKeyboardShortcuts';
 import { useDutyCrudActions } from './hooks/useDutyCrudActions';
 import { useDutyCsvHandlers } from './hooks/useDutyCsvHandlers';
+import { UnassignedRange } from '@/services/duty/unassigned';
+import { toast } from 'sonner';
+import { buildDutiesCsv } from '@/services/export/dutiesCsv';
 
 export default function DutiesView(): JSX.Element {
   const { result, dutyState, dutyActions, manual } = useGtfsImport();
   const { plan, tripIndex, tripLookup, blockTripMinutes } = useDutyPlan({ result, manual });
+  const unassignedRanges = useMemo(
+    () => computeUnassignedRanges(plan, dutyState.duties),
+    [plan, dutyState.duties],
+  );
 
   const {
     selectedBlockId,
@@ -41,6 +52,8 @@ export default function DutiesView(): JSX.Element {
     selectedDuty,
     selectedSegmentDetail,
     selectedMetrics,
+    dutyWarnings,
+    warningTotals,
     filteredTrips,
     segmentCount,
     driverCount,
@@ -52,6 +65,47 @@ export default function DutiesView(): JSX.Element {
   });
 
   const dutyTimelineLanes = useDutyTimelineData(dutyState.duties, tripLookup);
+
+  const blockTimelineLanes = useMemo<TimelineLane[]>(() => {
+    return plan.summaries
+      .map((summary) => {
+        const trips = blockTripMinutes.get(summary.blockId) ?? [];
+        const segments =
+          trips.length > 0
+            ? trips.map((trip, index) => ({
+                id: `${summary.blockId}-${trip.tripId}-${index}`,
+                label: trip.tripId,
+                startMinutes: trip.startMinutes,
+                endMinutes: trip.endMinutes,
+                color: 'var(--primary)',
+              }))
+            : (() => {
+                const startMinutes = parseTimeLabel(summary.firstTripStart);
+                const endMinutes = parseTimeLabel(summary.lastTripEnd);
+                if (startMinutes === undefined || endMinutes === undefined) {
+                  return [];
+                }
+                return [
+                  {
+                    id: `${summary.blockId}-window`,
+                    label: `${summary.firstTripStart} → ${summary.lastTripEnd}`,
+                    startMinutes,
+                    endMinutes: Math.max(endMinutes, startMinutes + 1),
+                    color: 'var(--primary)',
+                  },
+                ];
+              })();
+        if (segments.length === 0) {
+          return null;
+        }
+        return {
+          id: summary.blockId,
+          label: `${summary.blockId}（${summary.tripCount}便）`,
+          segments,
+        };
+      })
+      .filter((lane): lane is TimelineLane => lane !== null);
+  }, [blockTripMinutes, plan.summaries]);
 
   const {
     timelinePixelsPerMinute,
@@ -111,12 +165,33 @@ export default function DutiesView(): JSX.Element {
     dutyActions,
     dutyState,
     tripIndex,
+    tripLookup,
     setSelectedDutyId,
     setSelectedSegment,
     setSelectedBlockId,
     setStartTripId,
     setEndTripId,
   });
+
+  const previewTimestamp = useMemo(
+    () => new Date().toISOString(),
+    [dutyState.duties, dutyState.settings],
+  );
+
+  const csvPreview = useMemo(
+    () =>
+      buildDutiesCsv(dutyState.duties, {
+        dutySettings: dutyState.settings,
+        tripLookup,
+        generatedAt: new Date(previewTimestamp),
+      }),
+    [dutyState.duties, dutyState.settings, tripLookup, previewTimestamp],
+  );
+
+  const csvPreviewGeneratedAt = useMemo(
+    () => new Date(previewTimestamp).toLocaleString('ja-JP'),
+    [previewTimestamp],
+  );
 
   const handleBlockSelect = useCallback(
     (blockId: string) => {
@@ -162,6 +237,19 @@ export default function DutiesView(): JSX.Element {
     [handleSegmentSelect],
   );
 
+  const handleSelectUnassignedRange = useCallback(
+    (range: UnassignedRange) => {
+      setSelectedBlockId(range.blockId);
+      setStartTripId(range.startTripId);
+      setEndTripId(range.endTripId);
+      setSelectedSegment(null);
+      toast.info(`未割当区間 ${range.blockId} (${range.startTripId}→${range.endTripId}) を選択しました。区間を追加してください。`);
+    },
+    [setEndTripId, setSelectedBlockId, setSelectedSegment, setStartTripId],
+  );
+
+  const selectedWarningSummary = selectedDuty ? dutyWarnings.get(selectedDuty.id) : undefined;
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -189,6 +277,12 @@ export default function DutiesView(): JSX.Element {
         onInteraction={handleTimelineInteractionCallback}
         onSegmentDrag={handleTimelineSegmentDragCallback}
         onSelect={handleTimelineSelectCallback}
+        warningTotals={warningTotals}
+        blockLanes={blockTimelineLanes}
+        onBlockSelect={handleBlockSelect}
+        selectedBlockId={selectedBlockId}
+        selectedDutyId={selectedDutyId}
+        selectedSegmentId={selectedSegment?.segmentId ?? null}
       />
 
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -208,11 +302,13 @@ export default function DutiesView(): JSX.Element {
             onUndo={handleUndo}
             onRedo={handleRedo}
           />
+          <UnassignedSegmentsCard ranges={unassignedRanges} onSelectRange={handleSelectUnassignedRange} />
           <ManualCheckCard manual={manual} plan={plan} duties={dutyState.duties} />
         </div>
         <div className="space-y-4">
           <DutyListCard
             duties={dutyState.duties}
+            dutyWarnings={dutyWarnings}
             selectedDutyId={selectedDutyId}
             selectedSegmentId={selectedSegment?.segmentId ?? null}
             onSelectDuty={handleDutySelectFromList}
@@ -228,11 +324,34 @@ export default function DutiesView(): JSX.Element {
             selectedSegment={selectedSegment}
             selectedSegmentDetail={selectedSegmentDetail}
             selectedMetrics={selectedMetrics}
+            warningSummary={selectedWarningSummary}
             onAutoCorrect={handleAutoCorrect}
             driverOptions={manual.drivers}
+          />
+          <DutyCsvPreview
+            csv={csvPreview.csv}
+            rowCount={csvPreview.rowCount}
+            fileName={csvPreview.fileName}
+            generatedAt={csvPreviewGeneratedAt}
           />
         </div>
       </div>
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -148,3 +148,28 @@ export function enrichDutySegments(duty: Duty, lookup: BlockTripLookup): Require
     .filter((entry): entry is Required<EnrichedSegment> => entry.startMinutes !== undefined && entry.endMinutes !== undefined)
     .sort((a, b) => a.startMinutes - b.startMinutes);
 }
+
+export interface DutyWarningSummary {
+  hard: number;
+  soft: number;
+  messages: { level: 'hard' | 'soft'; message: string }[];
+}
+
+export function summarizeDutyWarnings(metrics: DutyMetrics): DutyWarningSummary {
+  const messages: { level: 'hard' | 'soft'; message: string }[] = [];
+  let hard = 0;
+  let soft = 0;
+  if (metrics.warnings.exceedsDailySpan) {
+    messages.push({ level: 'hard', message: '一日の拘束時間が上限を超えています。' });
+    hard += 1;
+  }
+  if (metrics.warnings.exceedsContinuous) {
+    messages.push({ level: 'soft', message: '連続運転時間が上限を超えています。' });
+    soft += 1;
+  }
+  if (metrics.warnings.insufficientBreak) {
+    messages.push({ level: 'soft', message: '休憩時間が規定より短い区間があります。' });
+    soft += 1;
+  }
+  return { hard, soft, messages };
+}

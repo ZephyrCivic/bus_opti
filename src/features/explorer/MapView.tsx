@@ -9,6 +9,21 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildExplorerGeoJson, type BoundingBox, type ExplorerDataset } from './mapData';
 import { loadMapLibre } from './loadMapLibre';
 
+interface ExplorerTestHooks {
+  measurePan(): Promise<number>;
+  measureZoom(): Promise<number>;
+  getDatasetSummary(): { routeCount: number; stopCount: number };
+}
+
+type ExplorerTestCleanup = () => void;
+
+declare global {
+  interface Window {
+    __PLAYWRIGHT__?: boolean;
+    __EXPLORER_TEST?: ExplorerTestHooks;
+  }
+}
+
 const STYLE_URL = 'https://tile.openstreetmap.jp/styles/osm-bright/style.json';
 const STOPS_SOURCE_ID = 'explorer-stops';
 const SHAPES_SOURCE_ID = 'explorer-shapes';
@@ -44,6 +59,7 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
   const showDepotsRef = useRef(showDepots);
   const showReliefPointsRef = useRef(showReliefPoints);
   const missingImageIdsRef = useRef<Set<string>>(new Set());
+  const testCleanupRef = useRef<ExplorerTestCleanup | null>(null);
 
   useEffect(() => {
     latestDatasetRef.current = dataset;
@@ -81,6 +97,8 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
       initializeSources(activeMap, latestDatasetRef.current, showDepotsRef.current, showReliefPointsRef.current);
       applyExplorerData(activeMap, latestDatasetRef.current, latestBoundsRef);
       updateOverlayVisibility(activeMap, showDepotsRef.current, showReliefPointsRef.current);
+      testCleanupRef.current?.();
+      testCleanupRef.current = registerPlaywrightHooks(activeMap, latestDatasetRef);
     };
 
     const handleClick = (event: MapMouseEvent) => {
@@ -139,6 +157,8 @@ export default function MapView({ dataset, onSelect, showDepots, showReliefPoint
         map.off('load', handleLoad);
         map.remove();
       }
+      testCleanupRef.current?.();
+      testCleanupRef.current = null;
       mapRef.current = null;
       mapLoadedRef.current = false;
       latestBoundsRef.current = null;
@@ -356,6 +376,80 @@ function mergeBounds(primary: BoundingBox | null, secondary: BoundingBox | null)
     Math.max(primary[2], secondary[2]),
     Math.max(primary[3], secondary[3]),
   ];
+}
+
+function registerPlaywrightHooks(
+  map: Map,
+  datasetRef: MutableRefObject<ExplorerDataset>,
+): ExplorerTestCleanup {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  const testWindow = window as Window;
+  if (!testWindow.__PLAYWRIGHT__) {
+    return () => {};
+  }
+
+  const measureOperation = (eventName: 'moveend' | 'zoomend', operation: () => void): Promise<number> => {
+    return new Promise<number>((resolve) => {
+      const start = performance.now();
+      let resolved = false;
+      const finish = () => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        resolve(performance.now() - start);
+      };
+      const handleEvent = () => {
+        map.off(eventName, handleEvent);
+        finish();
+      };
+      map.once(eventName, handleEvent);
+      operation();
+      setTimeout(() => {
+        map.off(eventName, handleEvent);
+        finish();
+      }, 1000);
+    });
+  };
+
+  const hooks: ExplorerTestHooks = {
+    async measurePan() {
+      const originalCenter = map.getCenter();
+      const ms = await measureOperation('moveend', () => {
+        map.panBy([60, 0], { duration: 0, animate: false });
+      });
+      map.jumpTo({ center: originalCenter });
+      return ms;
+    },
+    async measureZoom() {
+      const originalZoom = map.getZoom();
+      const maxZoom = map.getMaxZoom();
+      const targetZoom = Math.min(originalZoom + 0.5, Number.isFinite(maxZoom) ? maxZoom : originalZoom + 0.5);
+      if (targetZoom === originalZoom) {
+        return 0;
+      }
+      const ms = await measureOperation('zoomend', () => {
+        map.zoomTo(targetZoom, { duration: 0 });
+      });
+      map.setZoom(originalZoom);
+      return ms;
+    },
+    getDatasetSummary() {
+      const current = datasetRef.current;
+      const stopCount = current.geoJson.stops.features.length;
+      const routeCount = current.routeOptions.length;
+      return { routeCount, stopCount };
+    },
+  };
+
+  testWindow.__EXPLORER_TEST = hooks;
+  return () => {
+    if (testWindow.__EXPLORER_TEST === hooks) {
+      delete testWindow.__EXPLORER_TEST;
+    }
+  };
 }
 
 function getSelectionFromEvent(map: Map, event: MapMouseEvent): ExplorerMapSelection | null {

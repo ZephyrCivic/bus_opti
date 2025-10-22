@@ -7,8 +7,8 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 
 import type { Duty, DutyEditState, DutySegment, ManualInputs } from '@/types';
 import type { BlockPlan } from '@/services/blocks/blockBuilder';
-import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
-import { computeDutyMetrics } from '@/services/duty/dutyMetrics';
+import type { BlockTripLookup, DutyWarningSummary } from '@/services/duty/dutyMetrics';
+import { computeDutyMetrics, summarizeDutyWarnings } from '@/services/duty/dutyMetrics';
 
 export interface SegmentSelection {
   dutyId: string;
@@ -31,6 +31,8 @@ export interface DutySelectionState {
   selectedDuty: Duty | null;
   selectedSegmentDetail: DutySegment | null;
   selectedMetrics: ReturnType<typeof computeDutyMetrics> | undefined;
+  dutyWarnings: Map<string, DutyWarningSummary>;
+  warningTotals: { hard: number; soft: number };
   filteredTrips: BlockPlan['csvRows'];
   segmentCount: number;
   driverCount: number;
@@ -94,15 +96,40 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
     }
   }, [dutyState.duties, selectedDutyId, selectedSegment]);
 
+  const dutyMetricsMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        metrics: ReturnType<typeof computeDutyMetrics>;
+        warnings: DutyWarningSummary;
+      }
+    >();
+    for (const duty of dutyState.duties) {
+      const metrics = computeDutyMetrics(duty, tripLookup, dutyState.settings);
+      map.set(duty.id, {
+        metrics,
+        warnings: summarizeDutyWarnings(metrics),
+      });
+    }
+    return map;
+  }, [dutyState.duties, tripLookup, dutyState.settings]);
+
+  const warningTotals = useMemo(() => {
+    let hard = 0;
+    let soft = 0;
+    for (const { warnings } of dutyMetricsMap.values()) {
+      hard += warnings.hard;
+      soft += warnings.soft;
+    }
+    return { hard, soft };
+  }, [dutyMetricsMap]);
+
   const selectedDuty = useMemo(
     () => (selectedDutyId ? dutyState.duties.find((duty) => duty.id === selectedDutyId) ?? null : null),
     [dutyState.duties, selectedDutyId],
   );
 
-  const selectedMetrics = useMemo(
-    () => (selectedDuty ? computeDutyMetrics(selectedDuty, tripLookup, dutyState.settings) : undefined),
-    [selectedDuty, tripLookup, dutyState.settings],
-  );
+  const selectedMetrics = selectedDuty ? dutyMetricsMap.get(selectedDuty.id)?.metrics : undefined;
 
   const selectedSegmentDetail = useMemo(() => {
     if (!selectedSegment) {
@@ -155,6 +182,8 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
     selectedDuty,
     selectedSegmentDetail,
     selectedMetrics,
+    dutyWarnings: new Map([...dutyMetricsMap.entries()].map(([key, value]) => [key, value.warnings])),
+    warningTotals,
     filteredTrips,
     segmentCount,
     driverCount,

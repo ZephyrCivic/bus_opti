@@ -3,7 +3,7 @@
  * ブロック推定結果を確認し、ターン間隔や重複状況を把握する画面。
  * タイムライン、統計カード、詳細テーブル、未割当 Trip 一覧を提供する。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
@@ -28,20 +29,31 @@ import {
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 
 import { useBlocksPlan } from './hooks/useBlocksPlan';
+import { useManualBlocksPlan } from './hooks/useManualBlocksPlan';
+import { toast } from 'sonner';
 
 const MIN_TURN_GAP = 0;
 const MAX_TURN_GAP = 180;
 
 export default function BlocksView(): JSX.Element {
-  const { result } = useGtfsImport();
+  const { result, manual } = useGtfsImport();
   const [turnGap, setTurnGap] = useState<number>(DEFAULT_MAX_TURN_GAP_MINUTES);
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
 
-  const plan = useMemo<BlockPlan>(
-    () => buildBlocksPlan(result, { maxTurnGapMinutes: turnGap }),
-    [result, turnGap],
+  const initialPlan = useMemo<BlockPlan>(
+    () =>
+      buildBlocksPlan(result, {
+        maxTurnGapMinutes: turnGap,
+        minTurnaroundMinutes: manual.linking.minTurnaroundMin,
+        linkingEnabled: manual.linking.enabled,
+      }),
+    [result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled],
   );
-  const { days, allDays, overlaps } = useBlocksPlan(plan, { activeDay: activeDayIndex ?? undefined });
+  const { plan: manualPlan } = useManualBlocksPlan(initialPlan, {
+    minTurnaroundMin: manual.linking.minTurnaroundMin,
+    maxGapMinutes: turnGap,
+  });
+  const { days, allDays, overlaps } = useBlocksPlan(manualPlan, { activeDay: activeDayIndex ?? undefined });
 
   useEffect(() => {
     if (!result) {
@@ -60,11 +72,11 @@ export default function BlocksView(): JSX.Element {
     }
   }, [allDays, activeDayIndex]);
 
-  const coveragePercentage = Math.round(plan.coverageRatio * 100);
+  const coveragePercentage = Math.round(manualPlan.coverageRatio * 100);
 
   const overlapMinutesByBlock = useMemo(() => {
     const map = new Map<string, number>();
-    for (const summary of plan.summaries) {
+    for (const summary of manualPlan.summaries) {
       const total = (overlaps.get(summary.blockId) ?? []).reduce(
         (accumulator, entry) => accumulator + entry.overlapMinutes,
         0,
@@ -72,7 +84,7 @@ export default function BlocksView(): JSX.Element {
       map.set(summary.blockId, Number(total.toFixed(2)));
     }
     return map;
-  }, [plan.summaries, overlaps]);
+  }, [manualPlan.summaries, overlaps]);
 
   const visibleSummaries = useMemo(
     () => days.flatMap((day) => day.summaries),
@@ -121,7 +133,7 @@ export default function BlocksView(): JSX.Element {
       <div>
         <h2 className="text-lg font-semibold">行路推定</h2>
         <p className="text-sm text-muted-foreground">
-          GTFS 取込データを Greedy アルゴリズムで束ね、ターン間隔（現在 {plan.maxTurnGapMinutes} 分）と重複状況を確認します。
+          GTFS 取込データを Greedy アルゴリズムで束ね、ターン間隔（現在 {manualPlan.maxTurnGapMinutes} 分）と重複状況を確認します。
         </p>
       </div>
 
@@ -150,8 +162,8 @@ export default function BlocksView(): JSX.Element {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="割り当て済み Trip" value={plan.assignedTripCount.toLocaleString()} />
-            <StatCard label="対象 Trip 件数" value={plan.totalTripCount.toLocaleString()} />
+            <StatCard label="割り当て済み Trip" value={manualPlan.assignedTripCount.toLocaleString()} />
+            <StatCard label="対象 Trip 件数" value={manualPlan.totalTripCount.toLocaleString()} />
             <StatCard
               label="カバレッジ率"
               value={`${coveragePercentage}%`}
@@ -211,8 +223,8 @@ export default function BlocksView(): JSX.Element {
         </CardContent>
       </Card>
 
-      <BlocksTable summaries={plan.summaries} overlapMinutesByBlock={overlapMinutesByBlock} />
-      <UnassignedTable unassigned={plan.unassignedTripIds} />
+      <BlocksTable summaries={manualPlan.summaries} overlapMinutesByBlock={overlapMinutesByBlock} />
+      <UnassignedTable unassigned={manualPlan.unassignedTripIds} />
     </div>
   );
 }
@@ -263,6 +275,7 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
                   <TableHead>平均ターン (分)</TableHead>
                   <TableHead>最大ターン (分)</TableHead>
                   <TableHead>重複合計 (分)</TableHead>
+                  <TableHead>警告 (H/S)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -273,6 +286,7 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
                       : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
                   const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
                   const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
+                  const warningCounts = summary.warningCounts ?? { critical: 0, warn: 0 };
                   return (
                     <TableRow key={summary.blockId}>
                       <TableCell className="font-medium">{summary.blockId}</TableCell>
@@ -284,6 +298,17 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
                       <TableCell>{averageGap}</TableCell>
                       <TableCell>{maxGap}</TableCell>
                       <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
+                      <TableCell>
+                        <Badge variant={warningCounts.critical > 0 ? 'destructive' : 'outline'}>
+                          H {warningCounts.critical}
+                        </Badge>
+                        <Badge
+                          variant={warningCounts.warn > 0 ? 'secondary' : 'outline'}
+                          className="ml-2"
+                        >
+                          S {warningCounts.warn}
+                        </Badge>
+                      </TableCell>
                     </TableRow>
                   );
                 })}

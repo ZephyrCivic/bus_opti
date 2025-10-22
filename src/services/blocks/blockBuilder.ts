@@ -15,6 +15,12 @@ export interface BlockCsvRow {
   serviceId?: string;
 }
 
+export interface BlockWarningCounts {
+  critical: number;
+  warn: number;
+  info: number;
+}
+
 export interface BlockSummary {
   blockId: string;
   serviceId?: string;
@@ -25,6 +31,7 @@ export interface BlockSummary {
   gaps: number[];
   overlapScore?: number;
   gapWarnings?: number;
+  warningCounts: BlockWarningCounts;
 }
 
 export interface BlockPlan {
@@ -40,9 +47,11 @@ export interface BlockPlan {
 export interface BuildBlocksOptions {
   maxTurnGapMinutes?: number;
   linkingEnabled?: boolean;
+  minTurnaroundMinutes?: number;
 }
 
 export const DEFAULT_MAX_TURN_GAP_MINUTES = 15;
+const DEFAULT_MIN_TURNAROUND_MINUTES = 10;
 
 interface TripSchedule {
   tripId: string;
@@ -70,6 +79,7 @@ interface OpenBlock {
 
 export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocksOptions): BlockPlan {
   const maxTurnGapMinutes = Math.max(0, options?.maxTurnGapMinutes ?? DEFAULT_MAX_TURN_GAP_MINUTES);
+  const minTurnaroundMinutes = Math.max(0, options?.minTurnaroundMinutes ?? DEFAULT_MIN_TURNAROUND_MINUTES);
   const linkingEnabled = options?.linkingEnabled ?? true;
 
   if (!result) {
@@ -120,6 +130,8 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const assignedTripCount = assignedTripIds.size;
   const totalTripCount = schedules.length;
   const coverageRatio = totalTripCount === 0 ? 0 : assignedTripCount / totalTripCount;
+
+  applyBlockWarnings(summaries, minTurnaroundMinutes);
 
   return {
     summaries,
@@ -286,6 +298,7 @@ function createNewBlock(blocks: OpenBlock[], summaries: BlockSummary[], schedule
     firstTripStart: schedule.startTime,
     lastTripEnd: schedule.endTime,
     gaps: [],
+    warningCounts: { critical: 0, warn: 0, info: 0 },
   };
 
   const open: OpenBlock = {
@@ -301,8 +314,6 @@ function createNewBlock(blocks: OpenBlock[], summaries: BlockSummary[], schedule
 
 function updateSummaryOverlaps(summary: BlockSummary, startMinutes: number, endMinutes: number): void {
   const duration = Math.max(0, endMinutes - startMinutes);
-  const gapWarnings = summary.gaps.filter((gap) => gap > 0).length;
-  summary.gapWarnings = gapWarnings;
   if (duration === 0) {
     return;
   }
@@ -310,6 +321,17 @@ function updateSummaryOverlaps(summary: BlockSummary, startMinutes: number, endM
     ? summary.gaps.reduce((acc, value) => acc + value, 0) / summary.gaps.length
     : 0;
   summary.overlapScore = Number(averageGap.toFixed(2));
+}
+function applyBlockWarnings(summaries: BlockSummary[], minTurnaroundMinutes: number): void {
+  for (const summary of summaries) {
+    const warnCount = summary.gaps.filter((gap) => gap >= 0 && gap < minTurnaroundMinutes).length;
+    summary.warningCounts = {
+      critical: summary.warningCounts?.critical ?? 0,
+      warn: warnCount,
+      info: summary.warningCounts?.info ?? 0,
+    };
+    summary.gapWarnings = warnCount;
+  }
 }
 function makeCsvRow(blockId: string, seq: number, schedule: TripSchedule): BlockCsvRow {
   return {
