@@ -12,32 +12,18 @@
 - リポジトリが最新状態で `npm install` 済み。
 - ビルド成功を事前確認: `npm run typecheck && npm test && npm run build`
 
-## 1. GitHub Pages（GitHub Actions で自動デプロイ）
+## 1. GitHub Pages（GitHub Actions 公式方式・推奨）
 
-1. `vite.config.ts` の `base` は GitHub Pages 用に `/bus_opti/` をセット済み。別リポジトリへフォークする場合のみ名称を変更する。
-2. `npm run build` を実行。`dist/` 配下に本番成果物が生成される。
-3. `dist/` を `gh-pages` ブランチへ push または GitHub Actions ワークフローを作成し、自動デプロイする。例:
-   ```yaml
-   name: Deploy
-   on:
-     push:
-       branches: [main]
-   jobs:
-     deploy:
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-node@v4
-           with:
-             node-version: 20
-         - run: npm ci
-         - run: npm run build
-         - uses: peaceiris/actions-gh-pages@v3
-           with:
-             github_token: ${{ secrets.GITHUB_TOKEN }}
-             publish_dir: ./dist
-   ```
-4. GitHub リポジトリ設定で Pages → Branch を `gh-pages` に設定。数分後に公開URLが発行される。
+1. `vite.config.ts` の `base` は GitHub Pages 用に `/bus_opti/` をセット済み（別リポジトリ名なら変更）。
+2. リポジトリ Settings → Pages の Source を「GitHub Actions」に設定。
+3. ワークフロー `.github/workflows/pages.yml` を用意（本リポジトリは同梱済み）。構成:
+   - `actions/checkout@v4` → `setup-node@v4 (node 20)` → `npm ci` → `npm run typecheck && npm test` → `npm run build`
+   - `cp dist/index.html dist/404.html`（SPA 404 フォールバック）
+   - `actions/upload-pages-artifact@v3` で `dist` をアップロード
+   - `actions/deploy-pages@v4` で公開
+4. `main` に push すると自動でデプロイ。URL は `https://<owner>.github.io/bus_opti/`。
+
+（代替）gh-pages ブランチでの配布を使う場合は従来の `peaceiris/actions-gh-pages` を利用可能。
 
 ## 2. Cloudflare Pages（社内検証向け）
 
