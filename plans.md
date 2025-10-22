@@ -32,7 +32,7 @@
   - 満たすGOAL: G1
   - 対応テスト: tests/playwright/save-flows.always-enabled.spec.ts
 
-- [ ] G2: 自動確定なしの保証（候補提示のみ）
+- [x] G2: 自動確定なしの保証（候補提示のみ）
   - 参照: docs/specs/requirements-blocks-duties.md, docs/specs/block-ui-redesign.md
   - 検証: `npx playwright test tests/playwright/manual-only.no-autofinalize.spec.ts`
   - 成果物/DoD: Blocks/Duties に自動確定ロジック無し（候補は提示、確定は手動操作のみ）。
@@ -130,6 +130,7 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
 1. [ ] ImportView の路線絞り込みセクションを Explorer 用に再配置する案をまとめる
 2. [x] Explorer にチェックボックス型の選択カードを実装し、地図ハイライトと同期させる
 3. [ ] 文言ガイドライン（便/系統）を docs に反映する
+4. [ ] Import 読み込みメニューの OR バッジ配置をカード間中央にリファインする
 
 ## 実行コマンド集
 - ビルド/プレビュー: `make preview`
@@ -143,6 +144,7 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
 - 警告整合性: UI と CSV の Hard/Soft 件数を1秒以内に同期させる。根拠リンク（該当トリップ/ルール）遷移を必須。
 - Blocks 側の警告算出: 現状0件のまま。折返し不足などの算出を導入し、CSV/画面へ反映。
 - スナップショット基準: Blocks UI 変更により visual baseline がずれている。基準更新はレビュー承認後に限定。
+- Visual Snapshot 差異: `tests/playwright/visual.spec.ts` の home baseline (1280x875) とローカル実行キャプチャ (1280x720) が一致せず、2025-10-22 時点で `make generate-snapshots` が 2 回連続で失敗。環境設定またはビューポート差異の原因調査が必要。
 - パフォーマンス: Map/TL 操作の応答を継続監視（パン/ズーム<1s）。`__EXPLORER_TEST` による自動計測を維持。
 - ツール前提: DevTools 検証は `google-chrome-stable` 前提。環境差異は環境変数で上書き（READMEに準拠）。
 
@@ -161,6 +163,8 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
 - 2025-10-21: `parseBlocksCsv` と監査ログ `recordAuditEvent` を追加し、Blocks/Duties CSV の Export→Import→Export を `tests/blocks.csv.roundtrip.test.ts` / `tests/duties.csv.roundtrip.test.ts` で検証。監査イベントは `tests/audit.log.test.ts` で蓄積確認。
 - 2025-10-22: ユーザFBに基づき、Import UX を「新規開始（GTFS読み込み）」と「途中から再開（保存データ読み込み）」の2導線に統一する方針へ変更。実装は行わず、仕様検討TODOを追加。
 - 2025-10-22: 保存系導線は A案（左ナビ「差分・出力」に集約）を採用。Import サマリー下ヒント/初回編集チップで発見性を補助。
+- 2025-10-22: 左ナビ/モバイルナビの順序を「取込→地図・便調査→手動入力→行路編集」に調整。Blocks セクションの表示名を「行路編集」に変更し、UI Smoke チェックも更新。
+- 2025-10-22: Import 画面のサンプルフィード案内カードを削除。実データのドラッグ＆ドロップと保存データ再開の2導線に集約。
 
 ## アーカイブ（完了タスク）
 

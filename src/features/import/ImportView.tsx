@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { UploadCloud, RefreshCcw, FileWarning, ClipboardCopy } from 'lucide-react';
+import { UploadCloud, RefreshCcw, FileWarning } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -51,14 +51,6 @@ export default function ImportView(): JSX.Element {
     selectedRouteIds,
   } = useGtfsImport();
   const { navigate } = useSectionNavigation();
-  const sampleFeeds = useMemo(
-    () => [
-      'data/GTFS-JP(gunmachuo).zip',
-      'data/feed_fukutsucity_minibus_20251001_20250820163420.zip',
-    ],
-    [],
-  );
-
   const handleFiles = useCallback(
     async (fileList: FileList | null) => {
       setLocalError(null);
@@ -88,14 +80,6 @@ export default function ImportView(): JSX.Element {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
   };
-
-  const copyToClipboard = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // クリップボード未許可環境では警告を出さず無視
-    }
-  }, []);
 
   const handleSaved = useCallback(
     async (files: FileList | null) => {
@@ -211,31 +195,14 @@ export default function ImportView(): JSX.Element {
           }
         }}
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>サンプルフィード（ローカル）</CardTitle>
-          <CardDescription>エクスプローラで次のZIPを見つけて、この画面へドラッグ＆ドロップしてください（相対パス）。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {sampleFeeds.map((name) => (
-            <div key={name} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-              <code className="truncate" title={name}>{name}</code>
-              <Button variant="ghost" size="sm" type="button" onClick={() => copyToClipboard(name)}>
-                <ClipboardCopy className="mr-1 h-4 w-4" aria-hidden />コピー
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
       <Card className="border-dashed">
         <CardHeader>
           <CardTitle>読み込みメニュー</CardTitle>
           <CardDescription>新規開始（GTFS）または保存データから再開する導線を選択してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex flex-col gap-6 md:grid md:grid-cols-[1fr_auto_1fr] md:items-start">
-            <div className="flex h-full flex-col gap-3">
+          <div className="relative flex flex-col gap-6 md:grid md:grid-cols-2 md:items-stretch md:gap-10">
+            <div className="order-1 flex h-full flex-col gap-3 md:order-none">
               <div className="space-y-1 text-left">
                 <h3 className="text-sm font-semibold">GTFSを読み込む</h3>
                 <p className="text-xs text-muted-foreground">ZIP (stops/trips/stop_times/… ) から新規プロジェクトを開始します。</p>
@@ -260,14 +227,14 @@ export default function ImportView(): JSX.Element {
                   ファイルを選択
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground text-left">状態: {STATUS_COPY[status] ?? status}</p>
+              <p className="text-xs text-muted-foreground text-left md:hidden">状態: {STATUS_COPY[status] ?? status}</p>
             </div>
 
-            <div className="flex items-center justify-center md:col-auto">
+            <div className="order-2 flex items-center justify-center md:pointer-events-none md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
               <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm">OR</span>
             </div>
 
-            <div className="flex h-full flex-col gap-3">
+            <div className="order-3 flex h-full flex-col gap-3 md:order-none">
               <div className="space-y-1 text-left">
                 <h3 className="text-sm font-semibold">保存データから再開</h3>
                 <p className="text-xs text-muted-foreground">以前の作業（プロジェクトJSON / 取込結果JSON）を開きます。</p>
@@ -280,10 +247,11 @@ export default function ImportView(): JSX.Element {
                   保存ファイルを選択
                 </Button>
               </div>
-              <div className="rounded-lg border border-border/40 bg-background p-3 text-left text-xs text-muted-foreground">
-                Drag & Drop にも対応しています。ファイル選択後に解析が始まり、完了すると下部のサマリーへ遷移します。
-              </div>
             </div>
+
+            <p className="hidden text-xs text-muted-foreground text-left md:col-span-2 md:block">
+              状態: {STATUS_COPY[status] ?? status}
+            </p>
           </div>
         </CardContent>
         {result?.sourceName ? (

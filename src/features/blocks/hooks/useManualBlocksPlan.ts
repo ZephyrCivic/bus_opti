@@ -77,6 +77,25 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
 
   const connections = useMemo(() => history.map((entry) => entry.connection), [history]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_BLOCKS_MANUAL_PLAN?: {
+        plan: BlockPlan;
+        connections: ManualConnection[];
+      };
+    };
+    testWindow.__TEST_BLOCKS_MANUAL_PLAN = {
+      plan: manualPlan,
+      connections,
+    };
+    return () => {
+      delete testWindow.__TEST_BLOCKS_MANUAL_PLAN;
+    };
+  }, [manualPlan, connections]);
+
   return {
     plan: manualPlan,
     connections,
