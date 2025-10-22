@@ -154,3 +154,89 @@ export async function injectDutyWithThresholds(
     },
   });
 }
+
+export async function setupBiViewDuty(page: Page): Promise<{ initialBlockId: string; swappedBlockId: string }> {
+  return page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      __TEST_DUTY_PLAN?: {
+        plan: {
+          csvRows: Array<{ blockId: string; tripId: string; seq: number }>;
+        };
+      };
+      __TEST_DUTY_ACTIONS?: {
+        replace: (duties: Array<{
+          id: string;
+          driverId: string;
+          segments: Array<{
+            id: string;
+            blockId: string;
+            startTripId: string;
+            endTripId: string;
+            startSequence: number;
+            endSequence: number;
+          }>;
+        }>) => void;
+      };
+      __TEST_BIVIEW_TARGET?: {
+        primarySegment: {
+          id: string;
+          blockId: string;
+          startTripId: string;
+          endTripId: string;
+          startSequence: number;
+          endSequence: number;
+        };
+        secondarySegment: {
+          id: string;
+          blockId: string;
+          startTripId: string;
+          endTripId: string;
+          startSequence: number;
+          endSequence: number;
+        };
+      };
+    };
+    const plan = testWindow.__TEST_DUTY_PLAN;
+    const actions = testWindow.__TEST_DUTY_ACTIONS;
+    if (!plan || !actions) {
+      throw new Error('Duty plan or actions are not available for tests.');
+    }
+    const grouped = new Map<string, Array<{ tripId: string; seq: number }>>();
+    for (const row of plan.plan.csvRows) {
+      const list = grouped.get(row.blockId) ?? [];
+      list.push({ tripId: row.tripId, seq: row.seq });
+      grouped.set(row.blockId, list);
+    }
+    const entries = [...grouped.entries()].filter(([, rows]) => rows.length > 0);
+    if (entries.length < 2) {
+      throw new Error('Bi-view test requires at least two blocks with trips.');
+    }
+    const [blockA, rowsA] = entries[0]!;
+    const [blockB, rowsB] = entries[1]!;
+    const primarySegment = {
+      id: 'SEG_SYNC_1',
+      blockId: blockA,
+      startTripId: rowsA[0]!.tripId,
+      endTripId: rowsA[0]!.tripId,
+      startSequence: rowsA[0]!.seq,
+      endSequence: rowsA[0]!.seq,
+    };
+    const secondarySegment = {
+      id: 'SEG_SYNC_2',
+      blockId: blockB,
+      startTripId: rowsB[0]!.tripId,
+      endTripId: rowsB[0]!.tripId,
+      startSequence: rowsB[0]!.seq,
+      endSequence: rowsB[0]!.seq,
+    };
+    actions.replace([
+      {
+        id: 'DUTY_SYNC',
+        driverId: 'DRIVER_SYNC',
+        segments: [primarySegment, secondarySegment],
+      },
+    ]);
+    testWindow.__TEST_BIVIEW_TARGET = { primarySegment, secondarySegment };
+    return { initialBlockId: primarySegment.blockId, swappedBlockId: secondarySegment.blockId };
+  });
+}

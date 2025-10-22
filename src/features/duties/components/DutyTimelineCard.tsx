@@ -77,7 +77,6 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
     fileInputRef,
   ) => {
     const [scrollLeft, setScrollLeft] = useState(0);
-
     const hasBlockTimeline = useMemo(() => (blockLanes?.length ?? 0) > 0, [blockLanes]);
 
     const handleScrollSync = useCallback((offset: number) => {

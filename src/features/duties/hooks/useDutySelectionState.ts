@@ -166,6 +166,41 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
     return drivers.size;
   }, [dutyState.duties]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof performance === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_BIVIEW_SYNC?: { driver: number; vehicle: number };
+    };
+    if (!testWindow.__TEST_BIVIEW_SYNC) {
+      const now = performance.now();
+      testWindow.__TEST_BIVIEW_SYNC = { driver: now, vehicle: now };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof performance === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_BIVIEW_SYNC?: { driver: number; vehicle: number };
+    };
+    const current = testWindow.__TEST_BIVIEW_SYNC ?? { driver: 0, vehicle: 0 };
+    testWindow.__TEST_BIVIEW_SYNC = { driver: current.driver, vehicle: performance.now() };
+  }, [selectedBlockId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof performance === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_BIVIEW_SYNC?: { driver: number; vehicle: number };
+    };
+    const current = testWindow.__TEST_BIVIEW_SYNC ?? { driver: 0, vehicle: 0 };
+    testWindow.__TEST_BIVIEW_SYNC = { driver: performance.now(), vehicle: current.vehicle };
+  }, [selectedDutyId, selectedSegment]);
+
   return {
     selectedBlockId,
     setSelectedBlockId,

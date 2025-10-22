@@ -2,7 +2,7 @@
  * src/features/duties/DutiesView.tsx
  * 勤務（Duty）編集のハブとなる画面。タイムライン操作、ブロック一覧、Duty リスト、詳細インスペクターを統合する。
  */
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
 
 import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
 import { parseTimeLabel } from '@/features/timeline/timeScale';
@@ -108,6 +108,42 @@ export default function DutiesView(): JSX.Element {
       })
       .filter((lane): lane is TimelineLane => lane !== null);
   }, [blockTripMinutes, plan.summaries]);
+
+  if (typeof window !== 'undefined') {
+    const testWindow = window as typeof window & {
+      __TEST_DUTY_SELECTION_CTRL?: {
+        setBlock: (id: string | null) => void;
+        setDuty: (id: string | null) => void;
+        setSegment: (selection: SegmentSelection | null) => void;
+      };
+    };
+    testWindow.__TEST_DUTY_SELECTION_CTRL = {
+      setBlock: setSelectedBlockId,
+      setDuty: setSelectedDutyId,
+      setSegment: setSelectedSegment,
+    };
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_DUTY_SELECTION_CTRL?: {
+        setBlock: (id: string | null) => void;
+        setDuty: (id: string | null) => void;
+        setSegment: (selection: SegmentSelection | null) => void;
+      };
+    };
+    testWindow.__TEST_DUTY_SELECTION_CTRL = {
+      setBlock: setSelectedBlockId,
+      setDuty: setSelectedDutyId,
+      setSegment: setSelectedSegment,
+    };
+    return () => {
+      delete testWindow.__TEST_DUTY_SELECTION_CTRL;
+    };
+  }, [setSelectedBlockId, setSelectedDutyId, setSelectedSegment]);
 
   const {
     timelinePixelsPerMinute,

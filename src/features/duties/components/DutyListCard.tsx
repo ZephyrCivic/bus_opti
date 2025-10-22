@@ -40,7 +40,9 @@ export function DutyListCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {duties.length === 0 ? (
-          <p className="text-sm text-muted-foreground">まだ乗務がありません。区間を追加してください。</p>
+          <p className="text-sm text-muted-foreground" data-testid="duty-empty-message">
+            まだ乗務がありません。区間を追加してください。
+          </p>
         ) : (
           duties.map((duty) => {
             const warningSummary = dutyWarnings.get(duty.id);
@@ -48,6 +50,8 @@ export function DutyListCard({
               <div
                 key={duty.id}
                 className={cn('rounded-lg border p-4', selectedDutyId === duty.id && 'border-primary')}
+                data-testid="duty-item"
+                data-duty-id={duty.id}
                 onClick={() => onSelectDuty(duty)}
               >
                 <div className="flex items-center justify-between">
@@ -74,6 +78,9 @@ export function DutyListCard({
                         'w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-muted',
                         selectedSegmentId === segment.id && 'border-primary bg-primary/5',
                       )}
+                      data-testid="duty-segment"
+                      data-segment-id={segment.id}
+                      data-block-id={segment.blockId}
                       onClick={(event) => {
                         event.stopPropagation();
                         onSelectSegment(duty, segment);

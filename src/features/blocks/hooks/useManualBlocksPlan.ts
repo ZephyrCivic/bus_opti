@@ -21,6 +21,7 @@ export interface UseManualBlocksPlanResult {
   connect: (fromBlockId: string, toBlockId: string) => boolean;
   undoLastConnection: () => boolean;
   candidatesFor: (blockId: string) => BlockConnectionCandidate[];
+  config: ManualPlanConfig;
 }
 
 export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanConfig): UseManualBlocksPlanResult {
@@ -85,16 +86,18 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
       __TEST_BLOCKS_MANUAL_PLAN?: {
         plan: BlockPlan;
         connections: ManualConnection[];
+        getCandidates: (blockId: string) => BlockConnectionCandidate[];
       };
     };
     testWindow.__TEST_BLOCKS_MANUAL_PLAN = {
       plan: manualPlan,
       connections,
+      getCandidates: (blockId: string) => candidatesFor(blockId),
     };
     return () => {
       delete testWindow.__TEST_BLOCKS_MANUAL_PLAN;
     };
-  }, [manualPlan, connections]);
+  }, [manualPlan, connections, candidatesFor]);
 
   return {
     plan: manualPlan,
@@ -102,5 +105,6 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
     connect,
     undoLastConnection,
     candidatesFor,
+    config,
   };
 }

@@ -227,7 +227,6 @@ export default function ImportView(): JSX.Element {
                   ファイルを選択
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground text-left md:hidden">状態: {STATUS_COPY[status] ?? status}</p>
             </div>
 
             <div className="order-2 flex items-center justify-center md:pointer-events-none md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
@@ -249,7 +248,7 @@ export default function ImportView(): JSX.Element {
               </div>
             </div>
 
-            <p className="hidden text-xs text-muted-foreground text-left md:col-span-2 md:block">
+            <p className="order-4 text-xs text-muted-foreground text-left md:order-none md:col-span-2">
               状態: {STATUS_COPY[status] ?? status}
             </p>
           </div>

@@ -62,7 +62,7 @@ export function BlockSummaryCard({
           <Badge variant={coverageBadgeVariant(coveragePercentage)}>{`カバレッジ ${coveragePercentage}%`}</Badge>
         </div>
 
-        <div className="max-h-[260px] overflow-y-auto rounded-md border">
+        <div className="max-h-[260px] overflow-y-auto rounded-md border" data-testid="duty-block-table">
           <Table>
             <TableHeader>
               <TableRow>
@@ -77,6 +77,8 @@ export function BlockSummaryCard({
                 <TableRow
                   key={summary.blockId}
                   className={selectedBlockId === summary.blockId ? 'cursor-pointer bg-muted/50' : 'cursor-pointer'}
+                  data-testid="duty-block-row"
+                  data-block-id={summary.blockId}
                   onClick={() => onSelectBlock(summary.blockId)}
                 >
                   <TableCell className="font-medium">{summary.blockId}</TableCell>
@@ -93,12 +95,17 @@ export function BlockSummaryCard({
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">開始便</label>
             <Select value={startTripId ?? ''} onValueChange={onStartTripChange}>
-              <SelectTrigger>
+              <SelectTrigger data-testid="duty-start-trigger">
                 <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
-                  <SelectItem key={trip.tripId} value={trip.tripId}>
+                  <SelectItem
+                    key={trip.tripId}
+                    value={trip.tripId}
+                    data-testid="duty-start-option"
+                    data-trip-id={trip.tripId}
+                  >
                     {trip.seq}. {trip.tripId}
                   </SelectItem>
                 ))}
@@ -108,12 +115,17 @@ export function BlockSummaryCard({
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">終了便</label>
             <Select value={endTripId ?? ''} onValueChange={onEndTripChange}>
-              <SelectTrigger>
+              <SelectTrigger data-testid="duty-end-trigger">
                 <SelectValue placeholder="便を選択" />
               </SelectTrigger>
               <SelectContent>
                 {filteredTrips.map((trip) => (
-                  <SelectItem key={trip.tripId} value={trip.tripId}>
+                  <SelectItem
+                    key={trip.tripId}
+                    value={trip.tripId}
+                    data-testid="duty-end-option"
+                    data-trip-id={trip.tripId}
+                  >
                     {trip.seq}. {trip.tripId}
                   </SelectItem>
                 ))}
@@ -123,17 +135,19 @@ export function BlockSummaryCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={onAdd}>区間を追加</Button>
-          <Button variant="secondary" onClick={onMove}>
+          <Button data-testid="duty-add-segment" onClick={onAdd}>
+            区間を追加
+          </Button>
+          <Button data-testid="duty-move-segment" variant="secondary" onClick={onMove}>
             区間を移動
           </Button>
-          <Button variant="destructive" onClick={onDelete}>
+          <Button data-testid="duty-delete-segment" variant="destructive" onClick={onDelete}>
             区間を削除
           </Button>
-          <Button variant="outline" onClick={onUndo}>
+          <Button data-testid="duty-undo" variant="outline" onClick={onUndo}>
             元に戻す
           </Button>
-          <Button variant="outline" onClick={onRedo}>
+          <Button data-testid="duty-redo" variant="outline" onClick={onRedo}>
             やり直す
           </Button>
         </div>

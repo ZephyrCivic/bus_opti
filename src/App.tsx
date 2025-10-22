@@ -21,11 +21,11 @@ const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView')
 const SECTIONS: NavigationSection[] = [
   { id: 'import', label: 'GTFS取込' },
   { id: 'explorer', label: '行路編集対象の便を選択' },
+  { id: 'manual', label: '制約条件（手動入力）' },
   { id: 'blocks', label: '行路推定' },
   { id: 'duties', label: '勤務編集' },
   { id: 'dashboard', label: '運行指標' },
   { id: 'diff', label: '差分・出力' },
-  { id: 'manual', label: '手動入力' },
 ];
 
 type SectionId = (typeof SECTIONS)[number]['id'];
