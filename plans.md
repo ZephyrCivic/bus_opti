@@ -25,7 +25,89 @@
 
 ## TODO 一覧（上から順に実行）
 
-（現在、未完了タスクはありません）
+- [ ] G1: 保存は常に可能の実証（警告下でも保存不可にならない）
+  - 参照: docs/specs/save-flows-navigation.md, docs/specs/output-confirmation.md
+  - 検証: `npx playwright test tests/playwright/save-flows.always-enabled.spec.ts`
+  - 成果物/DoD: Hard/Soft 警告有無に関わらず DiffView の保存アクション（取込結果/プロジェクト）が常時有効。各画面から左ナビ経由で保存導線に到達可能。
+  - 満たすGOAL: G1
+  - 対応テスト: tests/playwright/save-flows.always-enabled.spec.ts
+
+- [ ] G2: 自動確定なしの保証（候補提示のみ）
+  - 参照: docs/specs/requirements-blocks-duties.md, docs/specs/block-ui-redesign.md
+  - 検証: `npx playwright test tests/playwright/manual-only.no-autofinalize.spec.ts`
+  - 成果物/DoD: Blocks/Duties に自動確定ロジック無し（候補は提示、確定は手動操作のみ）。
+  - 満たすGOAL: G2
+  - 対応テスト: tests/playwright/manual-only.no-autofinalize.spec.ts
+
+- [ ] G3: 二面ビュー（Vehicle/Driver）即時同期の性能境界テスト化
+  - 参照: docs/specs/timeline-interactions.md
+  - 検証: `npx playwright test tests/playwright/duty-biview.latency.spec.ts`
+  - 成果物/DoD: 編集→反映 ≤ 200ms をE2Eで継続検証（CIで閾値監視）。
+  - 満たすGOAL: G3
+  - 対応テスト: tests/playwright/duty-biview.latency.spec.ts
+
+- [ ] G4: 手動完結の操作網羅（連結/割付/解除/並べ替え/Undo-Redo）
+  - 参照: docs/specs/block-ui-redesign.md, docs/specs/duty-editing.md
+  - 検証: `npx playwright test tests/playwright/blocks.manual-workflow.spec.ts`
+  - 成果物/DoD: 候補→手動連結→解除→並べ替え→Undo/Redo の一連操作が安定し副作用無し。
+  - 満たすGOAL: G4
+  - 対応テスト: tests/playwright/blocks.manual-workflow.spec.ts
+
+- [ ] G5: Blocks 側の警告算出を実装し UI/CSV 整合
+  - 参照: docs/specs/requirements-blocks-duties.md
+  - 検証: `npm test -- tests/blocks.warnings.unit.test.ts`; `npx playwright test tests/playwright/blocks.warnings.spec.ts`
+  - 成果物/DoD: 折返し不足・連続運転などの件数を実装。Hard/Soft 区分ルールを明文化。UI/CSV で件数一致。
+  - 満たすGOAL: G5
+  - 対応テスト: tests/blocks.warnings.unit.test.ts, tests/playwright/blocks.warnings.spec.ts
+
+- [ ] G6: KPI パネル固定表示＋注釈の明示テスト
+  - 参照: docs/specs/kpi-ux-panel.md
+  - 検証: `npx playwright test tests/playwright/dashboard-kpi.pinned-and-tooltips.spec.ts`
+  - 成果物/DoD: KPI カードがスクロールで固定表示。各指標の注釈/根拠ツールチップが確認可能。
+  - 満たすGOAL: G6
+  - 対応テスト: tests/playwright/dashboard-kpi.pinned-and-tooltips.spec.ts
+
+- [ ] G7: 設定の階層上書き＋由来バッジ（Web/CSV/Default）
+  - 参照: docs/specs/settings-ui.md, docs/templates/README.md
+  - 検証: `npx playwright test tests/playwright/settings.override-badge.spec.ts`; `npm test -- tests/settings.csv.roundtrip.spec.ts`
+  - 成果物/DoD: 由来バッジ表示と永続。CSV→Web上書き→保存→再読込で由来が追跡可能。CSV往復でロスなし。
+  - 満たすGOAL: G7
+  - 対応テスト: tests/playwright/settings.override-badge.spec.ts, tests/settings.csv.roundtrip.spec.ts
+
+- [ ] G8: 非ブロッキング確認ダイアログの実証（出力時）
+  - 参照: docs/specs/output-confirmation.md, docs/specs/file-write-audit.md
+  - 検証: `npx playwright test tests/playwright/export.nonblocking.confirmation.spec.ts`; `npm test -- tests/audit.log.test.ts`
+  - 成果物/DoD: 確認ダイアログ表示中も他操作がブロックされない。監査ログに確認者と結果を記録。
+  - 満たすGOAL: G8, G9
+  - 対応テスト: tests/playwright/export.nonblocking.confirmation.spec.ts, tests/audit.log.test.ts
+
+- [ ] G9: 監査ログとプライバシー（匿名ID=driver_id）の貫通とマスキング
+  - 参照: docs/specs/file-write-audit.md
+  - 検証: `npm test -- tests/privacy.redaction.spec.ts tests/file.write.audit.test.ts`
+  - 成果物/DoD: 監査/CSV/UI に PII が混入しない。PII投入時は保存前にマスク/拒否。
+  - 満たすGOAL: G9
+  - 対応テスト: tests/privacy.redaction.spec.ts, tests/file.write.audit.test.ts
+
+- [ ] G10: 「連結→警告確認→保存」所要時間のKPIログ計測と可視化
+  - 参照: docs/specs/kpi-ux-panel.md
+  - 検証: `npm test -- tests/telemetry.workflow.timing.test.ts`; `npx playwright test tests/playwright/workflow-kpi.flow.spec.ts`
+  - 成果物/DoD: テレメトリに stage start/finish を追加し、Dashboard で所要時間の中央値/分布を可視化（最大100件保持・エクスポート可）。
+  - 満たすGOAL: G10
+  - 対応テスト: tests/telemetry.workflow.timing.test.ts, tests/playwright/workflow-kpi.flow.spec.ts
+
+- [ ] Step1 CSV 補完の網羅（Vehicle/Driver/Depot/労務ルール）
+  - 参照: docs/templates/*.template.csv, docs/specs/requirements-blocks-duties.md
+  - 検証: `npm test -- tests/templates.roundtrip.spec.ts`; `npx playwright test tests/playwright/manual-csv.e2e.spec.ts`
+  - 成果物/DoD: すべての台帳CSVで UI⇔CSV の往復がロス無く可能。UI単独でも同等編集可能。
+  - 満たすGOAL: G1, G7
+  - 対応テスト: tests/templates.roundtrip.spec.ts, tests/playwright/manual-csv.e2e.spec.ts
+
+- [ ] Docs 整合（GOAL 到達判定/検証手順/しきい値の明記）
+  - 参照: docs/README.md, docs/specs/*.md, docs/FAQ.md
+  - 検証: レビューでリンク切れ無し。`make generate-snapshots`（≤0.5%）と `npm run devtools:landing-hero` パス。
+  - 成果物/DoD: G1〜G10 の到達/検証/しきい値が docs に反映。
+  - 満たすGOAL: 全体整合
+  - 対応テスト: 目視レビュー＋スナップショット/DevTools 実行
 ## 実行コマンド集
 - ビルド/プレビュー: `make preview`
 - UIスナップショット: `make generate-snapshots`（閾値 0.5%）
