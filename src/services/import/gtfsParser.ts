@@ -7,7 +7,7 @@ import JSZip from 'jszip';
 import Papa from 'papaparse';
 
 const REQUIRED_FILES = ['stops.txt', 'trips.txt', 'stop_times.txt'] as const;
-const OPTIONAL_FILES = ['shapes.txt'] as const;
+const OPTIONAL_FILES = ['shapes.txt', 'routes.txt'] as const;
 
 export interface GtfsTable {
   name: string;

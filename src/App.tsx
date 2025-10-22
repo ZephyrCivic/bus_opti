@@ -14,6 +14,7 @@ import DashboardView from './features/dashboard/DashboardView';
 import DiffView from './features/dashboard/DiffView';
 import ManualDataView from './features/manual/ManualDataView';
 import { GtfsImportProvider } from './services/import/GtfsImportProvider';
+import { SectionNavigationContext } from './components/layout/SectionNavigationContext';
 
 const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView'));
 
@@ -62,10 +63,12 @@ export default function App(): JSX.Element {
 
   return (
     <GtfsImportProvider>
-      <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
-        <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
-      </AppShell>
-      <Toaster position="top-right" richColors closeButton />
+      <SectionNavigationContext.Provider value={{ currentSection: activeSection, navigate: handleSectionSelect }}>
+        <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
+          <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
+        </AppShell>
+        <Toaster position="top-right" richColors closeButton />
+      </SectionNavigationContext.Provider>
     </GtfsImportProvider>
   );
 }
