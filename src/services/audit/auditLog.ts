@@ -6,11 +6,13 @@
 
 import { sanitizeAuditValue } from '@/services/privacy/redaction';
 
+export type ExportFileFormat = 'csv' | 'json';
+
 export interface ExportAuditEvent {
   action: 'export';
   entity: string;
   fileName: string;
-  format: 'csv';
+  format: ExportFileFormat;
   rowCount?: number;
   generatedAt?: string;
   settingsHash?: string;
@@ -44,6 +46,7 @@ export interface RecordAuditParams {
   settingsHash?: string;
   warnings?: { hard: number; soft: number };
   timestamp?: string;
+  format?: ExportFileFormat;
 }
 
 export function recordAuditEvent(params: RecordAuditParams): void {
@@ -51,7 +54,7 @@ export function recordAuditEvent(params: RecordAuditParams): void {
     action: 'export',
     entity: sanitizeAuditValue(params.entity),
     fileName: sanitizeAuditValue(params.fileName),
-    format: 'csv',
+    format: params.format ?? 'csv',
     rowCount: params.rowCount,
     generatedAt: params.generatedAt,
     settingsHash: params.settingsHash,

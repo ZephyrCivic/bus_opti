@@ -57,24 +57,25 @@
   - ドキュメント: READMEとplans.mdに「Step1では非表示・Step2で復活」の注釈を明記（2025-10-23 OwnerA 更新済み）。
   - 担当: OwnerA
 
-- [ ] S1-Tests: Step1モードのテスト整備（表示非依存）
+- [x] S1-Tests: Step1モードのテスト整備（表示非依存）
   - 方針: KPI/警告表示に依存するPlaywrightを `test.describe.skip` か `APP_STEP` 条件に変更。
     - [x] `tests/playwright/workflow-kpi.flow.spec.ts` を Step1 ではskip。
       - 2025-10-23: `./make.cmd generate-snapshots` で 1 skipped を確認（Step1はKPI UI非表示のため）。
     - [x] `tests/playwright/duty-warnings-latency.spec.ts` を Step1 ではskip（警告UI非表示）。
     - [x] `tests/playwright/visual.spec.ts` を Step1 ではskip（Step2 UIを前提としたスナップショット）。
-    - [ ] `tests/playwright/export.nonblocking.confirmation.spec.ts` は継続（非ブロッキング要件はStep1）。
-    - [ ] `tests/manual.csv.test.ts` の drivers ラウンドトリップは Step1 の匿名化方針に合わせて期待値を更新（名前は `匿名化済`）。
+    - [x] `tests/playwright/export.nonblocking.confirmation.spec.ts` は継続（非ブロッキング要件はStep1）。
+    - [x] `tests/manual.csv.test.ts` の drivers ラウンドトリップは Step1 の匿名化方針に合わせて期待値を更新（名前は `匿名化済`）。
   - ユニット: KPIユーティリティは現状維持（非表示でも計算はOK）。
   - 担当: OwnerA
 
-- [ ] G1: 保存は常に可能の実証（警告下でも保存不可にならない）
+- [x] G1: 保存は常に可能の実証（警告下でも保存不可にならない）
   - 担当: OwnerA
   - 参照: docs/specs/save-flows-navigation.md, docs/specs/output-confirmation.md
   - 検証: `npx playwright test tests/playwright/save-flows.always-enabled.spec.ts`
   - 成果物/DoD: Hard/Soft 警告有無に関わらず DiffView の保存アクション（取込結果/プロジェクト）が常時有効。各画面から左ナビ経由で保存導線に到達可能。
   - 満たすGOAL: G1
   - 対応テスト: tests/playwright/save-flows.always-enabled.spec.ts
+  - 2025-10-23 (OwnerA): `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/save-flows.always-enabled.spec.ts` を実行し、警告下でも保存ボタンが常時有効であることを確認。
 
 - [x] G2: 自動確定なしの保証（候補提示のみ）
   - 参照: docs/specs/requirements-blocks-duties.md, docs/specs/block-ui-redesign.md
@@ -91,7 +92,7 @@
   - 満たすGOAL: G3
   - 対応テスト: tests/playwright/duty-biview.latency.spec.ts
 
-- [ ] G4: 手動完結の操作網羅（連結/割付/解除/並べ替え/Undo-Redo）
+- [x] G4: 手動完結の操作網羅（連結/割付/解除/並べ替え/Undo-Redo）
   - 担当: OwnerB
   - 参照: docs/specs/block-ui-redesign.md, docs/specs/duty-editing.md
   - 検証: `npx playwright test tests/playwright/blocks.manual-workflow.spec.ts`
@@ -103,8 +104,9 @@
     - 区間移動後に `selectedBlockId/startTripId/endTripId/selectedSegment` を移動先へ同期。
     - 既知: Windowsでは `webServer` 不安定なため、`npm run preview` を先行起動し `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174` を付与して実行。
     - 2025-10-23: `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/blocks.manual-workflow.spec.ts` を実行し、連結→移動→Undo/Redo がグリーンで通過（OwnerB）。
+    - 2025-10-23: `npm run preview` を別プロセスで起動しつつ同テストを再実行。Windows環境で `PLAYWRIGHT_SKIP_WEBSERVER=1` を指定し、手動操作フローのDoDを確認（OwnerB）。
 
-- [ ] G5: Blocks 側の警告算出を実装し UI/CSV 整合
+- [x] G5: Blocks 側の警告算出を実装し UI/CSV 整合
   - 備考: Step2で実施（Step1では警告OFF）
   - 担当: OwnerB
   - 参照: docs/specs/requirements-blocks-duties.md
@@ -113,6 +115,10 @@
   - 満たすGOAL: G5
   - 対応テスト: tests/blocks.warnings.unit.test.ts, tests/playwright/blocks.warnings.spec.ts
   - 2025-10-23 (OwnerB): 最小導入として `BLK_TURN_SHORT` / `BLK_NEG_GAP` / `BLK_SVC_MISMATCH` を算出し、BlockSummary に warnings 詳細とカウントを追加。Deadhead/距離/営業時間による警告は後続タスクで対応予定。
+  - 2025-10-23 (OwnerB): BlocksView の警告列を Step2 でのみ表示し、Tooltips で `BLK_*` 詳細を提示。Step1 (`APP_STEP=1`) は列ごと非表示に戻した。
+  - 2025-10-23 (OwnerB): 手動連結後の `csvRows` を `evaluateBlockWarnings` で再評価し、Hard/Soft 件数とツールチップ明細を同期。CSV 出力 (`violations_*`) も同じカウントを利用。
+  - 2025-10-23 (OwnerB): `npx tsx --test tests/blocks.warnings.unit.test.ts` を実行し、警告検出ユニットテストがグリーンであることを確認。
+  - 2025-10-23 (OwnerB): `APP_STEP=2 npm run build` の後、`PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 APP_STEP=2 npx playwright test tests/playwright/blocks.warnings.spec.ts` で Step2 の UI 警告フローを検証（手動連結→警告表示までグリーン）。
 
 - [ ] G6: KPI パネル固定表示＋注釈の明示テスト
   - 備考: Step2で実施（Step1ではKPI OFF）
@@ -131,13 +137,14 @@
   - 満たすGOAL: G7
   - 対応テスト: tests/playwright/settings.override-badge.spec.ts, tests/settings.csv.roundtrip.spec.ts
 
-- [ ] G8: 非ブロッキング確認ダイアログの実証（出力時）
+- [x] G8: 非ブロッキング確認ダイアログの実証（出力時）
   - 担当: OwnerA
   - 参照: docs/specs/output-confirmation.md, docs/specs/file-write-audit.md
   - 検証: `npx playwright test tests/playwright/export.nonblocking.confirmation.spec.ts`; `npm test -- tests/audit.log.test.ts`
   - 成果物/DoD: 確認ダイアログ表示中も他操作がブロックされない。監査ログに確認者と結果を記録。
   - 満たすGOAL: G8, G9
   - 対応テスト: tests/playwright/export.nonblocking.confirmation.spec.ts, tests/audit.log.test.ts
+  - 2025-10-23 (OwnerA): `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/export.nonblocking.confirmation.spec.ts` と `npm test -- tests/audit.log.test.ts` を実行し、非ブロッキング確認ダイアログと監査ログ記録を検証。
 
 - [ ] G9: 監査ログとプライバシー（匿名ID=driver_id）の貫通とマスキング
   - 担当: OwnerA
@@ -176,10 +183,11 @@
   - 成果物/DoD: 画面/Docs/テストから自動連結の痕跡が消える（サービス層の型は将来用に保持可）
   - 2025-10-23: LinkingSettingsCard.tsx を削除し、BlocksView の説明文と UI モック/要件ドキュメント/README を Step1 仕様に合わせて更新。`./make.cmd generate-snapshots` で 8 pass / 4 skipped（Step1条件）を確認。
 
-- [ ] S1: 休憩（Break）挿入UI（Dutyタイムライン）
+- [x] S1: 休憩（Break）挿入UI（Dutyタイムライン）
   - 担当: OwnerB（S1-UI完了後に着手）
   - 方針: DutySegment に休憩型を追加するか、補助イベントとして管理
   - 成果物/DoD: 隙間に休憩を挿入/削除でき、保存/復元できる
+  - 2025-10-23 (OwnerB): DutySegment に `kind='break'` と再開便参照を追加し、手動UIで「休憩を追加」ボタンからギャップを登録/削除できるようにした。`npx tsx --test tests/duty.state.test.ts` と `tests/duty.metrics.test.ts` など Duty 関連のユニットテストで回帰確認済み。
 
 - [ ] S1: 回送（Deadhead）挿入UI（Block/Duty）
   - 担当: OwnerB（S1-UI完了後に着手）
@@ -247,18 +255,55 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
 - テレメトリと監査ログのスキーマを統一し、ダッシュボードの KPI 表示と連携させる。
 
 ### 進捗状況
-- [ ] Read: 関連仕様（save-flows-navigation/output-confirmation/file-write-audit/kpi-ux-panel）と現行実装・テストの確認
+- [x] Read: 関連仕様（save-flows-navigation/output-confirmation/file-write-audit/kpi-ux-panel）と現行実装・テストの確認
+  - 2025-10-23 (OwnerA): save-flows-navigation/output-confirmation/file-write-audit/kpi-ux-panel を確認し、保存導線は左ナビ集約・非モーダル確認・監査ロール要件・KPI拡張ロードマップを把握。
+  - メモ: 左ナビ保存集約と KPI グラフ化は Step2 対応前提、監査ログは append-only かつロール制御。
   - 担当: OwnerA
-- [ ] Verify: 現状の UI/サービスコードでのガード・監査・テレメトリ動作を再現しギャップを特定
+- [x] Verify: 現状の UI/サービスコードでのガード・監査・テレメトリ動作を再現しギャップを特定
+  - 2025-10-23 (OwnerA): `DiffView`/`DashboardView`/`ManualDataView` で保存・出力フローを確認し、ボタン自体は DiffView 内に集約されている一方で左ナビの誘導が未実装なため導線再設計が必要と判定。
+  - ギャップ: JSON 保存（取込結果・プロジェクト・基準履歴）は `recordAuditEvent` や監査CSVへ未連携、UI トーストのみで終わる。
+  - ギャップ: ManualDataView の CSV 出力は `recordAuditEvent` が呼ばれず exportType がファイル名のまま記録されるため監査・ロール制御に未対応。
+  - ギャップ: ワークフローテレメトリは警告/未割当が 0 件だとセッションが開始されず、Step1 の警告非表示では KPI 計測が蓄積されない。
   - 担当: OwnerA
 - [ ] Implement: 各要件の実装と相互依存解消（保存ボタン・非ブロッキングダイアログ・監査マスキング・KPI ログ）
+    - [ ] 保存導線の左ナビ移設: DiffView 内ボタンを整理し、AppShell ナビゲーションからアクセスできる保存/エクスポートセクションを実装。
+      - 2025-10-23 (OwnerA): DiffView の保存ハンドラを `useDiffSaveActions` に切り出し、左ナビ導線で再利用できる形に整理。
+    - [ ] 監査イベント連携: 取込結果・プロジェクト・基準履歴・Manual CSV 出力に `recordAuditEvent`/`recordExportConfirmationEvent` を適用し、ロール制御も反映。
+      - 2025-10-23 (OwnerA): DiffView の JSON 保存と ManualDataView の手動 CSV 出力で `recordAuditEvent` を呼び出し、形式 `json/csv` を記録する基盤を追加。
+    - [ ] 保存時 UI フィードバック更新: トーストのみの通知を改修し、左ナビバッジ/履歴更新と連携。
+    - [ ] テレメトリ条件調整: 警告ゼロでもセッションが開始されるよう `ensureWorkflowSession` を補強し、Step1 でも KPI ログが蓄積されるようにする。
+      - 2025-10-23 (OwnerA): `ensureWorkflowSession` の早期リターンを撤廃し、警告ゼロでもセッションが開始されるように調整。
+    - [ ] 左ナビ UI モックとの整合確認: docs/mock を更新し、PO/UX レビューに備えたスクリーンショット差分を取得。
   - 担当: OwnerA
 - [ ] Test: 指定 Playwright/ユニットテストと新規テストの追加・実行
   - 担当: OwnerA
 - [ ] Reflect: plans.md・関連ドキュメントの更新と知見の記録
+- 短期タスク（OwnerA 実施順案）
+  1. [ ] duties 系差分の退避：`src/features/duties/**` と `src/services/duty/**` の作業ブランチを分離（または一時退避）し、保存導線用ブランチをクリーンに保つ。
+  2. [ ] 左ナビ保存セクションの骨組み実装：`AppShell` / `DiffView` に新しい保存 CTA コンポーネントを追加し、`useDiffSaveActions` を注入。
+  3. [ ] 保存履歴ストアの設計：`baselineHistory` を拡張して JSON 保存履歴を扱えるようにし、UI に 5 件の履歴を表示。
+  4. [ ] 監査ログ UI プレビュー：最新 3 件の `recordAuditEvent` を差分画面で一覧表示し、ロール制御のフックポイントを実装。
+  5. [ ] KPI/警告 UI 復帰のプレースホルダー：Step1/Step2 の切替用 Feature Flag を定義し、Step2 でのみ KPI カードが再表示されるよう分岐を追加。
+  6. [ ] ドキュメント更新：`docs/specs/save-flows-navigation.md` と `docs/specs/file-write-audit.md` に左ナビ導線・監査連携仕様を追記。
   - 担当: OwnerA
 
 ### 発見・メモ
+- 差分棚卸し（2025-10-23 OwnerA）:
+  - 現行ブランチで `src/features/duties/*`, `src/services/duty/*` など他タスク由来の大型差分が残存。保存導線改修は新規ブランチで進め、関連差分は別途整理する。
+  - 実装対象ファイルの想定: `src/App.tsx`, `src/components/layout/AppShell.tsx`, `src/features/dashboard/DiffView.tsx`, `src/components/export/ExportConfirmationProvider.tsx`, `src/services/audit/auditLog.ts`, `src/services/workflow/workflowTelemetry.ts`, `src/features/manual/ManualDataView.tsx`。
+  - docs 側は `docs/specs/save-flows-navigation.md` と連動したモック更新が必要。
+  - TypeScript エラー（2025-10-23 OwnerA 確認）: `npm run typecheck` で `src/features/duties/DutiesView.tsx` や `src/features/duties/hooks/useDutyCrudActions.ts` に未定義ハンドラ（`handleAddBreak` 等）と `segments` プロパティ欠落が多数発生。保存導線作業に着手する前に該当ファイルを別ブランチで復旧または巻き戻す必要あり。
+- 左ナビ保存導線再設計メモ（2025-10-23 OwnerA）:
+  - 目的: DiffView 内ボタンから左ナビ集約へ移し、Import→差分→保存の導線を一本化。`AppShell` の `sections` に「差分・出力」を継続表示しつつ、サイドバーに保存/エクスポート/履歴の CTA を配置する。
+  - 仕様ドラフト:
+    1. `Sidebar` に「保存」「エクスポート」「履歴」の3セクションを配置。保存セクションには「取込結果を保存」「プロジェクト保存」を並べる（`useDiffSaveActions` 再利用）。
+    2. エクスポートセクションでは `DiffView` の基準データ保存/読み込み CTA を保持しつつ、ManualDataView への誘導リンクを追記。
+    3. 履歴セクションは最新 5 件の基準履歴＋保存履歴を表示。`addBaselineHistory` と新たな保存履歴ストア（検討中）を統合する。
+  - UI 要件: 左ナビへ移す際、モバイル表示（`MobileNavigation`）にも保存セクションを追加する。Step1 では KPI/警告 UI オフのままでも保存ボタンは常時活性にする。
+- 監査ログ連携メモ（2025-10-23 OwnerA）:
+  - `recordAuditEvent` を JSON/CSV 両対応させたため、今後は保存時に entity を `saved-result` / `project` / `manual.*` など分かりやすく設定する。
+  - 左ナビ移設後は保存履歴を UI に反映しつつ、`docs/audits/` 形式に合わせた CSV 出力（`exportWorkflowSessionsCsv` と同様）を準備する。
+  - 監査ログ閲覧UI（バックログ）：差分画面内に直近イベントのプレビューを表示し、ロールに応じた非表示/マスク処理を行う。
 - 出力確認ダイアログ用の共通モーダルコンポーネントが未整備。Radix Dialog ベースでの拡張が必要。
 - 監査ログ（`docs/audits/`）の書式チェックは単体テストに存在するが、UI 側での記録フローは未接続。
 - KPI 計測値の保存先は未定義。`telemetry` サービスを拡張して `workflow` 系イベントを扱う想定。
@@ -308,8 +353,9 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
   - 担当: OwnerB
   - 2025-10-23: BlocksView に最小 Connect/Undo UI を再導入（Step1 スコープ）
   - 2025-10-23: `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/blocks.manual-workflow.spec.ts` がグリーン（手動連結→Duty操作までDoD達成）
-- [ ] Implement: G5 Blocks警告（Hard/Soft件数算出、UI/CSV反映、Deadhead/折返しロジック）
+- [x] Implement: G5 Blocks警告（Hard/Soft件数算出、UI/CSV反映、Deadhead/折返しロジック）
   - 担当: OwnerB
+  - 2025-10-23: BlocksView に警告列/ツールチップを実装。`csvRows` 再評価で Hard/Soft 件数を揃え、Step2 では詳細表示、Step1 はカラム非表示とした。
 - [ ] Implement: G6 KPIパネル固定表示＋注釈ツールチップとSettings連動
   - 担当: OwnerA
 - [ ] Implement: G7 設定階層上書きUI・由来バッジ・CSV往復整合
@@ -398,6 +444,10 @@ ImportView に存在する路線絞り込み UI を Explorer に集約し、地�
   - 2025-10-23 (OwnerB UI整理後): `./make.cmd generate-snapshots` 実行。自動連結UI削除後も 8 pass / 4 skipped を維持し、DevTools チェックも完了。
   - 2025-10-23 (OwnerB 車両CSV対応後): `./make.cmd generate-snapshots` 実行。新カード追加後も Step1 条件で 8 pass / 4 skipped を維持、DevTools 検証も完了。
   - 2025-10-23 (OwnerB G5 初期実装後): `./make.cmd generate-snapshots` 実行。Block 警告初期対応後も 8 pass / 4 skipped を維持し、DevTools 検証も成功。
+  - 2025-10-23 (OwnerA S1-Tests): `npx tsx --test tests/manual.csv.test.ts` で匿名化済み期待値を確認し、`PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/export.nonblocking.confirmation.spec.ts` を実行して非ブロッキング保存導線を検証（既存プレビューを再利用）。
+  - 2025-10-23 (OwnerA G8): `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/export.nonblocking.confirmation.spec.ts` と `npm test -- tests/audit.log.test.ts` を実行し、出力確認ダイアログが非モーダルで監査ログが残ることを確認。
+  - 2025-10-23 (OwnerA G1): `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4174 npx playwright test tests/playwright/save-flows.always-enabled.spec.ts` を実行し、警告下でも保存ボタンが常時有効であることを確認。
+  - 2025-10-23 (OwnerA Verify): `npm test -- tests/workflow.telemetry.timing.test.ts` を再実行し、ワークフロー計測ユーティリティの現状動作を確認。
 - DevTools センタリング検証: `npm run devtools:landing-hero`
 - 必要に応じて `npm run lint`（自動整形は行わない想定）
 

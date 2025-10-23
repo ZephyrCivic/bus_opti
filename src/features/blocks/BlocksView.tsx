@@ -17,14 +17,20 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
 import type { TimelineLane } from '@/features/timeline/types';
 import {
   buildBlocksPlan,
+  countWarnings,
   DEFAULT_MAX_TURN_GAP_MINUTES,
+  evaluateBlockWarnings,
+  type BlockCsvRow,
   type BlockPlan,
   type BlockSummary,
+  type BlockWarningCounts,
+  type BlockWarningDetail,
 } from '@/services/blocks/blockBuilder';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import { useBlocksPlan } from './hooks/useBlocksPlan';
@@ -41,6 +47,7 @@ export default function BlocksView(): JSX.Element {
   const [fromBlockId, setFromBlockId] = useState<string>('');
   const [toBlockId, setToBlockId] = useState<string>('');
   const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const diagnosticsEnabled = !isStepOne;
 
   const initialPlan = useMemo<BlockPlan>(
     () =>
@@ -208,7 +215,29 @@ export default function BlocksView(): JSX.Element {
       .sort((a, b) => b.minutes - a.minutes);
   }, [visibleSummaries, overlapMinutesByBlock]);
 
-  const showDiagnostics = !isStepOne;
+  const warningDiagnostics = useMemo(() => {
+    if (!diagnosticsEnabled) {
+      return null;
+    }
+    const minTurn = Math.max(0, manual.linking.minTurnaroundMin);
+    const grouped = new Map<string, BlockCsvRow[]>();
+    for (const row of manualPlanState.plan.csvRows) {
+      const list = grouped.get(row.blockId) ?? [];
+      list.push(row);
+      grouped.set(row.blockId, list);
+    }
+    const map = new Map<string, { counts: BlockWarningCounts; warnings: BlockWarningDetail[] }>();
+    for (const [blockId, rows] of grouped.entries()) {
+      const warnings = evaluateBlockWarnings(rows, minTurn);
+      map.set(blockId, {
+        counts: countWarnings(warnings),
+        warnings,
+      });
+    }
+    return map;
+  }, [diagnosticsEnabled, manual.linking.minTurnaroundMin, manualPlanState.plan.csvRows]);
+
+  const showDiagnostics = diagnosticsEnabled;
 
   return (
     <div className="space-y-6">
@@ -395,7 +424,12 @@ export default function BlocksView(): JSX.Element {
         </CardContent>
       </Card>
 
-      <BlocksTable summaries={manualPlanState.plan.summaries} overlapMinutesByBlock={overlapMinutesByBlock} />
+      <BlocksTable
+        summaries={manualPlanState.plan.summaries}
+        overlapMinutesByBlock={overlapMinutesByBlock}
+        showDiagnostics={showDiagnostics}
+        warningDiagnostics={warningDiagnostics ?? undefined}
+      />
       <UnassignedTable unassigned={manualPlanState.plan.unassignedTripIds} />
     </div>
   );
@@ -421,9 +455,16 @@ function StatCard({ label, value, trend = 'outline' }: StatCardProps): JSX.Eleme
 interface BlocksTableProps {
   summaries: BlockSummary[];
   overlapMinutesByBlock: Map<string, number>;
+  showDiagnostics: boolean;
+  warningDiagnostics?: Map<string, { counts: BlockWarningCounts; warnings: BlockWarningDetail[] }>;
 }
 
-function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JSX.Element {
+function BlocksTable({
+  summaries,
+  overlapMinutesByBlock,
+  showDiagnostics,
+  warningDiagnostics,
+}: BlocksTableProps): JSX.Element {
   return (
     <Card>
       <CardHeader>
@@ -434,59 +475,57 @@ function BlocksTable({ summaries, overlapMinutesByBlock }: BlocksTableProps): JS
         {summaries.length === 0 ? (
           <p className="text-sm text-muted-foreground">ブロックの計算結果がありません。GTFS フィードを取り込んでください。</p>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>行路ID</TableHead>
-                  <TableHead>サービスID</TableHead>
-                  <TableHead>サービス日</TableHead>
-                  <TableHead>便数</TableHead>
-                  <TableHead>始発時刻</TableHead>
-                  <TableHead>最終時刻</TableHead>
-                  <TableHead>平均ターン (分)</TableHead>
-                  <TableHead>最大ターン (分)</TableHead>
-                  <TableHead>重複合計 (分)</TableHead>
-                  <TableHead>警告 (H/S)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summaries.map((summary) => {
-                  const averageGap =
-                    summary.gaps.length === 0
-                      ? 0
-                      : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
-                  const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
-                  const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
-                  const warningCounts = summary.warningCounts ?? { critical: 0, warn: 0 };
-                  return (
-                    <TableRow key={summary.blockId}>
-                      <TableCell className="font-medium">{summary.blockId}</TableCell>
-                      <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
-                      <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
-                      <TableCell>{summary.tripCount}</TableCell>
-                      <TableCell>{summary.firstTripStart}</TableCell>
-                      <TableCell>{summary.lastTripEnd}</TableCell>
-                      <TableCell>{averageGap}</TableCell>
-                      <TableCell>{maxGap}</TableCell>
-                      <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
-                      <TableCell>
-                        <Badge variant={warningCounts.critical > 0 ? 'destructive' : 'outline'}>
-                          H {warningCounts.critical}
-                        </Badge>
-                        <Badge
-                          variant={warningCounts.warn > 0 ? 'secondary' : 'outline'}
-                          className="ml-2"
-                        >
-                          S {warningCounts.warn}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <TooltipProvider delayDuration={0}>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>行路ID</TableHead>
+                    <TableHead>サービスID</TableHead>
+                    <TableHead>サービス日</TableHead>
+                    <TableHead>便数</TableHead>
+                    <TableHead>始発時刻</TableHead>
+                    <TableHead>最終時刻</TableHead>
+                    <TableHead>平均ターン (分)</TableHead>
+                    <TableHead>最大ターン (分)</TableHead>
+                    <TableHead>重複合計 (分)</TableHead>
+                    {showDiagnostics ? <TableHead>警告 (H/S/I)</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaries.map((summary) => {
+                    const averageGap =
+                      summary.gaps.length === 0
+                        ? 0
+                        : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
+                    const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
+                    const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
+                    return (
+                      <TableRow key={summary.blockId} data-block-id={summary.blockId}>
+                        <TableCell className="font-medium">{summary.blockId}</TableCell>
+                        <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
+                        <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
+                        <TableCell>{summary.tripCount}</TableCell>
+                        <TableCell>{summary.firstTripStart}</TableCell>
+                        <TableCell>{summary.lastTripEnd}</TableCell>
+                        <TableCell>{averageGap}</TableCell>
+                        <TableCell>{maxGap}</TableCell>
+                        <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
+                        {showDiagnostics ? (
+                          <TableCell data-testid="blocks-warning-cell">
+                            <WarningsBadge
+                              summary={summary}
+                              diagnostics={warningDiagnostics?.get(summary.blockId)}
+                            />
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </TooltipProvider>
         )}
       </CardContent>
     </Card>
@@ -556,4 +595,67 @@ function formatServiceDay(index: number): string {
   return `サービス日 ${index + 1}`;
 }
 
+function WarningsBadge({
+  summary,
+  diagnostics,
+}: {
+  summary: BlockSummary;
+  diagnostics?: { counts: BlockWarningCounts; warnings: BlockWarningDetail[] };
+}): JSX.Element {
+  const counts = diagnostics?.counts ?? summary.warningCounts ?? { critical: 0, warn: 0, info: 0 };
+  const details = diagnostics?.warnings ?? summary.warnings ?? [];
+  const total = (counts.critical ?? 0) + (counts.warn ?? 0) + (counts.info ?? 0);
+
+  if (total === 0) {
+    return <span className="text-xs text-muted-foreground">警告なし</span>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-2" data-testid={`blocks-warning-badges-${summary.blockId}`}>
+          <Badge variant={counts.critical > 0 ? 'destructive' : 'outline'}>H {counts.critical ?? 0}</Badge>
+          <Badge variant={counts.warn > 0 ? 'secondary' : 'outline'}>S {counts.warn ?? 0}</Badge>
+          <Badge variant={counts.info > 0 ? 'default' : 'outline'}>I {counts.info ?? 0}</Badge>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent
+        align="end"
+        className="max-w-xs space-y-1"
+        data-testid={`blocks-warning-tooltip-${summary.blockId}`}
+      >
+        {details.length === 0 ? (
+          <p className="text-xs leading-5">警告の内訳が取得できませんでした。</p>
+        ) : (
+          details.map((warning, index) => (
+            <p key={`${warning.code}-${index}`} className="text-xs leading-5">
+              {formatWarningDetail(warning)}
+            </p>
+          ))
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function formatWarningDetail(warning: BlockWarningDetail): string {
+  switch (warning.code) {
+    case 'BLK_NEG_GAP': {
+      const from = warning.fromTripId ?? '前便';
+      const to = warning.toTripId ?? '次便';
+      const gap = warning.gapMinutes ?? 0;
+      return `${from} → ${to} の時刻が重なっています（ギャップ ${gap} 分）。`;
+    }
+    case 'BLK_TURN_SHORT': {
+      const from = warning.fromTripId ?? '前便';
+      const to = warning.toTripId ?? '次便';
+      const gap = warning.gapMinutes ?? 0;
+      return `${from} → ${to} のターン間隔が ${gap} 分で最小ターン未満です。`;
+    }
+    case 'BLK_SVC_MISMATCH':
+      return '同じブロック内で service_id が混在しています。';
+    default:
+      return '詳細不明の警告です。';
+  }
+}
 

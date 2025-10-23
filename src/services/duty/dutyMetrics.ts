@@ -58,25 +58,48 @@ export function computeDutyMetrics(
   }
 
   let longestContinuous = 0;
-  for (const segment of segmentsWithTiming) {
-    const duration = segment.endMinutes - segment.startMinutes;
-    if (duration > longestContinuous) {
-      longestContinuous = duration;
-    }
-  }
-  const longestContinuousMinutes = longestContinuous > 0 ? longestContinuous : undefined;
-
+  let currentContinuous = 0;
   let shortestBreak: number | null = null;
-  if (segmentsWithTiming.length > 1) {
-    for (let index = 1; index < segmentsWithTiming.length; index += 1) {
-      const previous = segmentsWithTiming[index - 1];
-      const current = segmentsWithTiming[index];
-      const gap = current.startMinutes - previous.endMinutes;
-      if (gap >= 0 && (shortestBreak === null || gap < shortestBreak)) {
-        shortestBreak = gap;
+  let lastEndMinutes: number | null = null;
+  let lastKind: 'drive' | 'break' | null = null;
+
+  for (const segment of segmentsWithTiming) {
+    const kind = segment.kind ?? 'drive';
+    const duration = segment.endMinutes - segment.startMinutes;
+    if (kind === 'break') {
+      if (duration >= 0) {
+        if (shortestBreak === null || duration < shortestBreak) {
+          shortestBreak = duration;
+        }
+      }
+      currentContinuous = 0;
+      lastEndMinutes = segment.endMinutes;
+      lastKind = 'break';
+      continue;
+    }
+
+    if (lastEndMinutes !== null) {
+      const gap = segment.startMinutes - lastEndMinutes;
+      if (gap > 0 && lastKind !== 'break') {
+        if (shortestBreak === null || gap < shortestBreak) {
+          shortestBreak = gap;
+        }
+        currentContinuous = 0;
       }
     }
+
+    if (duration > 0) {
+      currentContinuous += duration;
+      if (currentContinuous > longestContinuous) {
+        longestContinuous = currentContinuous;
+      }
+    }
+
+    lastEndMinutes = segment.endMinutes;
+    lastKind = 'drive';
   }
+
+  const longestContinuousMinutes = longestContinuous > 0 ? longestContinuous : undefined;
 
   const warnings = {
     exceedsDailySpan: typeof totalSpan === 'number' ? totalSpan > settings.maxDailyMinutes : false,
@@ -101,7 +124,19 @@ interface EnrichedSegment extends DutySegment {
 }
 
 export function enrichSegmentTiming(segment: DutySegment, lookup: BlockTripLookup): EnrichedSegment {
+  const kind = segment.kind ?? 'drive';
   const block = lookup.get(segment.blockId);
+
+  if (kind === 'break') {
+    const startTrip = block?.get(segment.startTripId);
+    const resumeTrip = block?.get(segment.breakUntilTripId ?? segment.endTripId);
+    return {
+      ...segment,
+      startMinutes: toMinutes(startTrip?.tripEnd),
+      endMinutes: toMinutes(resumeTrip?.tripStart),
+    };
+  }
+
   const startTrip = block?.get(segment.startTripId);
   const endTrip = block?.get(segment.endTripId);
   return {

@@ -36,6 +36,22 @@ test('workflow telemetry records session and computes stats', () => {
 });
 
 test('clearWorkflowTelemetry removes history', () => {
+test('workflow telemetry records session even without warnings', () => {
+  clearWorkflowTelemetry();
+
+  const summary = { hardWarnings: 0, softWarnings: 0, unassigned: 0 } as const;
+  ensureWorkflowSession(summary);
+  completeWorkflowSave(summary, { exportType: 'unit-test-zero' });
+
+  const sessions = getWorkflowSessions();
+  assert.equal(sessions.length, 1);
+  const session = sessions[0]!;
+  assert.equal(session.summary.hardWarnings, 0);
+  assert.equal(session.summary.unassigned, 0);
+  assert.equal(session.context.exportType, 'unit-test-zero');
+  assert.ok(session.linkToSaveMs >= 0);
+});
+
   clearWorkflowTelemetry();
   const sessions = getWorkflowSessions();
   assert.equal(sessions.length, 0);

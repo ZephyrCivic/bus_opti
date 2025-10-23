@@ -2,12 +2,14 @@
  * src/services/duty/types.ts
  * Shared type declarations for Duty state transitions.
  */
-import type { DutySettings } from '@/types';
+import type { DutySettings, DutySegmentKind } from '@/types';
 
 export interface SegmentRangeInput {
   blockId: string;
   startTripId: string;
   endTripId: string;
+  kind?: DutySegmentKind;
+  breakUntilTripId?: string;
 }
 
 export interface AddDutySegmentInput extends SegmentRangeInput {
@@ -30,4 +32,3 @@ export type BlockTripSequenceIndex = Map<string, Map<string, number>>;
 export interface DutyStateConfig {
   settings?: Partial<DutySettings>;
 }
-

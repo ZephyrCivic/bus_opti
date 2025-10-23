@@ -6,7 +6,7 @@
 import { useMemo } from 'react';
 
 import type { Duty } from '@/types';
-import { enrichDutySegments, type BlockTripLookup } from '@/services/duty/dutyMetrics';
+import { enrichDutySegments, formatMinutes, type BlockTripLookup } from '@/services/duty/dutyMetrics';
 import type { TimelineLane } from '@/features/timeline/types';
 
 export interface DutyTimelineMeta {
@@ -15,6 +15,8 @@ export interface DutyTimelineMeta {
   blockId: string;
   startTripId: string;
   endTripId: string;
+  kind: 'drive' | 'break';
+  breakUntilTripId?: string;
 }
 
 export function useDutyTimelineData(duties: Duty[], tripLookup: BlockTripLookup): TimelineLane<DutyTimelineMeta>[] {
@@ -23,16 +25,21 @@ export function useDutyTimelineData(duties: Duty[], tripLookup: BlockTripLookup)
       const enriched = enrichDutySegments(duty, tripLookup);
       const segments = enriched.map((segment) => ({
         id: segment.id,
-        label: `${segment.startTripId} → ${segment.endTripId}`,
+        label:
+          (segment.kind ?? 'drive') === 'break'
+            ? `休憩 ${formatMinutes(Math.max(segment.endMinutes - segment.startMinutes, 0))}`
+            : `${segment.startTripId} → ${segment.endTripId}`,
         startMinutes: segment.startMinutes,
         endMinutes: segment.endMinutes,
-        color: 'var(--primary)',
+        color: (segment.kind ?? 'drive') === 'break' ? 'var(--muted)' : 'var(--primary)',
         meta: {
           dutyId: duty.id,
           segmentId: segment.id,
           blockId: segment.blockId,
           startTripId: segment.startTripId,
           endTripId: segment.endTripId,
+          kind: (segment.kind ?? 'drive') as 'drive' | 'break',
+          breakUntilTripId: segment.breakUntilTripId,
         } satisfies DutyTimelineMeta,
       }));
       return {

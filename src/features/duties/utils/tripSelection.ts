@@ -45,26 +45,7 @@ export function evaluateTripSelection(
   }
 
   if (!selectedBlockId) {
-    const candidates: Array<{ blockId: string; startSeq: number; endSeq: number }> = [];
-    for (const [blockId, sequences] of tripIndex.entries()) {
-      const startSeq = sequences.get(startTripId);
-      const endSeq = sequences.get(endTripId);
-      if (startSeq === undefined || endSeq === undefined) {
-        continue;
-      }
-      if (startSeq > endSeq) {
-        continue;
-      }
-      candidates.push({ blockId, startSeq, endSeq });
-    }
-    if (candidates.length === 0) {
-      return { ok: false, reason: 'missingBlock' };
-    }
-    if (candidates.length > 1) {
-      // ambiguous selection; require explicit block choice
-      return { ok: false, reason: 'missingBlock' };
-    }
-    selectedBlockId = candidates[0]!.blockId;
+    return { ok: false, reason: 'missingBlock' };
   }
 
   const blockTrips = tripIndex.get(selectedBlockId);

@@ -30,6 +30,7 @@ interface DutyTimelineCardProps {
   onImportFile: (file: File) => void;
   onExport: () => void;
   onAdd: () => void;
+  onAddBreak: () => void;
   onMove: () => void;
   onDelete: () => void;
   onAutoCorrect: () => void;
@@ -59,6 +60,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
       onExport,
       onAdd,
       onMove,
+      onAddBreak,
       onDelete,
       onAutoCorrect,
       onUndo,
@@ -138,6 +140,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           <ExportBar
             actions={[
               { id: 'add', label: '区間を追加', onClick: onAdd },
+              { id: 'add-break', label: '休憩を追加', onClick: onAddBreak },
               { id: 'move', label: '区間を移動', onClick: onMove },
               { id: 'delete', label: '区間を削除', onClick: onDelete },
               { id: 'autocorrect', label: '区間を調整', onClick: onAutoCorrect },

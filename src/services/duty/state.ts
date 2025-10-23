@@ -46,17 +46,49 @@ export function addDutySegment(
     throw new Error(`duty ${input.dutyId} が見つかりません。`);
   }
 
+  const segmentKind = input.kind ?? 'drive';
+  const breakEndTripId = input.breakUntilTripId ?? input.endTripId;
+
+  if (segmentKind === 'break') {
+    if (!input.dutyId || !targetDuty) {
+      throw new Error('休憩を追加するには対象のDutyを選択してください。');
+    }
+    if (!breakEndTripId) {
+      throw new Error('休憩終了後に再開する便を指定してください。');
+    }
+    const block = tripIndex.get(input.blockId);
+    if (!block || !block.has(breakEndTripId)) {
+      throw new Error('休憩の再開先となる便がブロック内に見つかりません。');
+    }
+    const alreadyExists = targetDuty.segments.some((segment) => {
+      if ((segment.kind ?? 'drive') !== 'break') {
+        return false;
+      }
+      return (
+        segment.blockId === input.blockId &&
+        segment.startTripId === input.startTripId &&
+        (segment.breakUntilTripId ?? segment.endTripId) === breakEndTripId
+      );
+    });
+    if (alreadyExists) {
+      throw new Error('同じ位置に既に休憩が登録されています。');
+    }
+  }
+
   const { startSequence, endSequence } = resolveRange(input, tripIndex);
-  const segment = createSegment(targetDuty, input, startSequence, endSequence);
+  const segment = createSegment(targetDuty, input, startSequence, endSequence, breakEndTripId);
 
   if (targetDuty) {
     ensureBlockConsistency(targetDuty, input.blockId);
     ensureNoOverlap(targetDuty.segments, segment);
     targetDuty.segments = insertSegment(targetDuty.segments.filter((entry) => entry.id !== segment.id), segment);
-    if (input.driverId) {
+    if (input.driverId && segmentKind !== 'break') {
       targetDuty.driverId = input.driverId;
     }
   } else {
+    if (segmentKind === 'break') {
+      throw new Error('休憩のみを含むDutyは作成できません。');
+    }
     dutiesClone.push({
       id: generateDutyId(dutiesClone),
       driverId: input.driverId,
@@ -81,6 +113,11 @@ export function moveDutySegment(
   if (!segment) {
     throw new Error(`segment ${input.segmentId} が見つかりません。`);
   }
+  if ((segment.kind ?? 'drive') === 'break') {
+    throw new Error('休憩区間は移動できません。削除してから再追加してください。');
+  }
+
+  ensureBlockConsistency(duty, input.blockId);
 
   const { startSequence, endSequence } = resolveRange(input, tripIndex);
   const updated = {
@@ -189,14 +226,19 @@ function createSegment(
   input: SegmentRangeInput,
   startSequence: number,
   endSequence: number,
+  breakUntilTripId?: string,
 ): DutySegment {
+  const kind = input.kind ?? 'drive';
+  const breakTripId = breakUntilTripId ?? input.breakUntilTripId ?? input.endTripId;
   return {
     id: generateSegmentId(duty),
+    kind,
     blockId: input.blockId,
     startTripId: input.startTripId,
     endTripId: input.endTripId,
     startSequence,
     endSequence,
+    breakUntilTripId: kind === 'break' ? breakTripId : undefined,
   };
 }
 

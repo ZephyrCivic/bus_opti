@@ -35,6 +35,9 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
     const startTripId = normalizeString(raw.segment_start_trip_id);
     const endTripId = normalizeString(raw.segment_end_trip_id);
     const driverId = normalizeString(raw.driver_id);
+    const segmentTypeRaw = normalizeString(raw.segment_type);
+    const segmentType = (segmentTypeRaw === 'break' ? 'break' : 'drive') as 'drive' | 'break';
+    const breakUntilTripIdRaw = normalizeString(raw.break_until_trip_id);
 
     if (settingsHash === undefined) {
       settingsHash = normalizeString(raw.settings_hash);
@@ -60,6 +63,7 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
     if (!blockId || !startTripId || !endTripId) {
       throw new Error(`duty_id=${dutyId} の行で block_id / segment_start_trip_id / segment_end_trip_id のいずれかが欠けています。`);
     }
+    const breakUntilTripId = segmentType === 'break' ? breakUntilTripIdRaw || endTripId : undefined;
 
     const tripMap = index.get(blockId);
     if (!tripMap) {
@@ -82,6 +86,8 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
       endTripId,
       startSequence: Number(startSequence),
       endSequence: Number(endSequence),
+      kind: segmentType,
+      breakUntilTripId,
     });
     duties.set(dutyId, duty);
   }
@@ -105,6 +111,8 @@ interface DutySegmentDraft {
   endTripId: string;
   startSequence: number;
   endSequence: number;
+  kind: 'drive' | 'break';
+  breakUntilTripId?: string;
 }
 
 function createDutyDraft(id: string): DutyDraft {
@@ -132,6 +140,8 @@ function toDuty(draft: DutyDraft): Duty {
             endTripId: segment.endTripId,
             startSequence: segment.startSequence,
             endSequence: segment.endSequence,
+            kind: segment.kind,
+            breakUntilTripId: segment.breakUntilTripId,
           })),
   };
 }

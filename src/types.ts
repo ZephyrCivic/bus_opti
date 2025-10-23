@@ -80,13 +80,25 @@ export interface ScheduleState {
   dashboard: DashboardData;
 }
 
+export type DutySegmentKind = 'drive' | 'break';
+
 export interface DutySegment {
   id: string;
+  /**
+   * 区間の種類。
+   * 未設定（既存データ）は従来どおり運行区間として扱う。
+   */
+  kind?: DutySegmentKind;
   blockId: string;
   startTripId: string;
   endTripId: string;
   startSequence: number;
   endSequence: number;
+  /**
+   * kind === 'break' の場合、休憩終了後に再開する trip_id を保持する。
+   * CSV との往復のため endTripId と同じ値を入れる。
+   */
+  breakUntilTripId?: string;
 }
 
 export interface Duty {

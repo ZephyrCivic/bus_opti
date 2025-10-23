@@ -311,6 +311,7 @@ export default function DutiesView(): JSX.Element {
         onImportFile={handleImportFile}
         onExport={handleExport}
         onAdd={handleAdd}
+        onAddBreak={handleAddBreak}
         onMove={handleMove}
         onDelete={handleDelete}
         onAutoCorrect={handleAutoCorrect}
@@ -342,6 +343,7 @@ export default function DutiesView(): JSX.Element {
             onStartTripChange={(value) => setStartTripId(value)}
             onEndTripChange={(value) => setEndTripId(value)}
             onAdd={handleAdd}
+        onAddBreak={handleAddBreak}
             onMove={handleMove}
             onDelete={handleDelete}
             onUndo={handleUndo}

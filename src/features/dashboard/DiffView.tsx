@@ -28,15 +28,8 @@ import {
   loadBaselineHistory,
   type BaselineHistoryEntry,
 } from '@/services/dashboard/baselineHistory';
-import {
-  downloadProjectJson,
-  downloadSavedJson,
-  defaultFileName,
-  toSaved,
-  toSavedProject,
-} from '@/services/import/gtfsPersistence';
 import { aggregateDutyWarnings } from '@/services/duty/aggregateDutyWarnings';
-import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
+import { useDiffSaveActions } from './useDiffSaveActions';
 
 function loadBaselineFromFile(file: File): Promise<ScheduleState> {
   return new Promise((resolve, reject) => {
@@ -56,7 +49,6 @@ function loadBaselineFromFile(file: File): Promise<ScheduleState> {
 
 export default function DiffView(): JSX.Element {
   const { result, dutyState, manual } = useGtfsImport();
-  const { requestConfirmation } = useExportConfirmation();
   const [baseline, setBaseline] = useState<ScheduleState | null>(null);
   const [history, setHistory] = useState<BaselineHistoryEntry[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -122,55 +114,13 @@ export default function DiffView(): JSX.Element {
     return diffSchedules(currentState, baseline);
   }, [baseline, currentState]);
 
+  const { handleSaveImportResult, handleSaveProject } = useDiffSaveActions({
+    summary: workflowSummary,
+    result,
+    manual,
+  });
+
   const hasImportResult = Boolean(result);
-
-  const handleDownloadSavedResult = () => {
-    if (!result) {
-      toast.info('GTFSフィードを取り込むと保存できます。');
-      return;
-    }
-    const fileName = defaultFileName(result.sourceName);
-    requestConfirmation({
-      title: '取込結果を保存しますか？',
-      description: '現在の警告件数と未割当状況を確認してから保存を続行できます。',
-      summary: workflowSummary,
-      context: { entity: 'saved-result', exportType: 'saved-json', fileName },
-      onConfirm: async () => {
-        try {
-          downloadSavedJson(toSaved(result), fileName);
-          toast.success('取込結果JSONを保存しました。');
-        } catch (error) {
-          const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
-          toast.error(message);
-          throw error;
-        }
-      },
-    });
-  };
-
-  const handleDownloadProject = () => {
-    if (!result) {
-      toast.info('GTFSフィードを取り込むと保存できます。');
-      return;
-    }
-    const projectFileName = defaultFileName(result.sourceName).replace('gtfs-import', 'project');
-    requestConfirmation({
-      title: 'プロジェクト JSON を保存しますか？',
-      description: '警告件数と未割当状況を確認してから保存を続行してください。',
-      summary: workflowSummary,
-      context: { entity: 'project', exportType: 'project-json', fileName: projectFileName },
-      onConfirm: async () => {
-        try {
-          downloadProjectJson(toSavedProject(result, manual), projectFileName);
-          toast.success('プロジェクトJSONを保存しました。');
-        } catch (error) {
-          const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
-          toast.error(message);
-          throw error;
-        }
-      },
-    });
-  };
 
   useEffect(() => {
     setHistory(loadBaselineHistory());
@@ -248,10 +198,10 @@ export default function DiffView(): JSX.Element {
             「取込結果を保存」は GTFS の解析結果のみを保存します。「プロジェクト保存」は手動入力（車庫・交代地点・運転士など）を含めた再開用データです。
           </p>
           <div className="flex flex-wrap gap-3">
-            <Button onClick={handleDownloadSavedResult} disabled={!hasImportResult}>
+            <Button onClick={handleSaveImportResult} disabled={!hasImportResult}>
               取込結果を保存
             </Button>
-            <Button variant="outline" onClick={handleDownloadProject} disabled={!hasImportResult}>
+            <Button variant="outline" onClick={handleSaveProject} disabled={!hasImportResult}>
               プロジェクト保存
             </Button>
           </div>

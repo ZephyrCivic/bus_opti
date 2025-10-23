@@ -60,9 +60,6 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 
 export function ensureWorkflowSession(summary: WorkflowSummary): void {
-  if (!hasActiveWarnings(summary)) {
-    return;
-  }
   const current = loadCurrentSession();
   if (current) {
     saveCurrentSession({ ...current, summary });

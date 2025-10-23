@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
 import type { BlockTripSequenceIndex } from '@/services/duty/dutyState';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
+import { toMinutes } from '@/services/duty/dutyMetrics';
 import type { SegmentSelection } from './useDutySelectionState';
 import { evaluateTripSelection, selectionErrorToMessage, inferBlockCandidates } from '../utils/tripSelection';
 
@@ -45,6 +46,7 @@ interface DutyCrudParams {
 
 interface DutyCrudResult {
   handleAdd: () => void;
+  handleAddBreak: () => void;
   handleMove: () => void;
   handleDelete: () => void;
   handleAutoCorrect: () => void;
@@ -102,9 +104,78 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     }
   }, [defaultDriverId, dutyActions, selectedDutyId, selectionResult, tripIndex]);
 
+  const handleAddBreak = useCallback(() => {
+    if (!selectedDutyId || !selectedDuty) {
+      toast.error('休憩を追加する Duty を選択してください。');
+      return;
+    }
+    const resultRange = selectionResult();
+    if (!resultRange.ok) {
+      toast.error('休憩の開始と終了となる便を選択してください。');
+      return;
+    }
+    const { blockId, startTripId, endTripId } = resultRange.selection;
+    if (startTripId === endTripId) {
+      toast.error('休憩には開始・終了で異なる便を指定してください。');
+      return;
+    }
+
+    const previousSegment = selectedDuty.segments.find(
+      (segment) => (segment.kind ?? 'drive') !== 'break' && segment.endTripId === startTripId,
+    );
+    if (!previousSegment) {
+      toast.error('指定した開始便で終了する区間が見つかりません。');
+      return;
+    }
+    const nextSegment = selectedDuty.segments.find(
+      (segment) => (segment.kind ?? 'drive') !== 'break' && segment.startTripId === endTripId,
+    );
+    if (!nextSegment) {
+      toast.error('指定した終了便で開始する区間が見つかりません。');
+      return;
+    }
+
+    const blockTrips = tripLookup.get(blockId);
+    const startRow = blockTrips?.get(startTripId);
+    const endRow = blockTrips?.get(endTripId);
+    const startMinutes = toMinutes(startRow?.tripEnd);
+    const endMinutes = toMinutes(endRow?.tripStart);
+    if (startMinutes === undefined || endMinutes === undefined) {
+      toast.error('便の時刻情報が不足しているため休憩を設定できません。');
+      return;
+    }
+    const breakMinutes = endMinutes - startMinutes;
+    if (breakMinutes <= 0) {
+      toast.error('指定した便の間に休憩を挿入できる余裕がありません。');
+      return;
+    }
+
+    try {
+      dutyActions.addSegment(
+        {
+          dutyId: selectedDutyId,
+          blockId,
+          startTripId,
+          endTripId,
+          kind: 'break',
+        },
+        tripIndex,
+      );
+      toast.success(`休憩（約${Math.round(breakMinutes)}分）を追加しました。`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '休憩の追加に失敗しました。');
+    }
+  }, [dutyActions, selectedDuty, selectedDutyId, selectionResult, tripIndex, tripLookup]);
+
   const handleMove = useCallback(() => {
     if (!selectedSegment) {
       toast.error('移動する区間を選んでください。');
+      return;
+    }
+    const currentSegment =
+      selectedDuty?.segments.find((segment) => segment.id === selectedSegment.segmentId) ?? null;
+    if ((currentSegment?.kind ?? 'drive') === 'break') {
+      toast.error('休憩区間は移動できません。削除して再追加してください。');
       return;
     }
     const resultRange = selectionResult();
@@ -147,7 +218,7 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '区間の移動に失敗しました。');
     }
-  }, [dutyActions, endTripId, selectedSegment, selectionResult, setEndTripId, setSelectedBlockId, setSelectedSegment, setStartTripId, startTripId, tripIndex]);
+  }, [dutyActions, endTripId, selectedDuty, selectedSegment, selectionResult, setEndTripId, setSelectedBlockId, setSelectedSegment, setStartTripId, startTripId, tripIndex]);
 
   const handleDelete = useCallback(() => {
     if (!selectedSegment) {
@@ -183,5 +254,5 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
   const handleUndo = useCallback(() => dutyActions.undo(), [dutyActions]);
   const handleRedo = useCallback(() => dutyActions.redo(), [dutyActions]);
 
-  return { handleAdd, handleMove, handleDelete, handleAutoCorrect, handleUndo, handleRedo };
+  return { handleAdd, handleAddBreak, handleMove, handleDelete, handleAutoCorrect, handleUndo, handleRedo };
 }

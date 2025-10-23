@@ -30,7 +30,7 @@ export function resolveRange(input: SegmentRangeInput, tripIndex: BlockTripSeque
 export function ensureBlockConsistency(duty: Duty, blockId: string): void {
   const hasDifferentBlock = duty.segments.some((segment) => segment.blockId !== blockId);
   if (hasDifferentBlock) {
-    throw new Error('1つのDutyでは同じBlockのみ扱えます。');
+    throw new Error('1つのDutyでは同一Blockのみ扱えます。');
   }
 }
 
@@ -39,8 +39,16 @@ export function ensureNoOverlap(
   candidate: DutySegment,
   ignoreId?: string,
 ): void {
+  const candidateKind = candidate.kind ?? 'drive';
+  if (candidateKind === 'break') {
+    return;
+  }
   for (const segment of segments) {
     if (segment.id === ignoreId || segment.blockId !== candidate.blockId) {
+      continue;
+    }
+    const segmentKind = segment.kind ?? 'drive';
+    if (segmentKind === 'break') {
       continue;
     }
     const overlaps = candidate.startSequence <= segment.endSequence && candidate.endSequence >= segment.startSequence;
@@ -49,4 +57,3 @@ export function ensureNoOverlap(
     }
   }
 }
-

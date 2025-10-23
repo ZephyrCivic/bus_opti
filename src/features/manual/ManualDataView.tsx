@@ -25,6 +25,7 @@ import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { DeadheadRule, Depot, ManualDriver, ManualVehicle, ManualVehicleType, ReliefPoint } from '@/types';
 import { sanitizeDriverName, REDACTED_LABEL } from '@/services/privacy/redaction';
 
+import { recordAuditEvent } from '@/services/audit/auditLog';
 import { DepotsCard } from './components/DepotsCard';
 import { DeadheadRulesCard } from './components/DeadheadRulesCard';
 import { DriversCard } from './components/DriversCard';
@@ -133,7 +134,14 @@ export default function ManualDataView(): JSX.Element {
     [setManual],
   );
 
-  const exportWithGuard = useCallback((label: string, rows: unknown[], builder: () => string, fileName: string) => {
+  const exportWithGuard = useCallback((
+    label: string,
+    rows: unknown[],
+    builder: () => string,
+    fileName: string,
+    entity: string,
+    exportType: string,
+  ) => {
     if (rows.length === 0) {
       toast.info(`${label} に出力できるデータがありません。`);
       return;
@@ -147,10 +155,16 @@ export default function ManualDataView(): JSX.Element {
         unassigned: 0,
         metrics: [{ label: '対象件数', value: `${rows.length}` }],
       },
-      context: { entity: label.toLowerCase(), exportType: fileName },
+      context: { entity, exportType },
       onConfirm: async () => {
         const content = builder();
         downloadCsv({ fileName, content });
+        recordAuditEvent({
+          entity,
+          fileName,
+          rowCount: rows.length,
+          format: 'csv',
+        });
         toast.success(`${label} をエクスポートしました。`);
       },
     });
@@ -325,6 +339,8 @@ export default function ManualDataView(): JSX.Element {
             manual.vehicleTypes,
             () => vehicleTypesToCsv(manual.vehicleTypes),
             'manual-vehicle_types.csv',
+            'manual.vehicleTypes',
+            'manual.vehicleTypes.csv',
           )
         }
       />
@@ -336,7 +352,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteVehicle}
         onImport={handleImportVehicles}
         onExport={() =>
-          exportWithGuard('車両', manual.vehicles, () => vehiclesToCsv(manual.vehicles), 'manual-vehicles.csv')
+          exportWithGuard('車両', manual.vehicles, () => vehiclesToCsv(manual.vehicles), 'manual-vehicles.csv', 'manual.vehicles', 'manual.vehicles.csv')
         }
       />
 
@@ -346,7 +362,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDriver}
         onImport={handleImportDrivers}
         onExport={() =>
-          exportWithGuard('運転士', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv')
+          exportWithGuard('運転士', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv', 'manual.drivers', 'manual.drivers.csv')
         }
       />
 
@@ -356,7 +372,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteRelief}
         onImport={handleImportReliefPoints}
         onExport={() =>
-          exportWithGuard('交代地点', manual.reliefPoints, () => reliefPointsToCsv(manual.reliefPoints), 'manual-relief_points.csv')
+          exportWithGuard('交代地点', manual.reliefPoints, () => reliefPointsToCsv(manual.reliefPoints), 'manual-relief_points.csv', 'manual.reliefPoints', 'manual.reliefPoints.csv')
         }
       />
 
@@ -366,7 +382,7 @@ export default function ManualDataView(): JSX.Element {
         onDelete={handleDeleteDepot}
         onImport={handleImportDepots}
         onExport={() =>
-          exportWithGuard('車庫', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv')
+          exportWithGuard('車庫', manual.depots, () => depotsToCsv(manual.depots), 'manual-depots.csv', 'manual.depots', 'manual.depots.csv')
         }
       />
 
@@ -381,6 +397,8 @@ export default function ManualDataView(): JSX.Element {
             manual.deadheadRules,
             () => deadheadRulesToCsv(manual.deadheadRules),
             'manual-deadhead_rules.csv',
+            'manual.deadheadRules',
+            'manual.deadheadRules.csv',
           )
         }
       />
