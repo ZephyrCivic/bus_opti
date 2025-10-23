@@ -31,6 +31,7 @@ function createSamplePlan(): BlockPlan {
         overlapScore: 5,
         gapWarnings: 1,
         warningCounts: { critical: 1, warn: 2, info: 0 },
+        warnings: [],
       },
       {
         blockId: 'BLOCK_B',
@@ -43,6 +44,7 @@ function createSamplePlan(): BlockPlan {
         overlapScore: 0,
         gapWarnings: 0,
         warningCounts: { critical: 0, warn: 0, info: 0 },
+        warnings: [],
       },
     ],
     csvRows: [

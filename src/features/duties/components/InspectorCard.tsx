@@ -30,6 +30,7 @@ interface InspectorCardProps {
   warningSummary?: DutyWarningSummary;
   onAutoCorrect: () => void;
   driverOptions: ManualDriver[];
+  showSafetyPanel?: boolean;
 }
 
 export function InspectorCard(props: InspectorCardProps): JSX.Element {
@@ -46,6 +47,7 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
     warningSummary,
     onAutoCorrect,
     driverOptions,
+    showSafetyPanel = true,
   } = props;
 
   return (
@@ -90,10 +92,14 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
           )}
        </div>
        <QuickStats dutyCount={dutyCount} segmentCount={segmentCount} driverCount={driverCount} />
-       {selectedDuty ? (
-          <DutyMetricsPanel metrics={selectedMetrics} warningSummary={warningSummary} onAutoCorrect={onAutoCorrect} />
+        {showSafetyPanel ? (
+          selectedDuty ? (
+            <DutyMetricsPanel metrics={selectedMetrics} warningSummary={warningSummary} onAutoCorrect={onAutoCorrect} />
+          ) : (
+            <p className="text-sm text-muted-foreground">乗務を選ぶと、安全チェック結果が表示されます。</p>
+          )
         ) : (
-          <p className="text-sm text-muted-foreground">乗務を選ぶと、安全チェック結果が表示されます。</p>
+          <p className="text-sm text-muted-foreground">Step1 では警告と安全チェックの表示を一時的に無効化しています。</p>
         )}
         {selectedSegmentDetail ? (
           <SegmentDetails selection={selectedSegment} segment={selectedSegmentDetail} />

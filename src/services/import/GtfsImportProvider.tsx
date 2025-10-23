@@ -78,6 +78,8 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     reliefPoints: [],
     deadheadRules: [],
     drivers: [],
+    vehicleTypes: [],
+    vehicles: [],
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   }));
   const [selectedRouteIds, setSelectedRouteIdsState] = useState<string[]>([]);
@@ -137,7 +139,15 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
   const reset = useCallback(() => {
     setState({ status: 'idle' });
     resetDutyState();
-    setManualState((prev) => ({ ...prev, depots: [], reliefPoints: [], deadheadRules: [], drivers: [] }));
+    setManualState((prev) => ({
+      ...prev,
+      depots: [],
+      reliefPoints: [],
+      deadheadRules: [],
+      drivers: [],
+      vehicleTypes: [],
+      vehicles: [],
+    }));
     setSelectedRouteIdsState([]);
   }, [resetDutyState]);
 

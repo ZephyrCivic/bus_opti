@@ -1,6 +1,6 @@
 /**
  * src/features/manual/ManualDataView.tsx
- * 連携設定・運転士・車庫・交代地点・回送ルールを管理する手動データ画面。
+ * 運転士・車庫・交代地点・回送ルールを管理する手動データ画面。
  * CSV 入出力とインライン編集をまとめ、GtfsImportProvider の状態を更新する。
  */
 import { useCallback } from 'react';
@@ -16,19 +16,27 @@ import {
   depotsToCsv,
   driversToCsv,
   reliefPointsToCsv,
+  csvToVehicleTypes,
+  csvToVehicles,
+  vehicleTypesToCsv,
+  vehiclesToCsv,
 } from '@/services/manual/manualCsv';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
-import type { DeadheadRule, Depot, ManualDriver, ReliefPoint } from '@/types';
+import type { DeadheadRule, Depot, ManualDriver, ManualVehicle, ManualVehicleType, ReliefPoint } from '@/types';
+import { sanitizeDriverName, REDACTED_LABEL } from '@/services/privacy/redaction';
 
 import { DepotsCard } from './components/DepotsCard';
 import { DeadheadRulesCard } from './components/DeadheadRulesCard';
 import { DriversCard } from './components/DriversCard';
-import { LinkingSettingsCard } from './components/LinkingSettingsCard';
 import { ReliefPointsCard } from './components/ReliefPointsCard';
+import { VehicleTypesCard } from './components/VehicleTypesCard';
+import { VehiclesCard } from './components/VehiclesCard';
 import { readFileAsText } from './utils/file';
+import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 
 export default function ManualDataView(): JSX.Element {
   const { manual, setManual } = useGtfsImport();
+  const { requestConfirmation } = useExportConfirmation();
 
   const handleImportDepots = useCallback(
     async (file: File) => {
@@ -77,10 +85,49 @@ export default function ManualDataView(): JSX.Element {
       try {
         const csv = await readFileAsText(file);
         const drivers = csvToDrivers(csv);
-        setManual((prev) => ({ ...prev, drivers }));
-        toast.success(`運転士 CSV を読み込みました（${drivers.length} 件）。`);
+        let redactedCount = 0;
+        const sanitized = drivers.map((driver) => {
+          const { value, redacted } = sanitizeDriverName(driver.name);
+          if (redacted) {
+            redactedCount += 1;
+          }
+          return { driverId: driver.driverId, name: value } satisfies ManualDriver;
+        });
+        setManual((prev) => ({ ...prev, drivers: sanitized }));
+        toast.success(`運転士 CSV を読み込みました（${sanitized.length} 件）。`);
+        if (redactedCount > 0) {
+          toast.info(`名称は ${redactedCount} 件匿名化されました（${REDACTED_LABEL}）。`);
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '運転士 CSV の読み込みに失敗しました。');
+      }
+    },
+    [setManual],
+  );
+
+  const handleImportVehicleTypes = useCallback(
+    async (file: File) => {
+      try {
+        const csv = await readFileAsText(file);
+        const vehicleTypes = csvToVehicleTypes(csv);
+        setManual((prev) => ({ ...prev, vehicleTypes }));
+        toast.success(`車両タイプ CSV を読み込みました（${vehicleTypes.length} 件）。`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '車両タイプ CSV の読み込みに失敗しました。');
+      }
+    },
+    [setManual],
+  );
+
+  const handleImportVehicles = useCallback(
+    async (file: File) => {
+      try {
+        const csv = await readFileAsText(file);
+        const vehicles = csvToVehicles(csv);
+        setManual((prev) => ({ ...prev, vehicles }));
+        toast.success(`車両 CSV を読み込みました（${vehicles.length} 件）。`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '車両 CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -91,10 +138,23 @@ export default function ManualDataView(): JSX.Element {
       toast.info(`${label} に出力できるデータがありません。`);
       return;
     }
-    const content = builder();
-    downloadCsv({ fileName, content });
-    toast.success(`${label} をエクスポートしました。`);
-  }, []);
+    requestConfirmation({
+      title: `${label} をエクスポートしますか？`,
+      description: '手動入力データを外部に保存する前に件数を確認してください。',
+      summary: {
+        hardWarnings: 0,
+        softWarnings: 0,
+        unassigned: 0,
+        metrics: [{ label: '対象件数', value: `${rows.length}` }],
+      },
+      context: { entity: label.toLowerCase(), exportType: fileName },
+      onConfirm: async () => {
+        const content = builder();
+        downloadCsv({ fileName, content });
+        toast.success(`${label} をエクスポートしました。`);
+      },
+    });
+  }, [requestConfirmation]);
 
   const handleAddDriver = useCallback(
     (input: ManualDriver) => {
@@ -110,8 +170,12 @@ export default function ManualDataView(): JSX.Element {
         toast.error(`driver_id "${trimmed.driverId}" は既に登録されています。`);
         return false;
       }
-      setManual((prev) => ({ ...prev, drivers: [...prev.drivers, trimmed] }));
+      const sanitized = sanitizeDriverName(trimmed.name);
+      setManual((prev) => ({ ...prev, drivers: [...prev.drivers, { driverId: trimmed.driverId, name: sanitized.value }] }));
       toast.success(`運転士 ${trimmed.driverId} を追加しました。`);
+      if (sanitized.redacted) {
+        toast.info(`名称は匿名化されました（${REDACTED_LABEL}）。`);
+      }
       return true;
     },
     [manual.drivers, setManual],
@@ -121,6 +185,81 @@ export default function ManualDataView(): JSX.Element {
     (driverId: string) => {
       setManual((prev) => ({ ...prev, drivers: prev.drivers.filter((driver) => driver.driverId !== driverId) }));
       toast.success(`運転士 ${driverId} を削除しました。`);
+    },
+    [setManual],
+  );
+
+  const handleAddVehicleType = useCallback(
+    (input: ManualVehicleType) => {
+      const typeId = input.typeId.trim();
+      if (!typeId) {
+        toast.error('type_id を入力してください。');
+        return false;
+      }
+      if (manual.vehicleTypes.some((type) => type.typeId === typeId)) {
+        toast.error(`type_id "${typeId}" は既に登録されています。`);
+        return false;
+      }
+      setManual((prev) => ({ ...prev, vehicleTypes: [...prev.vehicleTypes, { ...input, typeId }] }));
+      toast.success(`車両タイプ ${typeId} を追加しました。`);
+      return true;
+    },
+    [manual.vehicleTypes, setManual],
+  );
+
+  const handleDeleteVehicleType = useCallback(
+    (typeId: string) => {
+      if (manual.vehicles.some((vehicle) => vehicle.vehicleTypeId === typeId)) {
+        toast.error(`車両タイプ ${typeId} は車両が参照しているため削除できません。`);
+        return;
+      }
+      setManual((prev) => ({ ...prev, vehicleTypes: prev.vehicleTypes.filter((entry) => entry.typeId !== typeId) }));
+      toast.success(`車両タイプ ${typeId} を削除しました。`);
+    },
+    [manual.vehicles, setManual],
+  );
+
+  const handleAddVehicle = useCallback(
+    (input: ManualVehicle) => {
+      const vehicleId = input.vehicleId.trim();
+      const vehicleTypeId = input.vehicleTypeId.trim();
+      if (!vehicleId) {
+        toast.error('vehicle_id を入力してください。');
+        return false;
+      }
+      if (!vehicleTypeId) {
+        toast.error('vehicle_type を選択してください。');
+        return false;
+      }
+      if (manual.vehicles.some((vehicle) => vehicle.vehicleId === vehicleId)) {
+        toast.error(`vehicle_id "${vehicleId}" は既に登録されています。`);
+        return false;
+      }
+      if (!manual.vehicleTypes.some((type) => type.typeId === vehicleTypeId)) {
+        toast.error(`vehicle_type "${vehicleTypeId}" が存在しません。先に車両タイプを登録してください。`);
+        return false;
+      }
+      setManual((prev) => ({
+        ...prev,
+        vehicles: [
+          ...prev.vehicles,
+          {
+            ...input,
+            vehicleId,
+            vehicleTypeId,
+          },
+        ],
+      }));
+      toast.success(`車両 ${vehicleId} を追加しました。`);
+      return true;
+    },
+    [manual.vehicleTypes, manual.vehicles, setManual],
+  );
+
+  const handleDeleteVehicle = useCallback(
+    (vehicleId: string) => {
+      setManual((prev) => ({ ...prev, vehicles: prev.vehicles.filter((vehicle) => vehicle.vehicleId !== vehicleId) }));
+      toast.success(`車両 ${vehicleId} を削除しました。`);
     },
     [setManual],
   );
@@ -175,12 +314,30 @@ export default function ManualDataView(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <LinkingSettingsCard
-        enabled={manual.linking.enabled}
-        minTurnaroundMin={manual.linking.minTurnaroundMin}
-        maxConnectRadiusM={manual.linking.maxConnectRadiusM}
-        allowParentStation={manual.linking.allowParentStation}
-        onChange={(partial) => setManual((prev) => ({ ...prev, linking: { ...prev.linking, ...partial } }))}
+      <VehicleTypesCard
+        rows={manual.vehicleTypes}
+        onAdd={handleAddVehicleType}
+        onDelete={handleDeleteVehicleType}
+        onImport={handleImportVehicleTypes}
+        onExport={() =>
+          exportWithGuard(
+            '車両タイプ',
+            manual.vehicleTypes,
+            () => vehicleTypesToCsv(manual.vehicleTypes),
+            'manual-vehicle_types.csv',
+          )
+        }
+      />
+
+      <VehiclesCard
+        rows={manual.vehicles}
+        vehicleTypes={manual.vehicleTypes}
+        onAdd={handleAddVehicle}
+        onDelete={handleDeleteVehicle}
+        onImport={handleImportVehicles}
+        onExport={() =>
+          exportWithGuard('車両', manual.vehicles, () => vehiclesToCsv(manual.vehicles), 'manual-vehicles.csv')
+        }
       />
 
       <DriversCard

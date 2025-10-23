@@ -11,9 +11,10 @@ import { parseDutiesCsv } from '@/services/import/dutiesCsv';
 import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
 import type { DutyEditState } from '@/types';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
-import { computeDutyMetrics, summarizeDutyWarnings } from '@/services/duty/dutyMetrics';
 import { downloadCsv } from '@/utils/downloadCsv';
 import { recordAuditEvent } from '@/services/audit/auditLog';
+import { aggregateDutyWarnings } from '@/services/duty/aggregateDutyWarnings';
+import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 import type { SegmentSelection } from './useDutySelectionState';
 
 interface DutyCsvParams {
@@ -55,6 +56,16 @@ export function useDutyCsvHandlers(params: DutyCsvParams): DutyCsvResult {
     setStartTripId,
     setEndTripId,
   } = params;
+  const { requestConfirmation } = useExportConfirmation();
+
+  const buildSnapshot = useCallback(() => {
+    const exportData = buildDutiesCsv(dutyState.duties, {
+      dutySettings: dutyState.settings,
+      tripLookup,
+    });
+    const warningTotals = aggregateDutyWarnings(dutyState.duties, tripLookup, dutyState.settings);
+    return { exportData, warningTotals };
+  }, [dutyState.duties, dutyState.settings, tripLookup]);
 
   const handleImportFile = useCallback(
     async (file: File) => {
@@ -97,32 +108,35 @@ export function useDutyCsvHandlers(params: DutyCsvParams): DutyCsvResult {
       toast.info('エクスポート可能な Duty がありません。');
       return;
     }
-    const exportData = buildDutiesCsv(dutyState.duties, {
-      dutySettings: dutyState.settings,
-      tripLookup,
-    });
-    downloadCsv({ fileName: exportData.fileName, content: exportData.csv });
-    const aggregateWarnings = dutyState.duties.reduce(
-      (accumulator, duty) => {
-        const metrics = computeDutyMetrics(duty, tripLookup, dutyState.settings);
-        const summary = summarizeDutyWarnings(metrics);
-        return {
-          hard: accumulator.hard + summary.hard,
-          soft: accumulator.soft + summary.soft,
-        };
+    const { exportData, warningTotals } = buildSnapshot();
+    requestConfirmation({
+      title: 'Duties CSV を出力しますか？',
+      description: '警告件数と未割当の状況を確認した上で出力を続行できます。',
+      summary: {
+        hardWarnings: warningTotals.hard,
+        softWarnings: warningTotals.soft,
+        unassigned: warningTotals.unassigned,
+        metrics: [
+          { label: '行数', value: `${exportData.rowCount}` },
+          { label: '設定ハッシュ', value: exportData.settingsHash },
+        ],
       },
-      { hard: 0, soft: 0 },
-    );
-    recordAuditEvent({
-      entity: 'duties',
-      fileName: exportData.fileName,
-      rowCount: exportData.rowCount,
-      generatedAt: exportData.generatedAt,
-      settingsHash: exportData.settingsHash,
-      warnings: aggregateWarnings,
+      context: { entity: 'duties', exportType: 'duties-csv', fileName: exportData.fileName },
+      onConfirm: () => {
+        const { exportData: latestExport, warningTotals: latestWarnings } = buildSnapshot();
+        downloadCsv({ fileName: latestExport.fileName, content: latestExport.csv });
+        recordAuditEvent({
+          entity: 'duties',
+          fileName: latestExport.fileName,
+          rowCount: latestExport.rowCount,
+          generatedAt: latestExport.generatedAt,
+          settingsHash: latestExport.settingsHash,
+          warnings: { hard: latestWarnings.hard, soft: latestWarnings.soft },
+        });
+        toast.success(`Duties CSV をダウンロードしました（${latestExport.rowCount} 行）`);
+      },
     });
-    toast.success(`Duties CSV をダウンロードしました（${exportData.rowCount} 行）`);
-  }, [dutyState.duties, dutyState.settings, tripLookup]);
+  }, [buildSnapshot, requestConfirmation]);
 
   const handleImportClick = useCallback((input: HTMLInputElement | null) => {
     input?.click();

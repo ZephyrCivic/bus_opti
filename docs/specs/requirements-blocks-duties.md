@@ -21,11 +21,11 @@
 - モットー: Small, clear, safe steps — always grounded in real docs.
 
 ## 現状サマリ（実装の把握）
-- GTFS取込: `stops.txt / trips.txt / stop_times.txt` 必須、`shapes.txt` 任意、`frequencies.txt` は検出して展開済み（`src/services/import/gtfsParser.ts`）。
+- GTFS・保存データ取込: `stops.txt / trips.txt / stop_times.txt` 必須、`shapes.txt` 任意、`frequencies.txt` は検出して展開済み（`src/services/import/gtfsParser.ts`）。
 - 行路編集（Blocks）: Greedy 連結。条件は「同一 serviceDayIndex かつ gap ≤ maxTurnGapMinutes」。Deadhead/Depot/Relief は未考慮（`src/services/blocks/blockBuilder.ts`）。
 - Blocks可視化: 日別集約と時間帯重なりの簡易指標（平均gapをoverlapScoreに格納しており命名が実態と不一致）。
 - Duty編集: ブロック区間の追加/移動/削除とCSV入出力。検証は「同一Blockのみ・区間の重複なし」のみ（`src/services/duty/validators.ts`）。労務ルール（連続運転/休憩/拘束）の適用なし。従業員（Drivers）はUI入力可だがDuty割付の評価は最小限。
-- 手動入力（Manual）: Depot/Relief/Deadhead/Drivers/Linking設定はUI入出力・地図重畳のみで、行路連結やDuty検証に未統合。
+- 手動入力（Manual）: Depot/Relief/Deadhead/Drivers をUI入出力・地図重畳のみで扱う（Linking設定はStep2でUI復帰予定／Step1では内部保持のみ）。
 
 ## 要件（データモデル）
 - ManualDriverの拡張（後方互換優先）
@@ -65,7 +65,7 @@
   - フィルタ: service_id、時間帯、方向。
 - 行路エディタ（Block Builder）
   - 便の start/end をドラッグまたは選択で連結。複数候補がある場合は「実効gap（gap-Deadhead）」が小さい順に候補提示。
-  - 画面に現在の `linking` 設定（minTurn, radius, 親駅許容）を常時表示。
+- 画面に現在の `linking` 設定（minTurn, radius, 親駅許容）を常時表示。（Step1では非表示・Step2で復帰予定）
   - 連結直後に警告を評価し、行単位でアイコン/バッジ表示。
 - 交番エディタ（Duty Builder）
   - 従業員リストから Duty へ割付（ドラッグ&ドロップ/選択）
@@ -264,9 +264,9 @@
 ## 設定（デフォルト値と調整可能項目）
 - Blocks/連結
   - `maxTurnGapMinutes`: 15（コード既定: DEFAULT_MAX_TURN_GAP_MINUTES）。
-  - `manual.linking.minTurnaroundMin`: 10（UI設定）。
-  - `manual.linking.maxConnectRadiusM`: 100（UI設定）。
-  - `manual.linking.allowParentStation`: true（UI設定）。
+- `manual.linking.minTurnaroundMin`: 10（UI設定。Step1では内部保持のみ）
+- `manual.linking.maxConnectRadiusM`: 100（UI設定。Step1では内部保持のみ）
+- `manual.linking.allowParentStation`: true（UI設定。Step1では内部保持のみ）
 - Duties（交番）
   - `maxContinuousMinutes`: 240（4時間）。
   - `minBreakMinutes`: 30（食事/休憩の下限）。

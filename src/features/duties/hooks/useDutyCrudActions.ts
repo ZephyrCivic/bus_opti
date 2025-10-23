@@ -10,7 +10,21 @@ import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
 import type { BlockTripSequenceIndex } from '@/services/duty/dutyState';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 import type { SegmentSelection } from './useDutySelectionState';
-import { evaluateTripSelection, selectionErrorToMessage } from '../utils/tripSelection';
+import { evaluateTripSelection, selectionErrorToMessage, inferBlockCandidates } from '../utils/tripSelection';
+
+// 既存ロジックのフォールバック：候補が1件のみのときだけ自動推定する
+function inferSingleBlockFromTrips(
+  startTripId: string | null,
+  endTripId: string | null,
+  tripIndex: BlockTripSequenceIndex,
+  excludeBlockId?: string,
+): { blockId: string; startTripId: string; endTripId: string } | null {
+  const candidates = inferBlockCandidates(startTripId, endTripId, tripIndex, excludeBlockId);
+  if (candidates.length === 1 && startTripId && endTripId) {
+    return { blockId: candidates[0]!, startTripId, endTripId };
+  }
+  return null;
+}
 
 interface DutyCrudParams {
   dutyActions: DutyEditorActions;
@@ -22,6 +36,9 @@ interface DutyCrudParams {
   defaultDriverId: string;
   selectedDuty: { id: string } | null;
   setSelectedSegment: (selection: SegmentSelection | null) => void;
+  setSelectedBlockId?: (blockId: string | null) => void;
+  setStartTripId?: (tripId: string | null) => void;
+  setEndTripId?: (tripId: string | null) => void;
   startTripId: string | null;
   endTripId: string | null;
 }
@@ -46,6 +63,9 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     defaultDriverId,
     selectedDuty,
     setSelectedSegment,
+    setSelectedBlockId,
+    setStartTripId,
+    setEndTripId,
     startTripId,
     endTripId,
   } = params;
@@ -88,8 +108,23 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
       return;
     }
     const resultRange = selectionResult();
+    let selection = resultRange.ok ? resultRange.selection : null;
     if (!resultRange.ok) {
-      toast.error(selectionErrorToMessage(resultRange.reason));
+      // 候補推定（承認ガード）
+      const candidates = inferBlockCandidates(startTripId, endTripId, tripIndex, selectedSegment.blockId);
+      if (candidates.length === 1 && startTripId && endTripId) {
+        selection = { blockId: candidates[0]!, startTripId, endTripId };
+      } else {
+        if (candidates.length > 1) {
+          toast.info(`複数のブロック候補があります。ブロック一覧から選択して再実行してください: ${candidates.join(', ')}`);
+        } else {
+          toast.error(selectionErrorToMessage(resultRange.reason));
+        }
+        return;
+      }
+    }
+    if (!selection) {
+      toast.error('選択内容を確認してください。');
       return;
     }
     try {
@@ -97,17 +132,22 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
         {
           dutyId: selectedSegment.dutyId,
           segmentId: selectedSegment.segmentId,
-          blockId: resultRange.selection.blockId,
-          startTripId: resultRange.selection.startTripId,
-          endTripId: resultRange.selection.endTripId,
+          blockId: selection.blockId,
+          startTripId: selection.startTripId,
+          endTripId: selection.endTripId,
         },
         tripIndex,
       );
+      // 移動後の選択同期（G4要件）：UI 側の選択状態を移動先に合わせる
+      setSelectedSegment({ dutyId: selectedSegment.dutyId, segmentId: selectedSegment.segmentId });
+      setSelectedBlockId?.(selection.blockId);
+      setStartTripId?.(selection.startTripId);
+      setEndTripId?.(selection.endTripId);
       toast.success('区間を移動しました。');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '区間の移動に失敗しました。');
     }
-  }, [dutyActions, selectedSegment, selectionResult, tripIndex]);
+  }, [dutyActions, endTripId, selectedSegment, selectionResult, setEndTripId, setSelectedBlockId, setSelectedSegment, setStartTripId, startTripId, tripIndex]);
 
   const handleDelete = useCallback(() => {
     if (!selectedSegment) {

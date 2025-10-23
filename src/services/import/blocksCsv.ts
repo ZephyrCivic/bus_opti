@@ -139,6 +139,7 @@ function buildSummaries(
       overlapScore: gaps.length > 0 ? Number((gaps.reduce((acc, value) => acc + value, 0) / gaps.length).toFixed(2)) : 0,
       gapWarnings: warnings.warn,
       warningCounts: warnings,
+      warnings: [],
     });
   }
 

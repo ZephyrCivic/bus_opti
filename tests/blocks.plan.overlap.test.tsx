@@ -20,6 +20,8 @@ const plan: BlockPlan = {
       lastTripEnd: '09:00',
       gaps: [],
       warningCounts: { critical: 0, warn: 0, info: 0 },
+      gapWarnings: 0,
+      warnings: [],
     },
     {
       blockId: 'BLOCK_B',
@@ -30,6 +32,8 @@ const plan: BlockPlan = {
       lastTripEnd: '09:45',
       gaps: [],
       warningCounts: { critical: 0, warn: 0, info: 0 },
+      gapWarnings: 0,
+      warnings: [],
     },
     {
       blockId: 'BLOCK_C',
@@ -40,6 +44,8 @@ const plan: BlockPlan = {
       lastTripEnd: '08:00',
       gaps: [],
       warningCounts: { critical: 0, warn: 0, info: 0 },
+      gapWarnings: 0,
+      warnings: [],
     },
   ],
   csvRows: [],

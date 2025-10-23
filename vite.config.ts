@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
     // GitHub Pages（ZephyrCivic/bus_opti）に合わせたベースパス。開発時は `/` に戻す。
     base: isProduction ? '/bus_opti/' : '/',
     plugins: [react()],
+    envPrefix: ['VITE_', 'APP_'],
     resolve: {
       alias: {
         '@': path.resolve(rootDir, './src'),

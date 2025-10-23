@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   evaluateTripSelection,
   selectionErrorToMessage,
+  inferBlockCandidates,
 } from '@/features/duties/utils/tripSelection';
 import type { BlockTripSequenceIndex } from '@/services/duty/types';
 
@@ -96,4 +97,29 @@ test('evaluateTripSelection returns selection when inputs are valid', () => {
       endTripId: 'TRIP_C',
     });
   }
+});
+
+test('inferBlockCandidates lists candidates and supports exclusion', () => {
+  const index: BlockTripSequenceIndex = new Map([
+    [
+      'BLOCK_X',
+      new Map([
+        ['TRIP_A', 1],
+        ['TRIP_B', 2],
+      ]),
+    ],
+    [
+      'BLOCK_Y',
+      new Map([
+        ['TRIP_A', 5],
+        ['TRIP_B', 6],
+      ]),
+    ],
+  ]);
+
+  const all = inferBlockCandidates('TRIP_A', 'TRIP_B', index);
+  assert.deepEqual(new Set(all), new Set(['BLOCK_X', 'BLOCK_Y']));
+
+  const excludeX = inferBlockCandidates('TRIP_A', 'TRIP_B', index, 'BLOCK_X');
+  assert.deepEqual(excludeX, ['BLOCK_Y']);
 });

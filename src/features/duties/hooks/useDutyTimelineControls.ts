@@ -24,6 +24,7 @@ interface DutyTimelineControlsParams {
   onSelectBlock: (blockId: string | null) => void;
   onStartTripChange: (tripId: string | null) => void;
   onEndTripChange: (tripId: string | null) => void;
+  selectedBlockId: string | null;
 }
 
 interface DutyTimelineControlsResult {
@@ -46,6 +47,7 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
     onSelectBlock,
     onStartTripChange,
     onEndTripChange,
+    selectedBlockId,
   } = params;
 
   const [timelinePixelsPerMinute, setTimelinePixelsPerMinute] = useState(DEFAULT_PIXELS_PER_MINUTE);
@@ -126,41 +128,44 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
         };
         const segmentId = meta.segmentId ?? selection.segment.id;
         onSelectSegment({ dutyId: selection.laneId, segmentId });
-        if (meta.blockId) {
+        if (meta.blockId && (!selectedBlockId || selectedBlockId === meta.blockId)) {
           onSelectBlock(meta.blockId);
-        }
-        if (meta.startTripId) {
-          onStartTripChange(meta.startTripId);
-        }
-        if (meta.endTripId) {
-          onEndTripChange(meta.endTripId);
+          if (meta.startTripId) {
+            onStartTripChange(meta.startTripId);
+          }
+          if (meta.endTripId) {
+            onEndTripChange(meta.endTripId);
+          }
         }
       } else if (selection.segmentId) {
         onSelectSegment({ dutyId: selection.laneId, segmentId: selection.segmentId });
       }
     },
-    [onEndTripChange, onSelectBlock, onSelectDuty, onSelectSegment, onStartTripChange],
+    [onEndTripChange, onSelectBlock, onSelectDuty, onSelectSegment, onStartTripChange, selectedBlockId],
   );
 
   const handleDutySelect = useCallback(
     (duty: Duty) => {
       onSelectDuty(duty.id);
-      if (duty.segments.length > 0) {
+      if (duty.segments.length > 0 && (!selectedBlockId || selectedBlockId === duty.segments[0]!.blockId)) {
         onSelectBlock(duty.segments[0]!.blockId);
       }
     },
-    [onSelectBlock, onSelectDuty],
+    [onSelectBlock, onSelectDuty, selectedBlockId],
   );
 
   const handleSegmentSelect = useCallback(
     (duty: Duty, segment: DutySegment) => {
       onSelectDuty(duty.id);
       onSelectSegment({ dutyId: duty.id, segmentId: segment.id });
-      onSelectBlock(segment.blockId);
-      onStartTripChange(segment.startTripId);
-      onEndTripChange(segment.endTripId);
+      const shouldSyncBlock = !selectedBlockId || selectedBlockId === segment.blockId;
+      if (shouldSyncBlock) {
+        onSelectBlock(segment.blockId);
+        onStartTripChange(segment.startTripId);
+        onEndTripChange(segment.endTripId);
+      }
     },
-    [onEndTripChange, onSelectBlock, onSelectDuty, onSelectSegment, onStartTripChange],
+    [onEndTripChange, onSelectBlock, onSelectDuty, onSelectSegment, onStartTripChange, selectedBlockId],
   );
 
   return {

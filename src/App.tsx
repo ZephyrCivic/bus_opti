@@ -15,11 +15,12 @@ import DiffView from './features/dashboard/DiffView';
 import ManualDataView from './features/manual/ManualDataView';
 import { GtfsImportProvider } from './services/import/GtfsImportProvider';
 import { SectionNavigationContext } from './components/layout/SectionNavigationContext';
+import { ExportConfirmationProvider } from './components/export/ExportConfirmationProvider';
 
 const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView'));
 
 const SECTIONS: NavigationSection[] = [
-  { id: 'import', label: 'GTFS取込' },
+  { id: 'import', label: 'GTFS・保存データ取込' },
   { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'manual', label: '制約条件（手動入力）' },
   { id: 'blocks', label: '行路推定' },
@@ -63,12 +64,14 @@ export default function App(): JSX.Element {
 
   return (
     <GtfsImportProvider>
-      <SectionNavigationContext.Provider value={{ currentSection: activeSection, navigate: handleSectionSelect }}>
-        <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
-          <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
-        </AppShell>
-        <Toaster position="top-right" richColors closeButton />
-      </SectionNavigationContext.Provider>
+      <ExportConfirmationProvider>
+        <SectionNavigationContext.Provider value={{ currentSection: activeSection, navigate: handleSectionSelect }}>
+          <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
+            <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
+          </AppShell>
+          <Toaster position="top-right" richColors closeButton />
+        </SectionNavigationContext.Provider>
+      </ExportConfirmationProvider>
     </GtfsImportProvider>
   );
 }

@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { UploadCloud, RefreshCcw, FileWarning } from 'lucide-react';
+import { UploadCloud, History, RefreshCcw, FileWarning } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -201,14 +201,17 @@ export default function ImportView(): JSX.Element {
           <CardDescription>新規開始（GTFS）または保存データから再開する導線を選択してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="relative flex flex-col gap-6 md:grid md:grid-cols-2 md:items-stretch md:gap-10">
-            <div className="order-1 flex h-full flex-col gap-3 md:order-none">
+          <div className="relative flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch md:gap-16">
+            <div className="order-1 flex h-full flex-col gap-3 md:order-none md:col-start-1">
               <div className="space-y-1 text-left">
-                <h3 className="text-sm font-semibold">GTFSを読み込む</h3>
+                <div className="flex items-center gap-2">
+                  <UploadCloud className="h-5 w-5 text-muted-foreground" aria-hidden />
+                  <h3 className="text-sm font-semibold">GTFSを読み込む</h3>
+                </div>
                 <p className="text-xs text-muted-foreground">ZIP (stops/trips/stop_times/… ) から新規プロジェクトを開始します。</p>
               </div>
               <div
-                className="flex min-h-[180px] flex-1 flex-col justify-center gap-4 rounded-lg border border-muted-foreground/40 bg-muted/20 p-6 text-left"
+                className="flex min-h-[160px] flex-1 flex-col items-start justify-between gap-4 rounded-lg border border-muted-foreground/40 bg-muted/15 p-5 text-left"
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 role="button"
@@ -229,26 +232,30 @@ export default function ImportView(): JSX.Element {
               </div>
             </div>
 
-            <div className="order-2 flex items-center justify-center md:pointer-events-none md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
-              <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm">OR</span>
+            <div className="order-2 flex items-center justify-center md:col-start-2 md:px-6">
+              <span className="rounded-full bg-amber-200 px-4 py-1.5 text-xs font-semibold text-amber-900 shadow-sm">OR</span>
             </div>
 
-            <div className="order-3 flex h-full flex-col gap-3 md:order-none">
+            <div className="order-3 flex h-full flex-col gap-3 md:order-none md:col-start-3">
               <div className="space-y-1 text-left">
-                <h3 className="text-sm font-semibold">保存データから再開</h3>
+                <div className="flex items-center gap-2">
+                  <History className="h-5 w-5 text-muted-foreground" aria-hidden />
+                  <h3 className="text-sm font-semibold">保存データから再開</h3>
+                </div>
                 <p className="text-xs text-muted-foreground">以前の作業（プロジェクトJSON / 取込結果JSON）を開きます。</p>
               </div>
-              <div className="flex min-h-[180px] flex-1 flex-col justify-between gap-4 rounded-lg border border-border/60 bg-muted/10 p-6 text-left text-sm">
-                <p className="text-muted-foreground">
-                  取込結果のみ（取込結果JSON）と手動編集を含むプロジェクトJSONの両方に対応しています。
-                </p>
-                <Button type="button" className="self-start" onClick={() => savedInputRef.current?.click()}>
+              <div className="flex min-h-[160px] flex-1 flex-col items-start justify-between gap-4 rounded-lg border border-muted-foreground/40 bg-muted/15 p-5 text-left text-sm">
+                <History className="h-9 w-9 text-muted-foreground" aria-hidden />
+                <div className="space-y-1 text-muted-foreground">
+                  <p>取込結果のみ（取込結果JSON）と手動編集を含むプロジェクトJSONの両方に対応しています。</p>
+                </div>
+                <Button variant="outline" size="sm" type="button" className="self-start" onClick={() => savedInputRef.current?.click()}>
                   保存ファイルを選択
                 </Button>
               </div>
             </div>
 
-            <p className="order-4 text-xs text-muted-foreground text-left md:order-none md:col-span-2">
+            <p className="order-4 text-xs text-muted-foreground text-left md:order-none md:col-span-3">
               状態: {STATUS_COPY[status] ?? status}
             </p>
           </div>

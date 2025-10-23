@@ -32,12 +32,13 @@ Windows 環境では GNU Make が未導入でも、同梱の `make.cmd` によ�
 ## ワークフロー（短縮）
 Plan → Read → Verify → Implement → Test & Docs → Reflect の順で進め、各ステップを `plans.md` に記録する。変更ごとに最低 1 件のテストとドキュメント更新を必須とし、CI をグリーンにする。
 
-## UI スナップショットルール（短縮）
-- **トリガー**: UI 変更指示が出たら実行する。
-- **コマンド**: `make preview`（ビルド／プレビュー）と `make generate-snapshots`（必須）。
-- **合格基準**: 差分 ≤ 0.5%（`SNAP_DIFF_THRESHOLD=0.5`）。
-- **失敗時対応**: 修正して再実行する。2 回連続で失敗した場合は `plans.md` の Test Plan を更新する。
-- **基準更新**: レビュー承認後に `make approve-baseline` を実行する（PR 内での直接上書きは禁止）。
+## プレビューと UI スナップショット運用
+- **既定フロー**: UI 変更時は `npm run build` → `make generate-snapshots` を実施し、差分 ≤ 0.5%（`SNAP_DIFF_THRESHOLD=0.5`）を確認する。
+- **プレビューサーバ運用**: 一時サーバを起動したら、作業完了時（または失敗時）に必ずプロセスを停止する。使い終えたターミナルを開きっぱなしにしないこと。
+- **代替策**: `npm run preview` や `http-server` が 2 回連続で起動直後に終了する場合は、`npm run build` のみ実行し、起動ログと原因調査メモを `plans.md` に残した上で Playwright/UI スナップショットをスキップしてよい。
+- **スナップショット省略時のフォロー**: 差分確認を代替するため、UI 変更内容をレビューで説明し、確認不能だった理由（使用ポート競合・接続拒否など）を `plans.md` の Test セクションに明記する。
+- **自動フォールバック**: `make generate-snapshots` 実行時にプレビュー起動や Playwright の準備がインフラ要因で失敗した場合、`tools/ui-snapshots/runWithPreview.ts` が `tmp/ui-snapshots/fallback-*.md` を出力して自動的にスキップする（ビジュアル差分などのテスト失敗は対象外で従来どおり失敗扱い）。ログのパスと原因メモを `plans.md` > Test に必ず記録し、調査が必要なら `SNAPSHOT_FALLBACK_DISABLE=1 npm run generate-snapshots` で強制的に再失敗させる。
+- **基準更新**: スナップショットが取得できた場合に限り、レビュー承認後 `make approve-baseline` を実行する（PR 内での直接上書きは禁止）。
 
 ## Chrome DevTools 検証（必須）
 - `npm run devtools:landing-hero`（内部で `tools/devtools/landingHeroCheck.ts` を実行）で、Chrome DevTools MCP 経由の中央揃え確認とスクリーンショット取得を行う。

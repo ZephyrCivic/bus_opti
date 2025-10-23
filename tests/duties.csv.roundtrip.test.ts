@@ -44,6 +44,7 @@ function createBlockPlan(): BlockPlan {
         overlapScore: 10,
         gapWarnings: 1,
         warningCounts: { critical: 0, warn: 1, info: 0 },
+        warnings: [],
       },
     ],
     csvRows: [

@@ -21,6 +21,21 @@ export interface BlockWarningCounts {
   info: number;
 }
 
+export type BlockWarningCode =
+  | 'BLK_NEG_GAP'
+  | 'BLK_SVC_MISMATCH'
+  | 'BLK_TURN_SHORT';
+
+export type BlockWarningSeverity = 'critical' | 'warn' | 'info';
+
+export interface BlockWarningDetail {
+  code: BlockWarningCode;
+  severity: BlockWarningSeverity;
+  fromTripId?: string;
+  toTripId?: string;
+  gapMinutes?: number;
+}
+
 export interface BlockSummary {
   blockId: string;
   serviceId?: string;
@@ -32,6 +47,7 @@ export interface BlockSummary {
   overlapScore?: number;
   gapWarnings?: number;
   warningCounts: BlockWarningCounts;
+  warnings?: BlockWarningDetail[];
 }
 
 export interface BlockPlan {
@@ -131,7 +147,7 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const totalTripCount = schedules.length;
   const coverageRatio = totalTripCount === 0 ? 0 : assignedTripCount / totalTripCount;
 
-  applyBlockWarnings(summaries, minTurnaroundMinutes);
+  applyBlockWarnings(summaries, csvRows, minTurnaroundMinutes);
 
   return {
     summaries,
@@ -298,7 +314,9 @@ function createNewBlock(blocks: OpenBlock[], summaries: BlockSummary[], schedule
     firstTripStart: schedule.startTime,
     lastTripEnd: schedule.endTime,
     gaps: [],
+    gapWarnings: 0,
     warningCounts: { critical: 0, warn: 0, info: 0 },
+    warnings: [],
   };
 
   const open: OpenBlock = {
@@ -322,17 +340,111 @@ function updateSummaryOverlaps(summary: BlockSummary, startMinutes: number, endM
     : 0;
   summary.overlapScore = Number(averageGap.toFixed(2));
 }
-function applyBlockWarnings(summaries: BlockSummary[], minTurnaroundMinutes: number): void {
+function applyBlockWarnings(
+  summaries: BlockSummary[],
+  csvRows: BlockCsvRow[],
+  minTurnaroundMinutes: number,
+): void {
+  const rowsByBlock = new Map<string, BlockCsvRow[]>();
+  for (const row of csvRows) {
+    const list = rowsByBlock.get(row.blockId) ?? [];
+    list.push(row);
+    rowsByBlock.set(row.blockId, list);
+  }
+
   for (const summary of summaries) {
-    const warnCount = summary.gaps.filter((gap) => gap >= 0 && gap < minTurnaroundMinutes).length;
-    summary.warningCounts = {
-      critical: summary.warningCounts?.critical ?? 0,
-      warn: warnCount,
-      info: summary.warningCounts?.info ?? 0,
-    };
-    summary.gapWarnings = warnCount;
+    const rows = rowsByBlock.get(summary.blockId) ?? [];
+    const warnings = evaluateBlockWarnings(rows, minTurnaroundMinutes);
+    summary.warnings = warnings;
+    summary.warningCounts = countWarnings(warnings);
+    summary.gapWarnings = warnings.filter((item) => item.code === 'BLK_TURN_SHORT').length;
   }
 }
+
+export function evaluateBlockWarnings(
+  rows: BlockCsvRow[],
+  minTurnaroundMinutes: number,
+): BlockWarningDetail[] {
+  if (!rows || rows.length === 0) {
+    return [];
+  }
+  const sorted = rows.slice().sort((a, b) => {
+    if (a.seq !== undefined && b.seq !== undefined) {
+      return a.seq - b.seq;
+    }
+    return a.tripStart.localeCompare(b.tripStart);
+  });
+
+  const warnings: BlockWarningDetail[] = [];
+  const serviceIds = new Set<string>();
+  let hasUndefinedService = false;
+
+  for (const row of sorted) {
+    const normalizedService = (row.serviceId ?? '').trim();
+    if (normalizedService.length === 0) {
+      hasUndefinedService = true;
+    } else {
+      serviceIds.add(normalizedService);
+    }
+  }
+
+  if (serviceIds.size > 1 || (serviceIds.size >= 1 && hasUndefinedService)) {
+    warnings.push({
+      code: 'BLK_SVC_MISMATCH',
+      severity: 'critical',
+    });
+  }
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1]!;
+    const current = sorted[index]!;
+    const previousEnd = toMinutes(previous.tripEnd);
+    const currentStart = toMinutes(current.tripStart);
+    if (previousEnd === null || currentStart === null) {
+      continue;
+    }
+    const gap = currentStart - previousEnd;
+    if (gap < 0) {
+      warnings.push({
+        code: 'BLK_NEG_GAP',
+        severity: 'critical',
+        fromTripId: previous.tripId,
+        toTripId: current.tripId,
+        gapMinutes: gap,
+      });
+      continue;
+    }
+    if (gap < minTurnaroundMinutes) {
+      warnings.push({
+        code: 'BLK_TURN_SHORT',
+        severity: 'warn',
+        fromTripId: previous.tripId,
+        toTripId: current.tripId,
+        gapMinutes: gap,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+export function countWarnings(warnings: BlockWarningDetail[]): BlockWarningCounts {
+  const initial: BlockWarningCounts = { critical: 0, warn: 0, info: 0 };
+  if (!warnings || warnings.length === 0) {
+    return initial;
+  }
+  return warnings.reduce<BlockWarningCounts>((acc, warning) => {
+    if (warning.severity === 'critical') {
+      acc.critical += 1;
+    } else if (warning.severity === 'warn') {
+      acc.warn += 1;
+    } else {
+      acc.info += 1;
+    }
+    return acc;
+  }, { ...initial });
+}
+
 function makeCsvRow(blockId: string, seq: number, schedule: TripSchedule): BlockCsvRow {
   return {
     blockId,
@@ -359,6 +471,23 @@ function sanitizeId(value: string | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function toMinutes(label: string | undefined): number | null {
+  if (!label) {
+    return null;
+  }
+  const match = label.trim().match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return null;
+  }
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = match[3] ? Number(match[3]) : 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+    return null;
+  }
+  return hours * 60 + minutes + Math.floor(seconds / 60);
 }
 
 function toNumber(value: string | undefined): number | null {

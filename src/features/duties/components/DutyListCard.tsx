@@ -22,6 +22,7 @@ interface DutyListCardProps {
   selectedSegmentId: string | null;
   onSelectDuty: (duty: Duty) => void;
   onSelectSegment: (duty: Duty, segment: DutySegment) => void;
+  showWarnings?: boolean;
 }
 
 export function DutyListCard({
@@ -31,6 +32,7 @@ export function DutyListCard({
   selectedSegmentId,
   onSelectDuty,
   onSelectSegment,
+  showWarnings = true,
 }: DutyListCardProps): JSX.Element {
   return (
     <Card>
@@ -61,7 +63,7 @@ export function DutyListCard({
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <Badge variant="secondary">{duty.segments.length} 区間</Badge>
-                    {warningSummary ? (
+                    {showWarnings && warningSummary ? (
                       <div className="flex items-center gap-1 text-[10px]">
                         <Badge variant={warningSummary.hard > 0 ? 'destructive' : 'outline'}>重大 {warningSummary.hard}</Badge>
                         <Badge variant={warningSummary.soft > 0 ? 'secondary' : 'outline'}>注意 {warningSummary.soft}</Badge>

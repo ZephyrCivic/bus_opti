@@ -37,14 +37,34 @@ export type TripSelectionResult = TripSelectionSuccess | TripSelectionFailure;
 export function evaluateTripSelection(
   request: TripSelectionRequest,
 ): TripSelectionResult {
-  const { selectedBlockId, startTripId, endTripId, tripIndex } = request;
-
-  if (!selectedBlockId) {
-    return { ok: false, reason: 'missingBlock' };
-  }
+  let { selectedBlockId } = request;
+  const { startTripId, endTripId, tripIndex } = request;
 
   if (!startTripId || !endTripId) {
     return { ok: false, reason: 'missingTripEndpoints' };
+  }
+
+  if (!selectedBlockId) {
+    const candidates: Array<{ blockId: string; startSeq: number; endSeq: number }> = [];
+    for (const [blockId, sequences] of tripIndex.entries()) {
+      const startSeq = sequences.get(startTripId);
+      const endSeq = sequences.get(endTripId);
+      if (startSeq === undefined || endSeq === undefined) {
+        continue;
+      }
+      if (startSeq > endSeq) {
+        continue;
+      }
+      candidates.push({ blockId, startSeq, endSeq });
+    }
+    if (candidates.length === 0) {
+      return { ok: false, reason: 'missingBlock' };
+    }
+    if (candidates.length > 1) {
+      // ambiguous selection; require explicit block choice
+      return { ok: false, reason: 'missingBlock' };
+    }
+    selectedBlockId = candidates[0]!.blockId;
   }
 
   const blockTrips = tripIndex.get(selectedBlockId);
@@ -87,4 +107,27 @@ export function selectionErrorToMessage(reason: TripSelectionError): string {
     default:
       return '選択内容を確認してください。';
   }
+}
+
+/**
+ * Trip範囲から属し得るBlock候補を推定する（承認ガード用の補助）。
+ * excludeBlockId が与えられた場合、そのブロックは候補から除外する。
+ */
+export function inferBlockCandidates(
+  startTripId: string | null,
+  endTripId: string | null,
+  tripIndex: BlockTripSequenceIndex,
+  excludeBlockId?: string,
+): string[] {
+  if (!startTripId || !endTripId) return [];
+  const result: string[] = [];
+  for (const [blockId, sequences] of tripIndex.entries()) {
+    if (excludeBlockId && blockId === excludeBlockId) continue;
+    const startSeq = sequences.get(startTripId);
+    const endSeq = sequences.get(endTripId);
+    if (startSeq === undefined || endSeq === undefined) continue;
+    if (startSeq > endSeq) continue;
+    result.push(blockId);
+  }
+  return result;
 }

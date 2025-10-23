@@ -38,7 +38,7 @@ interface DutyPlanParams {
 export function buildDutyPlanData(result: GtfsImportResult | undefined, manual: ManualInputs): DutyPlanData {
   const plan = buildBlocksPlan(result, {
     maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
-    linkingEnabled: manual.linking.enabled,
+    linkingEnabled: false,
     minTurnaroundMinutes: manual.linking.minTurnaroundMin,
   });
   const tripIndex = buildTripIndexFromPlan(plan);

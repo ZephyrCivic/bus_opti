@@ -27,10 +27,13 @@ test('recordAuditEvent appends export events', () => {
   const events = getAuditEvents();
   assert.equal(events.length, 1);
   const event = events[0]!;
+  assert.equal(event.action, 'export');
   assert.equal(event.entity, 'duties');
-  assert.equal(event.fileName, 'duties-20251021-041000.csv');
-  assert.equal(event.warnings?.hard, 1);
-  assert.equal(event.warnings?.soft, 2);
+  if (event.action === 'export') {
+    assert.equal(event.fileName, 'duties-20251021-041000.csv');
+    assert.equal(event.warnings?.hard, 1);
+    assert.equal(event.warnings?.soft, 2);
+  }
 
   clearAuditEvents();
   assert.equal(getAuditEvents().length, 0);

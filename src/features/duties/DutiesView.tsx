@@ -27,6 +27,7 @@ import { useDutyCsvHandlers } from './hooks/useDutyCsvHandlers';
 import { UnassignedRange } from '@/services/duty/unassigned';
 import { toast } from 'sonner';
 import { buildDutiesCsv } from '@/services/export/dutiesCsv';
+import { isStepOne } from '@/config/appStep';
 
 export default function DutiesView(): JSX.Element {
   const { result, dutyState, dutyActions, manual } = useGtfsImport();
@@ -162,6 +163,7 @@ export default function DutiesView(): JSX.Element {
     onSelectBlock: setSelectedBlockId,
     onStartTripChange: setStartTripId,
     onEndTripChange: setEndTripId,
+    selectedBlockId,
   });
 
   useDutyKeyboardShortcuts({
@@ -195,6 +197,9 @@ export default function DutiesView(): JSX.Element {
     defaultDriverId,
     selectedDuty,
     setSelectedSegment,
+    setSelectedBlockId,
+    setStartTripId,
+    setEndTripId,
     startTripId,
     endTripId,
   });
@@ -287,6 +292,7 @@ export default function DutiesView(): JSX.Element {
   );
 
   const selectedWarningSummary = selectedDuty ? dutyWarnings.get(selectedDuty.id) : undefined;
+  const showDutyWarnings = !isStepOne;
 
   return (
     <div className="space-y-6">
@@ -321,6 +327,7 @@ export default function DutiesView(): JSX.Element {
         selectedBlockId={selectedBlockId}
         selectedDutyId={selectedDutyId}
         selectedSegmentId={selectedSegment?.segmentId ?? null}
+        showWarnings={showDutyWarnings}
       />
 
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -351,6 +358,7 @@ export default function DutiesView(): JSX.Element {
             selectedSegmentId={selectedSegment?.segmentId ?? null}
             onSelectDuty={handleDutySelectFromList}
             onSelectSegment={handleSegmentSelectFromList}
+            showWarnings={showDutyWarnings}
           />
           <InspectorCard
             defaultDriverId={defaultDriverId}
@@ -365,6 +373,7 @@ export default function DutiesView(): JSX.Element {
             warningSummary={selectedWarningSummary}
             onAutoCorrect={handleAutoCorrect}
             driverOptions={manual.drivers}
+            showSafetyPanel={showDutyWarnings}
           />
           <DutyCsvPreview
             csv={csvPreview.csv}

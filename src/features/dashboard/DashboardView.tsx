@@ -2,7 +2,7 @@
  * src/features/dashboard/DashboardView.tsx
  * 運行ダッシュボード。KPI カード、可視化、詳細テーブル、警告タイムラインを提供する。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 
 import {
   Card,
@@ -38,11 +38,23 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
+import { isStepOne } from '@/config/appStep';
 import { buildBlocksPlan, DEFAULT_MAX_TURN_GAP_MINUTES } from '@/services/blocks/blockBuilder';
 import { buildTripLookup, enrichDutySegments, computeDutyMetrics, summarizeDutyWarnings, formatMinutes } from '@/services/duty/dutyMetrics';
 import { computeDutyDashboard, type DutyTimelineSummary } from '@/services/dashboard/dutyDashboard';
 import { downloadCsv } from '@/utils/downloadCsv';
 import { toast } from 'sonner';
+import { aggregateDutyWarnings } from '@/services/duty/aggregateDutyWarnings';
+import {
+  ensureWorkflowSession,
+  markWorkflowWarningsViewed,
+  getWorkflowStats,
+  getWorkflowSessions,
+  subscribeWorkflowTelemetry,
+  exportWorkflowSessionsCsv,
+  type WorkflowStats,
+} from '@/services/workflow/workflowTelemetry';
+import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 
 interface SummaryCardProps {
   id: string;
@@ -79,6 +91,9 @@ interface DutyDetailRow {
 
 export default function DashboardView(): JSX.Element {
   const { result, dutyState, manual } = useGtfsImport();
+  const showKpiUi = !isStepOne;
+  const [workflowStats, setWorkflowStats] = useState<WorkflowStats>(() => getWorkflowStats());
+  const { requestConfirmation } = useExportConfirmation();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -96,11 +111,16 @@ export default function DashboardView(): JSX.Element {
     () =>
       buildBlocksPlan(result, {
         maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
-        linkingEnabled: manual.linking.enabled,
+        linkingEnabled: false,
       }),
-    [result, manual.linking.enabled],
+    [result],
   );
   const tripLookup = useMemo(() => buildTripLookup(plan.csvRows), [plan.csvRows]);
+
+  const warningTotals = useMemo(
+    () => aggregateDutyWarnings(dutyState.duties, tripLookup, dutyState.settings),
+    [dutyState.duties, dutyState.settings, tripLookup],
+  );
 
   const dutySummaries = useMemo<DutyTimelineSummary[]>(() => {
     return dutyState.duties.map((duty) => {
@@ -158,6 +178,24 @@ export default function DashboardView(): JSX.Element {
     return dutyDetails.filter((row) => matchesSearch(row) && matchesSeverity(row));
   }, [dutyDetails, searchTerm, severityFilter]);
 
+  const createDetailsExport = useCallback(() => {
+    const header = ['duty_id', 'driver_id', 'total_minutes', 'hard_warnings', 'soft_warnings', 'messages'];
+    const rows = filteredDetails.map((row) => [
+      row.dutyId,
+      row.driverId,
+      String(row.totalMinutes),
+      String(row.hardWarnings),
+      String(row.softWarnings),
+      row.messages.join(' | '),
+    ]);
+    const csv = [header, ...rows]
+      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+    const fileName = `duty-kpi-details-${timestamp}.csv`;
+    return { csv, fileName, rowCount: rows.length };
+  }, [filteredDetails]);
+
   const dailyCoverageTrend = useMemo(() => {
     if (dashboard.dailyMetrics.length < 2) {
       return undefined;
@@ -200,6 +238,32 @@ export default function DashboardView(): JSX.Element {
   );
 
   useEffect(() => {
+    const summary = {
+      hardWarnings: warningTotals.hard,
+      softWarnings: warningTotals.soft,
+      unassigned: warningTotals.unassigned,
+      coveragePercentage: dashboard.summary.coveragePercentage,
+      fairnessScore: dashboard.summary.fairnessScore,
+    } satisfies Parameters<typeof ensureWorkflowSession>[0];
+    ensureWorkflowSession(summary);
+    markWorkflowWarningsViewed(summary);
+  }, [
+    warningTotals.hard,
+    warningTotals.soft,
+    warningTotals.unassigned,
+    dashboard.summary.coveragePercentage,
+    dashboard.summary.fairnessScore,
+  ]);
+
+  useEffect(() => {
+    setWorkflowStats(getWorkflowStats());
+    const unsubscribe = subscribeWorkflowTelemetry(() => {
+      setWorkflowStats(getWorkflowStats());
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     if (!isSettingsOpen) return;
     setForm({
       maxContinuousMinutes: String(dutyState.settings.maxContinuousMinutes),
@@ -240,21 +304,38 @@ export default function DashboardView(): JSX.Element {
       toast.info('エクスポートできる行がありません。');
       return;
     }
-    const header = ['duty_id', 'driver_id', 'total_minutes', 'hard_warnings', 'soft_warnings', 'messages'];
-    const rows = filteredDetails.map((row) => [
-      row.dutyId,
-      row.driverId,
-      String(row.totalMinutes),
-      String(row.hardWarnings),
-      String(row.softWarnings),
-      row.messages.join(' | '),
-    ]);
-    const csv = [header, ...rows]
-      .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+    const snapshot = createDetailsExport();
+    requestConfirmation({
+      title: 'KPI 詳細をエクスポートしますか？',
+      description: '連結→警告確認→保存ワークフローの観点で指標を記録します。',
+      summary: {
+        hardWarnings: warningTotals.hard,
+        softWarnings: warningTotals.soft,
+        unassigned: warningTotals.unassigned,
+        metrics: [
+          { label: '出力行数', value: `${snapshot.rowCount}` },
+          { label: 'カバレッジ', value: `${dashboard.summary.coveragePercentage}%` },
+        ],
+      },
+      context: { entity: 'dashboard', exportType: 'kpi-details', fileName: snapshot.fileName },
+      onConfirm: async () => {
+        const latest = createDetailsExport();
+        downloadCsv({ fileName: latest.fileName, content: latest.csv });
+        toast.success('KPI 詳細をエクスポートしました。');
+      },
+    });
+  };
+
+  const handleExportWorkflowLog = () => {
+    const sessions = getWorkflowSessions();
+    if (sessions.length === 0) {
+      toast.info('計測済みのワークフローがありません。');
+      return;
+    }
+    const csv = exportWorkflowSessionsCsv(sessions);
     const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-    downloadCsv({ fileName: `duty-kpi-details-${timestamp}.csv`, content: csv });
-    toast.success('KPI 詳細をエクスポートしました。');
+    downloadCsv({ fileName: `workflow-kpi-${timestamp}.csv`, content: csv });
+    toast.success('ワークフロー KPI ログをエクスポートしました。');
   };
 
   const summaryCards: SummaryCardProps[] = [
@@ -296,6 +377,12 @@ export default function DashboardView(): JSX.Element {
     },
   ];
 
+  const workflowMedianDisplay = {
+    linkToWarnings: formatDurationMs(workflowStats.medianLinkToWarningsMs),
+    warningsToSave: formatDurationMs(workflowStats.medianWarningsToSaveMs),
+    linkToSave: formatDurationMs(workflowStats.medianLinkToSaveMs),
+  };
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -306,16 +393,64 @@ export default function DashboardView(): JSX.Element {
               乗務の配分状況を確認し、警告の根拠や詳細データを参照できます。
             </p>
           </div>
-          <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
-            KPI 設定を編集
-          </Button>
+          {showKpiUi ? (
+            <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
+              KPI 設定を編集
+            </Button>
+          ) : null}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => (
-            <SummaryCard key={card.id} {...card} />
-          ))}
-        </div>
+        {showKpiUi ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map((card) => (
+              <SummaryCard key={card.id} {...card} />
+            ))}
+          </div>
+        ) : null}
+
+        {showKpiUi ? (
+          <Card>
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>ワークフロー KPI ログ</CardTitle>
+                <CardDescription>連結→警告確認→保存までの所要時間を計測しています。</CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">計測 {workflowStats.total} 件</Badge>
+                <Button variant="secondary" size="sm" onClick={handleExportWorkflowLog} disabled={workflowStats.total === 0}>
+                  CSV を書き出す
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <WorkflowMetric label="連結→警告確認 (中央値)" value={workflowMedianDisplay.linkToWarnings} />
+                <WorkflowMetric label="警告確認→保存 (中央値)" value={workflowMedianDisplay.warningsToSave} />
+                <WorkflowMetric label="連結→保存 (中央値)" value={workflowMedianDisplay.linkToSave} />
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-muted-foreground">直近の計測</p>
+                {workflowStats.recent.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">まだ計測がありません。</p>
+                ) : (
+                  <ul className="space-y-2 text-sm">
+                    {workflowStats.recent.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="flex flex-col gap-1 rounded-md border border-border/60 bg-background/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <span className="font-medium">
+                          {new Date(entry.savedAt).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'medium' })}
+                        </span>
+                        <span className="text-muted-foreground">連結→保存 {formatDurationMs(entry.linkToSaveMs)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {hasData ? (
           <>
@@ -631,6 +766,15 @@ function DriverBarList({ items }: DriverBarListProps): JSX.Element {
   );
 }
 
+function WorkflowMetric({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="rounded-md border border-border/60 bg-card/60 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
+    </div>
+  );
+}
+
 function NumberField({ label, value, onChange, inputId }: { label: string; value: string; onChange: (value: string) => void; inputId: string }): JSX.Element {
   return (
     <div className="grid gap-2">
@@ -643,4 +787,25 @@ function NumberField({ label, value, onChange, inputId }: { label: string; value
       />
     </div>
   );
+}
+
+function formatDurationMs(value?: number | null): string {
+  if (value === null || value === undefined) {
+    return '計測なし';
+  }
+  if (value <= 0) {
+    return '0秒';
+  }
+  const totalSeconds = Math.round(value / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}時間${minutes}分${seconds}秒`;
+  }
+  if (minutes > 0) {
+    return seconds === 0 ? `${minutes}分` : `${minutes}分${seconds}秒`;
+  }
+  return `${seconds}秒`;
 }

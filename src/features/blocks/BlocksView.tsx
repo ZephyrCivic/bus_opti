@@ -3,7 +3,8 @@
  * ブロック（行路）編集結果を確認し、ターン間隔や重複状況を把握する画面。
  * タイムライン、統計カード、詳細テーブル、未割当便一覧を提供する。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
@@ -27,11 +27,9 @@ import {
   type BlockSummary,
 } from '@/services/blocks/blockBuilder';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
-import type { BlockConnectionCandidate, ManualConnection } from '@/services/blocks/manualPlan';
-
 import { useBlocksPlan } from './hooks/useBlocksPlan';
 import { useManualBlocksPlan } from './hooks/useManualBlocksPlan';
-import { toast } from 'sonner';
+import { isStepOne } from '@/config/appStep';
 
 const MIN_TURN_GAP = 0;
 const MAX_TURN_GAP = 180;
@@ -40,21 +38,102 @@ export default function BlocksView(): JSX.Element {
   const { result, manual } = useGtfsImport();
   const [turnGap, setTurnGap] = useState<number>(DEFAULT_MAX_TURN_GAP_MINUTES);
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
+  const [fromBlockId, setFromBlockId] = useState<string>('');
+  const [toBlockId, setToBlockId] = useState<string>('');
+  const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const initialPlan = useMemo<BlockPlan>(
     () =>
       buildBlocksPlan(result, {
         maxTurnGapMinutes: turnGap,
         minTurnaroundMinutes: manual.linking.minTurnaroundMin,
-        linkingEnabled: manual.linking.enabled,
+        linkingEnabled: false,
       }),
     [result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled],
   );
-  const { plan: manualPlan, connect: connectBlocks, undoLastConnection, candidatesFor, connections } = useManualBlocksPlan(initialPlan, {
-    minTurnaroundMin: manual.linking.minTurnaroundMin,
-    maxGapMinutes: turnGap,
-  });
-  const { days, allDays, overlaps } = useBlocksPlan(manualPlan, { activeDay: activeDayIndex ?? undefined });
+  const manualPlanConfig = useMemo(
+    () => ({
+      minTurnaroundMin: 0,
+      maxGapMinutes: Number.MAX_SAFE_INTEGER,
+    }),
+    [],
+  );
+  const manualPlanState = useManualBlocksPlan(initialPlan, manualPlanConfig);
+  const { days, allDays, overlaps } = useBlocksPlan(manualPlanState.plan, { activeDay: activeDayIndex ?? undefined });
+
+  useEffect(() => {
+    const blockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
+    setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
+    setToBlockId((current) => (current && !blockIds.has(current) ? '' : current));
+  }, [manualPlanState.plan]);
+
+  const manualBlockSummaries = useMemo(
+    () =>
+      [...manualPlanState.plan.summaries].sort((a, b) => {
+        if (a.serviceDayIndex !== b.serviceDayIndex) {
+          return a.serviceDayIndex - b.serviceDayIndex;
+        }
+        return a.firstTripStart.localeCompare(b.firstTripStart);
+      }),
+    [manualPlanState.plan],
+  );
+
+  const manualToSummaries = useMemo(() => {
+    if (!fromBlockId) {
+      return manualBlockSummaries;
+    }
+    const candidates = manualPlanState.candidatesFor(fromBlockId);
+    if (!candidates || candidates.length === 0) {
+      return [];
+    }
+    const candidateIds = new Set(candidates.map((candidate) => candidate.blockId));
+    return manualBlockSummaries.filter((summary) => candidateIds.has(summary.blockId));
+  }, [manualBlockSummaries, manualPlanState.candidatesFor, fromBlockId]);
+
+  const handleFromChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    setFromBlockId(value);
+    setManualStatus(null);
+    setToBlockId('');
+  };
+
+  const handleToChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    setToBlockId(value);
+    setManualStatus(null);
+  };
+
+  const handleConnect = () => {
+    if (!fromBlockId || !toBlockId) {
+      setManualStatus({ type: 'error', message: '連結元と連結先を選択してください。' });
+      return;
+    }
+    const succeeded = manualPlanState.connect(fromBlockId, toBlockId);
+    if (succeeded) {
+      setManualStatus({ type: 'success', message: `${fromBlockId} と ${toBlockId} を連結しました。` });
+      setToBlockId('');
+    } else {
+      setManualStatus({ type: 'error', message: '連結できませんでした。サービス日と時刻を確認してください。' });
+    }
+  };
+
+  const handleUndo = () => {
+    const undone = manualPlanState.undoLastConnection();
+    if (undone) {
+      setManualStatus({ type: 'success', message: '直前の連結を取り消しました。' });
+    } else {
+      setManualStatus({ type: 'error', message: '取り消す連結がありません。' });
+    }
+  };
+
+  const canConnect = fromBlockId !== '' && toBlockId !== '';
+  const canUndo = manualPlanState.connections.length > 0;
+
+  useEffect(() => {
+    if (toBlockId && !manualToSummaries.some((summary) => summary.blockId === toBlockId)) {
+      setToBlockId('');
+    }
+  }, [manualToSummaries, toBlockId]);
 
   useEffect(() => {
     if (!result) {
@@ -73,60 +152,11 @@ export default function BlocksView(): JSX.Element {
     }
   }, [allDays, activeDayIndex]);
 
-  const coveragePercentage = Math.round(manualPlan.coverageRatio * 100);
-
-  const [fromBlockId, setFromBlockId] = useState<string>(() => manualPlan.summaries[0]?.blockId ?? '');
-  const [toBlockId, setToBlockId] = useState<string>('');
-
-  useEffect(() => {
-    if (manualPlan.summaries.length === 0) {
-      setFromBlockId('');
-      setToBlockId('');
-      return;
-    }
-    if (!manualPlan.summaries.some((summary) => summary.blockId === fromBlockId)) {
-      setFromBlockId(manualPlan.summaries[0]!.blockId);
-    }
-  }, [manualPlan.summaries, fromBlockId]);
-
-  const candidateOptions = useMemo(() => {
-    if (!fromBlockId) {
-      return [] as ReturnType<typeof candidatesFor>;
-    }
-    return candidatesFor(fromBlockId);
-  }, [candidatesFor, fromBlockId]);
-
-  useEffect(() => {
-    if (!candidateOptions.some((candidate) => candidate.blockId === toBlockId)) {
-      setToBlockId(candidateOptions[0]?.blockId ?? '');
-    }
-  }, [candidateOptions, toBlockId]);
-
-  const handleManualConnect = useCallback(() => {
-    if (!fromBlockId || !toBlockId) {
-      toast.error('連結元と連結先を選択してください。');
-      return;
-    }
-    const success = connectBlocks(fromBlockId, toBlockId);
-    if (success) {
-      toast.success(`ブロック ${fromBlockId} に ${toBlockId} を連結しました。`);
-    } else {
-      toast.error('連結できる候補が見つかりません。ターン間隔やサービス日を確認してください。');
-    }
-  }, [connectBlocks, fromBlockId, toBlockId]);
-
-  const handleManualUndo = useCallback(() => {
-    const undone = undoLastConnection();
-    if (undone) {
-      toast.success('最新の連結を取り消しました。');
-    } else {
-      toast.info('取り消せる連結がありません。');
-    }
-  }, [undoLastConnection]);
+  const coveragePercentage = Math.round(manualPlanState.plan.coverageRatio * 100);
 
   const overlapMinutesByBlock = useMemo(() => {
     const map = new Map<string, number>();
-    for (const summary of manualPlan.summaries) {
+    for (const summary of manualPlanState.plan.summaries) {
       const total = (overlaps.get(summary.blockId) ?? []).reduce(
         (accumulator, entry) => accumulator + entry.overlapMinutes,
         0,
@@ -134,7 +164,7 @@ export default function BlocksView(): JSX.Element {
       map.set(summary.blockId, Number(total.toFixed(2)));
     }
     return map;
-  }, [manualPlan.summaries, overlaps]);
+  }, [manualPlanState.plan, overlaps]);
 
   const visibleSummaries = useMemo(
     () => days.flatMap((day) => day.summaries),
@@ -178,63 +208,140 @@ export default function BlocksView(): JSX.Element {
       .sort((a, b) => b.minutes - a.minutes);
   }, [visibleSummaries, overlapMinutesByBlock]);
 
+  const showDiagnostics = !isStepOne;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold">行路編集</h2>
         <p className="text-sm text-muted-foreground">
-          GTFS 取込データを Greedy アルゴリズムで束ね、ターン間隔（現在 {manualPlan.maxTurnGapMinutes} 分）と重複状況を確認します。
+          GTFS 取込データの便を可視化し、ターン間隔（現在 {manualPlanState.plan.maxTurnGapMinutes} 分）と重複状況を確認します。手動連結の判断材料として活用してください。
         </p>
       </div>
 
-      <ManualConnectionCard
-        plan={manualPlan}
-        fromBlockId={fromBlockId}
-        toBlockId={toBlockId}
-        onFromChange={setFromBlockId}
-        onToChange={setToBlockId}
-        candidates={candidateOptions}
-        onUseCandidate={setToBlockId}
-        onConnect={handleManualConnect}
-        onUndo={handleManualUndo}
-        connections={connections}
-      />
-
       <Card>
-        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
-            <CardTitle>ターン設定の確認</CardTitle>
+            <CardTitle>手動連結（最小UI）</CardTitle>
             <CardDescription>
-              取込済みの便に対してターン間隔を適用します。数値を変更すると即座に再計算されます。
+              Step1 ではブロックを手作業で連結します。候補提示や自動判定は行わず、連結/取り消しのみ提供します。
             </CardDescription>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-muted-foreground" htmlFor="turn-gap-input">
-              最大ターン間隔 (分)
-            </label>
-            <Input
-              id="turn-gap-input"
-              type="number"
-              min={MIN_TURN_GAP}
-              max={MAX_TURN_GAP}
-              value={turnGap}
-              onChange={(event) => setTurnGap(clampTurnGap(event.target.value))}
-              className="w-24"
-            />
-          </div>
+          <Badge variant="outline">連結数: {manualPlanState.connections.length}</Badge>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <StatCard label="割り当て済み便" value={manualPlan.assignedTripCount.toLocaleString()} />
-            <StatCard label="対象便件数" value={manualPlan.totalTripCount.toLocaleString()} />
-            <StatCard
-              label="カバレッジ率"
-              value={`${coveragePercentage}%`}
-              trend={coverageBadgeVariant(coveragePercentage)}
-            />
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="blocks-manual-from" className="text-sm font-medium text-muted-foreground">
+                連結元ブロック
+              </label>
+              <select
+                id="blocks-manual-from"
+                data-testid="blocks-manual-from"
+                value={fromBlockId}
+                onChange={handleFromChange}
+                className="h-9 min-w-[14rem] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">選択してください</option>
+                {manualBlockSummaries.map((summary) => (
+                  <option key={summary.blockId} value={summary.blockId}>
+                    {formatBlockOption(summary)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="blocks-manual-to" className="text-sm font-medium text-muted-foreground">
+                連結先ブロック
+              </label>
+              <select
+                id="blocks-manual-to"
+                data-testid="blocks-manual-to"
+                value={toBlockId}
+                onChange={handleToChange}
+                disabled={fromBlockId === ''}
+                className="h-9 min-w-[14rem] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">選択してください</option>
+                {manualToSummaries
+                  .filter((summary) => summary.blockId !== fromBlockId)
+                  .map((summary) => (
+                    <option key={summary.blockId} value={summary.blockId}>
+                      {formatBlockOption(summary)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                data-testid="blocks-manual-connect"
+                onClick={handleConnect}
+                disabled={!canConnect}
+              >
+                連結
+              </Button>
+              <Button
+                type="button"
+                data-testid="blocks-manual-undo"
+                onClick={handleUndo}
+                variant="outline"
+                disabled={!canUndo}
+              >
+                取り消し
+              </Button>
+            </div>
           </div>
+          {manualStatus && (
+            <p
+              className={`text-sm ${
+                manualStatus.type === 'success' ? 'text-emerald-600' : 'text-destructive'
+              }`}
+              data-testid="blocks-manual-status"
+            >
+              {manualStatus.message}
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {showDiagnostics ? (
+        <Card>
+          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-1">
+              <CardTitle>ターン設定（参考）</CardTitle>
+              <CardDescription>
+              ターン間隔は参考指標として表示されます。必要に応じて手動連結の前後確認に利用してください。
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-muted-foreground" htmlFor="turn-gap-input">
+                最大ターン間隔 (分)
+              </label>
+              <Input
+                id="turn-gap-input"
+                type="number"
+                min={MIN_TURN_GAP}
+                max={MAX_TURN_GAP}
+                value={turnGap}
+                onChange={(event) => setTurnGap(clampTurnGap(event.target.value))}
+                className="w-24"
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <StatCard label="割り当て済み便" value={manualPlanState.plan.assignedTripCount.toLocaleString()} />
+              <StatCard label="対象便件数" value={manualPlanState.plan.totalTripCount.toLocaleString()} />
+              <StatCard
+                label="カバレッジ率"
+                value={`${coveragePercentage}%`}
+                trend={coverageBadgeVariant(coveragePercentage)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -266,28 +373,30 @@ export default function BlocksView(): JSX.Element {
                 pixelsPerMinute={DEFAULT_PIXELS_PER_MINUTE}
                 emptyMessage="選択したサービス日に表示できるブロックがありません。"
               />
-              {visibleOverlapSummaries.length > 0 ? (
-                <div>
-                  <h4 className="text-sm font-semibold">重複があるブロック</h4>
-                  <ul className="mt-2 space-y-1 text-sm">
-                    {visibleOverlapSummaries.map((item) => (
-                      <li key={item.blockId} className="flex items-center justify-between">
-                        <span className="font-medium">{item.blockId}</span>
-                        <span className="text-muted-foreground">{item.minutes.toFixed(1)} 分</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">選択したサービス日に重複はありません。</p>
-              )}
+              {showDiagnostics ? (
+                visibleOverlapSummaries.length > 0 ? (
+                  <div>
+                    <h4 className="text-sm font-semibold">重複があるブロック</h4>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {visibleOverlapSummaries.map((item) => (
+                        <li key={item.blockId} className="flex items-center justify-between">
+                          <span className="font-medium">{item.blockId}</span>
+                          <span className="text-muted-foreground">{item.minutes.toFixed(1)} 分</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">選択したサービス日に重複はありません。</p>
+                )
+              ) : null}
             </>
           )}
         </CardContent>
       </Card>
 
-      <BlocksTable summaries={manualPlan.summaries} overlapMinutesByBlock={overlapMinutesByBlock} />
-      <UnassignedTable unassigned={manualPlan.unassignedTripIds} />
+      <BlocksTable summaries={manualPlanState.plan.summaries} overlapMinutesByBlock={overlapMinutesByBlock} />
+      <UnassignedTable unassigned={manualPlanState.plan.unassignedTripIds} />
     </div>
   );
 }
@@ -296,148 +405,6 @@ interface StatCardProps {
   label: string;
   value: string;
   trend?: 'default' | 'secondary' | 'outline';
-}
-
-interface ManualConnectionCardProps {
-  plan: BlockPlan;
-  fromBlockId: string;
-  toBlockId: string;
-  onFromChange: (value: string) => void;
-  onToChange: (value: string) => void;
-  candidates: BlockConnectionCandidate[];
-  onUseCandidate: (blockId: string) => void;
-  onConnect: () => void;
-  onUndo: () => void;
-  connections: ManualConnection[];
-}
-
-function ManualConnectionCard({
-  plan,
-  fromBlockId,
-  toBlockId,
-  onFromChange,
-  onToChange,
-  candidates,
-  onUseCandidate,
-  onConnect,
-  onUndo,
-  connections,
-}: ManualConnectionCardProps): JSX.Element {
-  const hasBlocks = plan.summaries.length > 0;
-  const canConnect = Boolean(fromBlockId && toBlockId);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>ブロック連結（手動操作）</CardTitle>
-        <CardDescription>行路同士を手動で連結し、Undo で取り消せます。候補はサービス日・ターン間隔に基づいて表示されます。</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!hasBlocks ? (
-          <p className="text-sm text-muted-foreground">連結対象のブロックがありません。GTFS を取り込んでください。</p>
-        ) : (
-          <>
-            <div className="grid gap-4 md:grid-cols-2" data-testid="blocks-manual-selectors">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="manual-connect-from">
-                  連結元
-                </label>
-                <select
-                  id="manual-connect-from"
-                  data-testid="blocks-manual-from"
-                  value={fromBlockId}
-                  onChange={(event) => onFromChange(event.target.value)}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm"
-                >
-                  {plan.summaries.map((summary) => (
-                    <option key={summary.blockId} value={summary.blockId}>
-                      {summary.blockId}（便 {summary.tripCount} 件）
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="manual-connect-to">
-                  連結先（候補）
-                </label>
-                <select
-                  id="manual-connect-to"
-                  data-testid="blocks-manual-to"
-                  value={toBlockId}
-                  onChange={(event) => onToChange(event.target.value)}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm"
-                  disabled={candidates.length === 0}
-                >
-                  {candidates.length === 0 ? (
-                    <option value="">候補がありません</option>
-                  ) : (
-                    candidates.map((candidate) => (
-                      <option key={candidate.blockId} value={candidate.blockId}>
-                        {candidate.blockId}（{candidate.firstTripStart} → gap {candidate.gapMinutes} 分）
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2" data-testid="blocks-manual-candidates">
-              {candidates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">連結候補がありません。サービス日やターン間隔を調整してください。</p>
-              ) : (
-                candidates.slice(0, 5).map((candidate) => (
-                  <Button
-                    key={candidate.blockId}
-                    variant="secondary"
-                    size="sm"
-                    data-testid="blocks-manual-candidate"
-                    data-block-id={candidate.blockId}
-                    onClick={() => onUseCandidate(candidate.blockId)}
-                  >
-                    候補: {candidate.blockId}（gap {candidate.gapMinutes} 分）
-                  </Button>
-                ))
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button data-testid="blocks-manual-connect" onClick={onConnect} disabled={!canConnect}>
-                連結を実行
-              </Button>
-              <Button
-                data-testid="blocks-manual-undo"
-                variant="outline"
-                type="button"
-                onClick={onUndo}
-                disabled={connections.length === 0}
-              >
-                直前の連結を取り消す
-              </Button>
-              <Badge variant="outline">連結済み: {connections.length} 件</Badge>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold">連結履歴（最新5件）</h4>
-              {connections.length === 0 ? (
-                <p className="text-xs text-muted-foreground">連結履歴はありません。</p>
-              ) : (
-                <ul className="space-y-1 text-xs" data-testid="blocks-manual-connections">
-                  {connections
-                    .slice(-5)
-                    .reverse()
-                    .map((entry, index) => (
-                      <li key={`${entry.fromBlockId}-${entry.toBlockId}-${index}`} data-connection={`${entry.fromBlockId}->${entry.toBlockId}`}>
-                        {entry.fromBlockId} → {entry.toBlockId} / gap {entry.gapMinutes} 分 / サービス日 {entry.serviceDayIndex + 1}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function StatCard({ label, value, trend = 'outline' }: StatCardProps): JSX.Element {
@@ -581,7 +548,12 @@ function coverageBadgeVariant(percentage: number): 'default' | 'secondary' | 'ou
   return 'outline';
 }
 
+function formatBlockOption(summary: BlockSummary): string {
+  return `${formatServiceDay(summary.serviceDayIndex)} - ${summary.blockId}（便 ${summary.tripCount} 件）`;
+}
+
 function formatServiceDay(index: number): string {
   return `サービス日 ${index + 1}`;
 }
+
 

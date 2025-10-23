@@ -1,0 +1,40 @@
+/**
+ * src/services/duty/aggregateDutyWarnings.ts
+ * 集計ロジック: Duty 全体の Hard/Soft 警告件数や未割当数を算出する。
+ */
+import type { Duty, DutySettings } from '@/types';
+import { computeDutyMetrics, summarizeDutyWarnings, type BlockTripLookup } from './dutyMetrics';
+
+export interface DutyWarningAggregate {
+  hard: number;
+  soft: number;
+  unassigned: number;
+}
+
+export function aggregateDutyWarnings(
+  duties: Duty[],
+  tripLookup: BlockTripLookup | undefined,
+  settings: DutySettings,
+): DutyWarningAggregate {
+  if (!duties || duties.length === 0 || !tripLookup) {
+    return { hard: 0, soft: 0, unassigned: duties.filter((duty) => !duty.driverId).length };
+  }
+
+  let hard = 0;
+  let soft = 0;
+  let unassigned = 0;
+
+  for (const duty of duties) {
+    if (!duty.driverId) {
+      unassigned += 1;
+    }
+
+    const metrics = computeDutyMetrics(duty, tripLookup, settings);
+    const summary = summarizeDutyWarnings(metrics);
+    hard += summary.hard;
+    soft += summary.soft;
+  }
+
+  return { hard, soft, unassigned };
+}
+

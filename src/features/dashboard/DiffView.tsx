@@ -31,9 +31,12 @@ import {
 import {
   downloadProjectJson,
   downloadSavedJson,
+  defaultFileName,
   toSaved,
   toSavedProject,
 } from '@/services/import/gtfsPersistence';
+import { aggregateDutyWarnings } from '@/services/duty/aggregateDutyWarnings';
+import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 
 function loadBaselineFromFile(file: File): Promise<ScheduleState> {
   return new Promise((resolve, reject) => {
@@ -53,15 +56,21 @@ function loadBaselineFromFile(file: File): Promise<ScheduleState> {
 
 export default function DiffView(): JSX.Element {
   const { result, dutyState, manual } = useGtfsImport();
+  const { requestConfirmation } = useExportConfirmation();
   const [baseline, setBaseline] = useState<ScheduleState | null>(null);
   const [history, setHistory] = useState<BaselineHistoryEntry[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const plan = useMemo(
-    () => buildBlocksPlan(result, { maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES, linkingEnabled: manual.linking.enabled }),
-    [result, manual.linking.enabled],
+    () => buildBlocksPlan(result, { maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES, linkingEnabled: false }),
+    [result],
   );
   const tripLookup = useMemo(() => buildTripLookup(plan.csvRows), [plan.csvRows]);
+
+  const warningTotals = useMemo(
+    () => aggregateDutyWarnings(dutyState.duties, tripLookup, dutyState.settings),
+    [dutyState.duties, dutyState.settings, tripLookup],
+  );
 
   const dutySummaries = useMemo(() => {
     return dutyState.duties.map((duty) => {
@@ -80,6 +89,29 @@ export default function DiffView(): JSX.Element {
 
   const dashboard = useMemo(() => computeDutyDashboard(dutySummaries), [dutySummaries]);
 
+  const workflowSummary = useMemo(
+    () => ({
+      hardWarnings: warningTotals.hard,
+      softWarnings: warningTotals.soft,
+      unassigned: warningTotals.unassigned,
+      coveragePercentage: dashboard.summary.coveragePercentage,
+      fairnessScore: dashboard.summary.fairnessScore,
+      metrics: [
+        { label: 'カバレッジ', value: `${dashboard.summary.coveragePercentage}%` },
+        { label: '未割当 Duty', value: `${dashboard.summary.unassignedCount} 件` },
+        { label: '公平性スコア', value: `${dashboard.summary.fairnessScore}` },
+      ],
+    }),
+    [
+      warningTotals.hard,
+      warningTotals.soft,
+      warningTotals.unassigned,
+      dashboard.summary.coveragePercentage,
+      dashboard.summary.unassignedCount,
+      dashboard.summary.fairnessScore,
+    ],
+  );
+
   const currentState = useMemo(
     () => buildDutyScheduleState(dutyState.duties, dashboard),
     [dutyState.duties, dashboard],
@@ -97,13 +129,23 @@ export default function DiffView(): JSX.Element {
       toast.info('GTFSフィードを取り込むと保存できます。');
       return;
     }
-    try {
-      downloadSavedJson(toSaved(result));
-      toast.success('取込結果JSONを保存しました。');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
-      toast.error(message);
-    }
+    const fileName = defaultFileName(result.sourceName);
+    requestConfirmation({
+      title: '取込結果を保存しますか？',
+      description: '現在の警告件数と未割当状況を確認してから保存を続行できます。',
+      summary: workflowSummary,
+      context: { entity: 'saved-result', exportType: 'saved-json', fileName },
+      onConfirm: async () => {
+        try {
+          downloadSavedJson(toSaved(result), fileName);
+          toast.success('取込結果JSONを保存しました。');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
+          toast.error(message);
+          throw error;
+        }
+      },
+    });
   };
 
   const handleDownloadProject = () => {
@@ -111,13 +153,23 @@ export default function DiffView(): JSX.Element {
       toast.info('GTFSフィードを取り込むと保存できます。');
       return;
     }
-    try {
-      downloadProjectJson(toSavedProject(result, manual));
-      toast.success('プロジェクトJSONを保存しました。');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
-      toast.error(message);
-    }
+    const projectFileName = defaultFileName(result.sourceName).replace('gtfs-import', 'project');
+    requestConfirmation({
+      title: 'プロジェクト JSON を保存しますか？',
+      description: '警告件数と未割当状況を確認してから保存を続行してください。',
+      summary: workflowSummary,
+      context: { entity: 'project', exportType: 'project-json', fileName: projectFileName },
+      onConfirm: async () => {
+        try {
+          downloadProjectJson(toSavedProject(result, manual), projectFileName);
+          toast.success('プロジェクトJSONを保存しました。');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
+          toast.error(message);
+          throw error;
+        }
+      },
+    });
   };
 
   useEffect(() => {

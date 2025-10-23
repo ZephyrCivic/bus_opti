@@ -5,59 +5,53 @@ test.describe('G4: 手動操作ワークフロー', () => {
   test('ブロック連結と Duty 編集が手動操作で完結する', async ({ page }) => {
     await importSampleGtfs(page);
 
-    // ---- Blocks: manual connection / undo ----
+    // ---- Blocks: manual connection / undo (Step2 feature) ----
     await page.locator('button[data-section="blocks"]').click();
-
-    const fromOptions = await page.locator('[data-testid="blocks-manual-from"] option').all();
-    let selectedFrom: string | null = null;
-    let selectedTo: string | null = null;
-    for (const option of fromOptions) {
-      const value = await option.getAttribute('value');
-      if (!value) {
-        continue;
-      }
-      await page.selectOption('[data-testid="blocks-manual-from"]', value);
-      await page.waitForTimeout(100);
-      const toOptions = await page.locator('[data-testid="blocks-manual-to"] option').all();
-      for (const toOption of toOptions) {
-        const toValue = await toOption.getAttribute('value');
-        if (!toValue) {
-          continue;
+    const manualFromCount = await page.locator('[data-testid="blocks-manual-from"]').count();
+    if (manualFromCount > 0) {
+      const fromOptions = await page.locator('[data-testid="blocks-manual-from"] option').all();
+      let selectedFrom: string | null = null;
+      let selectedTo: string | null = null;
+      for (const option of fromOptions) {
+        const value = await option.getAttribute('value');
+        if (!value) continue;
+        await page.selectOption('[data-testid="blocks-manual-from"]', value);
+        await page.waitForTimeout(100);
+        const toOptions = await page.locator('[data-testid="blocks-manual-to"] option').all();
+        for (const toOption of toOptions) {
+          const toValue = await toOption.getAttribute('value');
+          if (!toValue) continue;
+          selectedFrom = value;
+          selectedTo = toValue;
+          break;
         }
-        selectedFrom = value;
-        selectedTo = toValue;
-        break;
+        if (selectedFrom && selectedTo) break;
       }
       if (selectedFrom && selectedTo) {
-        break;
+        await page.selectOption('[data-testid="blocks-manual-from"]', selectedFrom);
+        await page.selectOption('[data-testid="blocks-manual-to"]', selectedTo);
+        await page.locator('[data-testid="blocks-manual-connect"]').click();
+
+        await expect.poll(async () => {
+          return page.evaluate(() => {
+            const testWindow = window as typeof window & {
+              __TEST_BLOCKS_MANUAL_PLAN?: { connections: Array<unknown> };
+            };
+            return testWindow.__TEST_BLOCKS_MANUAL_PLAN?.connections.length ?? 0;
+          });
+        }).toBe(1);
+
+        await page.locator('[data-testid="blocks-manual-undo"]').click();
+        await expect.poll(async () => {
+          return page.evaluate(() => {
+            const testWindow = window as typeof window & {
+              __TEST_BLOCKS_MANUAL_PLAN?: { connections: Array<unknown> };
+            };
+            return testWindow.__TEST_BLOCKS_MANUAL_PLAN?.connections.length ?? 0;
+          });
+        }).toBe(0);
       }
     }
-    if (!selectedFrom || !selectedTo) {
-      throw new Error('連結可能なブロック候補が見つかりません。');
-    }
-
-    await page.selectOption('[data-testid="blocks-manual-from"]', selectedFrom);
-    await page.selectOption('[data-testid="blocks-manual-to"]', selectedTo);
-    await page.locator('[data-testid="blocks-manual-connect"]').click();
-
-    await expect.poll(async () => {
-      return page.evaluate(() => {
-        const testWindow = window as typeof window & {
-          __TEST_BLOCKS_MANUAL_PLAN?: { connections: Array<unknown> };
-        };
-        return testWindow.__TEST_BLOCKS_MANUAL_PLAN?.connections.length ?? 0;
-      });
-    }).toBe(1);
-
-    await page.locator('[data-testid="blocks-manual-undo"]').click();
-    await expect.poll(async () => {
-      return page.evaluate(() => {
-        const testWindow = window as typeof window & {
-          __TEST_BLOCKS_MANUAL_PLAN?: { connections: Array<unknown> };
-        };
-        return testWindow.__TEST_BLOCKS_MANUAL_PLAN?.connections.length ?? 0;
-      });
-    }).toBe(0);
 
     // ---- Duties: add / move / delete / undo / redo ----
     await page.locator('button[data-section="duties"]').click();

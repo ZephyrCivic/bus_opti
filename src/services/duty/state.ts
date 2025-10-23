@@ -81,13 +81,11 @@ export function moveDutySegment(
   if (!segment) {
     throw new Error(`segment ${input.segmentId} が見つかりません。`);
   }
-  if (segment.blockId !== input.blockId) {
-    throw new Error('MVPでは同一Blockのみ移動できます。');
-  }
 
   const { startSequence, endSequence } = resolveRange(input, tripIndex);
   const updated = {
     ...segment,
+    blockId: input.blockId,
     startTripId: input.startTripId,
     endTripId: input.endTripId,
     startSequence,

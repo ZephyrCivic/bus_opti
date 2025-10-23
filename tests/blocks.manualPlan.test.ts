@@ -22,6 +22,7 @@ function createPlan(): BlockPlan {
         overlapScore: 15,
         gapWarnings: 0,
         warningCounts: { critical: 0, warn: 0, info: 0 },
+        warnings: [],
       },
       {
         blockId: 'BLOCK_B',
@@ -34,6 +35,7 @@ function createPlan(): BlockPlan {
         overlapScore: 0,
         gapWarnings: 0,
         warningCounts: { critical: 0, warn: 0, info: 0 },
+        warnings: [],
       },
     ],
     csvRows: [
@@ -83,6 +85,7 @@ test('getConnectionCandidates returns sorted candidates within thresholds', () =
     overlapScore: 0,
     gapWarnings: 0,
     warningCounts: { critical: 0, warn: 0, info: 0 },
+    warnings: [],
   });
   plan.csvRows.push({
     blockId: 'BLOCK_C',

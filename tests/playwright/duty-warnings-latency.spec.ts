@@ -3,6 +3,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
+const appStepEnv = process.env.APP_STEP ?? process.env.VITE_APP_STEP ?? '1';
+const isStepOne = String(appStepEnv).trim() === '1';
+
+test.skip(
+  isStepOne,
+  'Step1 では Duty 警告 UI を非表示にしているため、この警告表示レイテンシテストは対象外。',
+);
 
 function toMinutes(label: string): number {
   const [hours, minutes] = label.split(':').map((part) => Number.parseInt(part, 10));

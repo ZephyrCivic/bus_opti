@@ -1,4 +1,5 @@
-import type { BlockCsvRow, BlockPlan, BlockSummary, BlockWarningCounts } from './blockBuilder';
+import type { BlockCsvRow, BlockPlan, BlockSummary } from './blockBuilder';
+import { evaluateBlockWarnings, countWarnings } from './blockBuilder';
 
 export interface ManualPlanConfig {
   minTurnaroundMin: number;
@@ -33,6 +34,7 @@ export function cloneBlockPlan(plan: BlockPlan): BlockPlan {
       ...summary,
       gaps: [...summary.gaps],
       warningCounts: { ...summary.warningCounts },
+      warnings: summary.warnings ? [...summary.warnings] : undefined,
     })),
     csvRows: plan.csvRows.map((row) => ({ ...row })),
     unassignedTripIds: [...plan.unassignedTripIds],
@@ -186,7 +188,8 @@ function buildSummaryForRows(
     throw new Error('Block rows must not be empty.');
   }
   const gaps = computeGaps(rows);
-  const warningCounts = buildWarningCounts(gaps, minTurnaroundMin);
+  const warnings = evaluateBlockWarnings(rows, minTurnaroundMin);
+  const warningCounts = countWarnings(warnings);
   const averageGap = gaps.length > 0 ? gaps.reduce((acc, gap) => acc + gap, 0) / gaps.length : 0;
   const maxGap = gaps.length > 0 ? Math.max(...gaps) : 0;
   return {
@@ -198,8 +201,9 @@ function buildSummaryForRows(
     lastTripEnd: rows[rows.length - 1]!.tripEnd,
     gaps,
     overlapScore: Number(averageGap.toFixed(2)),
-    gapWarnings: warningCounts.warn,
+    gapWarnings: warnings.filter((warning) => warning.code === 'BLK_TURN_SHORT').length,
     warningCounts,
+    warnings,
   };
 }
 
@@ -223,15 +227,6 @@ function computeGaps(rows: BlockCsvRow[]): number[] {
     }
   }
   return gaps;
-}
-
-function buildWarningCounts(gaps: number[], minTurnaroundMin: number): BlockWarningCounts {
-  const warn = gaps.filter((gap) => gap < minTurnaroundMin).length;
-  return {
-    critical: 0,
-    warn,
-    info: 0,
-  };
 }
 
 function computeGapMinutes(endTime: string, nextStart: string): number | null {

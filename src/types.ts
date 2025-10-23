@@ -146,6 +146,26 @@ export interface ManualDriver {
   name: string;
 }
 
+export interface ManualVehicleType {
+  typeId: string;
+  name?: string;
+  wheelchairAccessible?: boolean;
+  lowFloor?: boolean;
+  capacitySeated?: number;
+  capacityTotal?: number;
+  tags?: string;
+}
+
+export interface ManualVehicle {
+  vehicleId: string;
+  vehicleTypeId: string;
+  depotId?: string;
+  seats?: number;
+  wheelchairAccessible?: boolean;
+  lowFloor?: boolean;
+  notes?: string;
+}
+
 export interface LinkingSettings {
   enabled: boolean; // true のとき自動連結を許可
   minTurnaroundMin: number; // 最小折返し
@@ -158,5 +178,7 @@ export interface ManualInputs {
   reliefPoints: ReliefPoint[];
   deadheadRules: DeadheadRule[];
   drivers: ManualDriver[];
+  vehicleTypes: ManualVehicleType[];
+  vehicles: ManualVehicle[];
   linking: LinkingSettings;
 }

@@ -61,8 +61,8 @@ const checks: Check[] = [
         return mobileOption?.textContent?.trim() ?? '';
       })()
     `,
-    validate: (result) => result === 'GTFS取込・保存データから再開',
-    failureMessage: 'Import セクションのナビゲーションラベルが期待どおりではありません（GTFS取込・保存データから再開）。',
+    validate: (result) => result === 'GTFS・保存データ取込',
+    failureMessage: 'Import セクションのナビゲーションラベルが期待どおりではありません（GTFS・保存データ取込）。',
   },
   {
     id: 'blocks-heading',

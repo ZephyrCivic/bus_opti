@@ -4,7 +4,9 @@
  * Node/test environments keep an in-memory log for assertions or offline processing.
  */
 
-export interface AuditEvent {
+import { sanitizeAuditValue } from '@/services/privacy/redaction';
+
+export interface ExportAuditEvent {
   action: 'export';
   entity: string;
   fileName: string;
@@ -15,6 +17,20 @@ export interface AuditEvent {
   warnings?: { hard: number; soft: number };
   timestamp: string;
 }
+
+export interface ExportConfirmationAuditEvent {
+  action: 'export-confirmation';
+  entity: string;
+  exportType: string;
+  outcome: 'proceed' | 'cancel';
+  operatorId: string;
+  hardWarnings: number;
+  softWarnings: number;
+  unassigned: number;
+  timestamp: string;
+}
+
+export type AuditEvent = ExportAuditEvent | ExportConfirmationAuditEvent;
 
 const LOCAL_STORAGE_KEY = 'audit:events';
 const GLOBAL_STORE_KEY = '__AUDIT_LOG__';
@@ -31,10 +47,10 @@ export interface RecordAuditParams {
 }
 
 export function recordAuditEvent(params: RecordAuditParams): void {
-  const event: AuditEvent = {
+  const event: ExportAuditEvent = {
     action: 'export',
-    entity: params.entity,
-    fileName: params.fileName,
+    entity: sanitizeAuditValue(params.entity),
+    fileName: sanitizeAuditValue(params.fileName),
     format: 'csv',
     rowCount: params.rowCount,
     generatedAt: params.generatedAt,
@@ -48,6 +64,37 @@ export function recordAuditEvent(params: RecordAuditParams): void {
     return;
   }
 
+  appendToGlobalStore(event);
+}
+
+export interface ExportConfirmationAuditParams {
+  entity: string;
+  exportType: string;
+  outcome: 'proceed' | 'cancel';
+  operatorId?: string;
+  hardWarnings: number;
+  softWarnings: number;
+  unassigned: number;
+  timestamp?: string;
+}
+
+export function recordExportConfirmationEvent(params: ExportConfirmationAuditParams): void {
+  const event: ExportConfirmationAuditEvent = {
+    action: 'export-confirmation',
+    entity: sanitizeAuditValue(params.entity),
+    exportType: sanitizeAuditValue(params.exportType),
+    outcome: params.outcome,
+    operatorId: sanitizeAuditValue(params.operatorId ?? 'local-user'),
+    hardWarnings: params.hardWarnings,
+    softWarnings: params.softWarnings,
+    unassigned: params.unassigned,
+    timestamp: params.timestamp ?? new Date().toISOString(),
+  };
+
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    appendToLocalStorage(event);
+    return;
+  }
   appendToGlobalStore(event);
 }
 

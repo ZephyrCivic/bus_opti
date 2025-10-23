@@ -91,6 +91,8 @@ export function fromSavedProject(payload: unknown): { gtfs: GtfsImportResult; ma
     reliefPoints: [],
     deadheadRules: [],
     drivers: [],
+    vehicleTypes: [],
+    vehicles: [],
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
   const any = payload as any;
@@ -127,6 +129,8 @@ function hydrateManual(manual: ManualInputs | undefined, defaults: ManualInputs)
       reliefPoints: [],
       deadheadRules: [],
       drivers: [],
+      vehicleTypes: [],
+      vehicles: [],
       linking: baseLinking,
     };
   }
@@ -135,6 +139,8 @@ function hydrateManual(manual: ManualInputs | undefined, defaults: ManualInputs)
     reliefPoints: manual.reliefPoints ? [...manual.reliefPoints] : [],
     deadheadRules: manual.deadheadRules ? [...manual.deadheadRules] : [],
     drivers: manual.drivers ? [...manual.drivers] : [],
+    vehicleTypes: manual.vehicleTypes ? [...manual.vehicleTypes] : [],
+    vehicles: manual.vehicles ? [...manual.vehicles] : [],
     linking: manual.linking ? { ...manual.linking } : baseLinking,
   };
 }

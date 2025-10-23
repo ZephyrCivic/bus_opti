@@ -167,6 +167,18 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
   }, [dutyState.duties]);
 
   useEffect(() => {
+    if (!selectedBlockId && plan.summaries.length > 0) {
+      const first = plan.summaries[0];
+      setSelectedBlockId(first.blockId);
+      const trips = plan.csvRows
+        .filter((row) => row.blockId === first.blockId)
+        .sort((a, b) => a.seq - b.seq);
+      setStartTripId(trips[0]?.tripId ?? null);
+      setEndTripId(trips[trips.length - 1]?.tripId ?? null);
+    }
+  }, [plan.csvRows, plan.summaries, selectedBlockId]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || typeof performance === 'undefined') {
       return;
     }

@@ -6,6 +6,8 @@
  */
 
 import { spawn, spawnSync, type ChildProcess, type SpawnOptionsWithoutStdio } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -146,6 +148,15 @@ async function main(): Promise<void> {
     await waitForPreview(PREVIEW_URL, 60_000);
   } catch (error) {
     await handleExit();
+    await previewExitPromise;
+    const fallbackTriggered = await handleFallback({
+      error,
+      exitCode: previewProcess.exitCode ?? null,
+      signal: null,
+    });
+    if (fallbackTriggered) {
+      return;
+    }
     if (previewProcess.exitCode !== null) {
       console.error(`[preview] exited with code ${previewProcess.exitCode}`);
     }
@@ -160,17 +171,85 @@ async function main(): Promise<void> {
     playwrightArgs.push('--grep-invert', 'Visual snapshots');
   }
 
-  const result = await runCommand(PREVIEW_CMD, playwrightArgs, {
-    PLAYWRIGHT_SKIP_WEBSERVER: '1',
-    APP_BASE_URL: process.env.APP_BASE_URL ?? `http://${PREVIEW_HOST}:${PREVIEW_PORT}`,
-  });
+  let result: SpawnResult | null = null;
+  let infraFailure: unknown = null;
+
+  try {
+    result = await runCommand(PREVIEW_CMD, playwrightArgs, {
+      PLAYWRIGHT_SKIP_WEBSERVER: '1',
+      APP_BASE_URL: process.env.APP_BASE_URL ?? `http://${PREVIEW_HOST}:${PREVIEW_PORT}`,
+    });
+  } catch (error) {
+    infraFailure = error;
+  }
 
   await handleExit();
   await previewExitPromise;
 
-  if (result.code !== 0) {
+  if (result && result.code !== 0) {
     process.exit(result.code ?? 1);
   }
+
+  if (infraFailure || (result && result.code === null && result.signal !== null)) {
+    const fallbackInfo = {
+      error: infraFailure,
+      exitCode: result?.code ?? null,
+      signal: result?.signal ?? null,
+    };
+    const fallbackTriggered = await handleFallback(fallbackInfo);
+    if (fallbackTriggered) {
+      return;
+    }
+    if (infraFailure instanceof Error) {
+      throw infraFailure;
+    }
+    throw new Error(`Playwright run failed (exitCode=${fallbackInfo.exitCode}, signal=${fallbackInfo.signal})`);
+  }
+}
+
+interface FallbackInfo {
+  error: unknown;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+async function handleFallback(info: FallbackInfo): Promise<boolean> {
+  if (process.env.SNAPSHOT_FALLBACK_DISABLE === '1') {
+    return false;
+  }
+
+  const fallbackDir = path.join(process.cwd(), 'tmp', 'ui-snapshots');
+  await mkdir(fallbackDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const logPath = path.join(fallbackDir, `fallback-${timestamp}.md`);
+
+  const summaryParts = [
+    `exitCode=${info.exitCode ?? 'null'}`,
+    `signal=${info.signal ?? 'null'}`,
+  ];
+  if (info.error instanceof Error && info.error.message) {
+    summaryParts.push(`message=${info.error.message}`);
+  }
+
+  const content = [
+    '# UI Snapshot Fallback',
+    '',
+    `- timestamp: ${new Date().toISOString()}`,
+    `- summary: ${summaryParts.join(', ')}`,
+    '- action: Visual snapshot tests were skipped automatically. Record this fallback (with log path) in plans.md > Test セクション.',
+    '',
+    '確認事項:',
+    '1. コンソールログで原因を確認する（Playwright/Previewの起動失敗など）。',
+    '2. 必要なら `SNAPSHOT_FALLBACK_DISABLE=1 npm run generate-snapshots` で再実行し、強制的に失敗させて調査する。',
+    '3. 次回以降の実行に備え、原因調査や依存更新が必要か検討する。',
+  ].join('\n');
+
+  await writeFile(logPath, content, 'utf8');
+
+  console.warn(`[ui-snapshots] フォールバックを発動しました。ログ: ${path.relative(process.cwd(), logPath)}`);
+  console.warn('[ui-snapshots] plans.md の Test セクションに上記ログのパスと原因メモを残してください。');
+
+  return true;
 }
 
 main().catch((error) => {

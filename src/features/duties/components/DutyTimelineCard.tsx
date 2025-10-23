@@ -46,6 +46,7 @@ interface DutyTimelineCardProps {
   selectedBlockId?: string | null;
   selectedDutyId?: string | null;
   selectedSegmentId?: string | null;
+  showWarnings?: boolean;
 }
 
 export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardProps>(
@@ -73,6 +74,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
       selectedBlockId,
       selectedDutyId,
       selectedSegmentId,
+      showWarnings = true,
     },
     fileInputRef,
   ) => {
@@ -126,7 +128,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {warningTotals ? (
+          {showWarnings && warningTotals ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">警告件数</span>
               <Badge variant={warningTotals.hard > 0 ? 'destructive' : 'outline'}>重大 {warningTotals.hard}</Badge>
