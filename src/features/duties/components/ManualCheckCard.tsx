@@ -72,6 +72,9 @@ export default function ManualCheckCard({ manual, plan, duties }: ManualCheckCar
             <Badge variant="outline">
               運転士 {manual.drivers.length}
             </Badge>
+            <Badge variant="outline">
+              労務ルール {manual.laborRules.length}
+            </Badge>
           </div>
         </div>
       </CardHeader>

@@ -11,10 +11,12 @@ import {
   csvToDeadheadRules,
   csvToDepots,
   csvToDrivers,
+  csvToLaborRules,
   csvToReliefPoints,
   deadheadRulesToCsv,
   depotsToCsv,
   driversToCsv,
+  laborRulesToCsv,
   reliefPointsToCsv,
   csvToVehicleTypes,
   csvToVehicles,
@@ -22,13 +24,14 @@ import {
   vehiclesToCsv,
 } from '@/services/manual/manualCsv';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
-import type { DeadheadRule, Depot, ManualDriver, ManualVehicle, ManualVehicleType, ReliefPoint } from '@/types';
+import type { DeadheadRule, Depot, LaborRule, ManualDriver, ManualVehicle, ManualVehicleType, ReliefPoint } from '@/types';
 import { sanitizeDriverName, REDACTED_LABEL } from '@/services/privacy/redaction';
 
 import { recordAuditEvent } from '@/services/audit/auditLog';
 import { DepotsCard } from './components/DepotsCard';
 import { DeadheadRulesCard } from './components/DeadheadRulesCard';
 import { DriversCard } from './components/DriversCard';
+import { LaborRulesCard, type LaborRuleDraft } from './components/LaborRulesCard';
 import { ReliefPointsCard } from './components/ReliefPointsCard';
 import { VehicleTypesCard } from './components/VehicleTypesCard';
 import { VehiclesCard } from './components/VehiclesCard';
@@ -101,6 +104,20 @@ export default function ManualDataView(): JSX.Element {
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '運転士 CSV の読み込みに失敗しました。');
+      }
+    },
+    [setManual],
+  );
+
+  const handleImportLaborRules = useCallback(
+    async (file: File) => {
+      try {
+        const csv = await readFileAsText(file);
+        const laborRules = csvToLaborRules(csv);
+        setManual((prev) => ({ ...prev, laborRules }));
+        toast.success(`労務ルール CSV を読み込みました（${laborRules.length} 件）。`);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '労務ルール CSV の読み込みに失敗しました。');
       }
     },
     [setManual],
@@ -193,6 +210,80 @@ export default function ManualDataView(): JSX.Element {
       return true;
     },
     [manual.drivers, setManual],
+  );
+
+  const handleAddLaborRule = useCallback(
+    (draft: LaborRuleDraft) => {
+      const driverId = draft.driverId.trim();
+      if (!driverId) {
+        toast.error('driver_id を入力してください。');
+        return false;
+      }
+      if (manual.laborRules.some((rule) => rule.driverId === driverId)) {
+        toast.error(`driver_id "${driverId}" は既に登録されています。`);
+        return false;
+      }
+
+      const parseNumber = (label: string, value: string): number | undefined => {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return undefined;
+        }
+        const numeric = Number(trimmed);
+        if (!Number.isFinite(numeric)) {
+          toast.error(`${label} には数値を入力してください。`);
+          throw new Error('invalid-number');
+        }
+        return numeric;
+      };
+
+      let maxContinuous: number | undefined;
+      let minBreak: number | undefined;
+      let maxDuty: number | undefined;
+      let maxWork: number | undefined;
+
+      try {
+        maxContinuous = parseNumber('max_continuous_drive_min', draft.maxContinuousDriveMin);
+        minBreak = parseNumber('min_break_min', draft.minBreakMin);
+        maxDuty = parseNumber('max_duty_span_min', draft.maxDutySpanMin);
+        maxWork = parseNumber('max_work_min', draft.maxWorkMin);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'invalid-number') {
+          return false;
+        }
+        throw error;
+      }
+
+      const qualifications = draft.qualifications
+        .split('|')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+
+      const payload: LaborRule = {
+        driverId,
+        maxContinuousDriveMin: maxContinuous,
+        minBreakMin: minBreak,
+        maxDutySpanMin: maxDuty,
+        maxWorkMin: maxWork,
+        nightWindowStart: draft.nightWindowStart.trim() || undefined,
+        nightWindowEnd: draft.nightWindowEnd.trim() || undefined,
+        qualifications: qualifications.length > 0 ? qualifications : undefined,
+        affiliation: draft.affiliation.trim() || undefined,
+      };
+
+      setManual((prev) => ({ ...prev, laborRules: [...prev.laborRules, payload] }));
+      toast.success(`労務ルール（${driverId}）を追加しました。`);
+      return true;
+    },
+    [manual.laborRules, setManual],
+  );
+
+  const handleDeleteLaborRule = useCallback(
+    (driverId: string) => {
+      setManual((prev) => ({ ...prev, laborRules: prev.laborRules.filter((rule) => rule.driverId !== driverId) }));
+      toast.success(`労務ルール ${driverId} を削除しました。`);
+    },
+    [setManual],
   );
 
   const handleDeleteDriver = useCallback(
@@ -363,6 +454,23 @@ export default function ManualDataView(): JSX.Element {
         onImport={handleImportDrivers}
         onExport={() =>
           exportWithGuard('運転士', manual.drivers, () => driversToCsv(manual.drivers), 'manual-drivers.csv', 'manual.drivers', 'manual.drivers.csv')
+        }
+      />
+
+      <LaborRulesCard
+        rows={manual.laborRules}
+        onAdd={handleAddLaborRule}
+        onDelete={handleDeleteLaborRule}
+        onImport={handleImportLaborRules}
+        onExport={() =>
+          exportWithGuard(
+            '労務ルール',
+            manual.laborRules,
+            () => laborRulesToCsv(manual.laborRules),
+            'manual-labor_rules.csv',
+            'manual.laborRules',
+            'manual.laborRules.csv',
+          )
         }
       />
 

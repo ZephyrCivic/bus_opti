@@ -78,8 +78,8 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
       if (!meta) {
         return;
       }
-      if (meta.kind === 'break') {
-        toast.info('休憩区間はドラッグできません。');
+      if (meta.kind === 'break' || meta.kind === 'deadhead') {
+        toast.info('休憩や回送区間はドラッグできません。');
         return;
       }
       const trips = blockTripMinutes.get(meta.blockId);

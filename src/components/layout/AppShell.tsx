@@ -3,7 +3,7 @@
  * アプリ全体の枠組みを提供するレイアウトシェル。
  * ヘッダー・ナビゲーション・コンテンツ領域を束ね、セクション切替とレスポンシブ対応を担う。
  */
-import { type ChangeEvent, type PropsWithChildren } from 'react';
+import { type ChangeEvent, type PropsWithChildren, type ReactNode } from 'react';
 
 export const APP_NAME = 'バス運行計画ツール';
 
@@ -17,6 +17,8 @@ interface AppShellProps extends PropsWithChildren {
   sections: NavigationSection[];
   activeSection: string;
   onSectionSelect: (sectionId: string) => void;
+  sidebarContent?: ReactNode;
+  mobileSidebarContent?: ReactNode;
 }
 
 export default function AppShell({
@@ -24,6 +26,8 @@ export default function AppShell({
   sections,
   activeSection,
   onSectionSelect,
+  sidebarContent,
+  mobileSidebarContent,
 }: AppShellProps): JSX.Element {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -49,12 +53,14 @@ export default function AppShell({
                 />
               ))}
             </nav>
+            {sidebarContent ? <div className="mt-4 flex flex-col gap-4">{sidebarContent}</div> : null}
           </aside>
           <div className="flex flex-col gap-4 lg:col-start-2">
             <MobileNavigation
               sections={sections}
               activeSection={activeSection}
               onSectionSelect={onSectionSelect}
+              extra={mobileSidebarContent}
             />
             <main className="min-h-[calc(100vh-10rem)] rounded-lg border border-dashed border-border/60 bg-card p-4 shadow-sm sm:p-6">
               {children}
@@ -91,12 +97,14 @@ interface MobileNavigationProps {
   sections: NavigationSection[];
   activeSection: string;
   onSectionSelect: (sectionId: string) => void;
+  extra?: ReactNode;
 }
 
 function MobileNavigation({
   sections,
   activeSection,
   onSectionSelect,
+  extra,
 }: MobileNavigationProps): JSX.Element | null {
   if (sections.length <= 1) {
     return null;
@@ -124,6 +132,7 @@ function MobileNavigation({
           </option>
         ))}
       </select>
+      {extra ? <div className="mt-4 flex flex-col gap-4">{extra}</div> : null}
     </div>
   );
 }

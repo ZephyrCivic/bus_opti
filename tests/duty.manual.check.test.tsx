@@ -21,6 +21,7 @@ const manual: ManualInputs = {
     { fromId: 'DEPOT_A', toId: 'RELIEF_USED', mode: 'bus', travelTimeMin: 12 },
   ],
   drivers: [{ driverId: 'DRIVER_A', name: 'Alice' }],
+  laborRules: [],
   linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
 };
 
@@ -77,13 +78,14 @@ test('ManualCheckCard shows relief usage counts and deadhead summary', () => {
     <ManualCheckCard manual={manual} plan={plan} duties={duties} />,
   );
 
-  assert.match(markup, /Relief \/ Deadhead チェック/);
-  assert.match(markup, /Relief 2 \/ Duty使用 1/);
+  assert.match(markup, /交代地点 \/ 回送チェック/);
+  assert.match(markup, /交代地点 2 \/ 使用中 1/);
   assert.match(markup, /RELIEF_USED/);
   assert.match(markup, /1 件/);
   assert.match(markup, /RELIEF_IDLE/);
   assert.match(markup, /0 件/);
-  assert.match(markup, /Deadhead 1/);
+  assert.match(markup, /回送 1/);
   assert.match(markup, /DEPOT_A/);
-  assert.match(markup, /Drivers 1/);
+  assert.match(markup, /運転士 1/);
+  assert.match(markup, /労務ルール 0/);
 });

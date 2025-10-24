@@ -98,6 +98,7 @@ export function DeadheadRulesCard({ rows, onAdd, onDelete, onImport, onExport }:
         </div>
         <Button
           type="button"
+          data-testid="deadhead-add-rule"
           onClick={() => {
             if (!draft.fromId || !draft.toId || !Number.isFinite(draft.travelTimeMin)) {
               return;

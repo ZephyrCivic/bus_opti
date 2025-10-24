@@ -8,6 +8,7 @@ import type {
   ReliefPoint,
   DeadheadRule,
   ManualDriver,
+  LaborRule,
   ManualVehicleType,
   ManualVehicle,
 } from '@/types';
@@ -18,6 +19,7 @@ export interface ManualCsvSet {
   reliefPoints: string;
   deadheadRules: string;
   drivers?: string;
+  laborRules?: string;
   vehicleTypes?: string;
   vehicles?: string;
 }
@@ -90,6 +92,21 @@ export function vehiclesToCsv(vehicles: ManualVehicle[]): string {
     wheelchair_accessible: booleanToCsv(vehicle.wheelchairAccessible),
     low_floor: booleanToCsv(vehicle.lowFloor),
     notes: vehicle.notes ?? '',
+  }));
+  return Papa.unparse(rows, { newline: '\n' });
+}
+
+export function laborRulesToCsv(rules: LaborRule[]): string {
+  const rows = rules.map((rule) => ({
+    driver_id: rule.driverId,
+    max_continuous_drive_min: rule.maxContinuousDriveMin ?? '',
+    min_break_min: rule.minBreakMin ?? '',
+    max_duty_span_min: rule.maxDutySpanMin ?? '',
+    max_work_min: rule.maxWorkMin ?? '',
+    night_window_start: rule.nightWindowStart ?? '',
+    night_window_end: rule.nightWindowEnd ?? '',
+    qualifications: rule.qualifications?.length ? rule.qualifications.join('|') : '',
+    affiliation: rule.affiliation ?? '',
   }));
   return Papa.unparse(rows, { newline: '\n' });
 }
@@ -269,6 +286,41 @@ export function csvToVehicles(csv: string): ManualVehicle[] {
   });
 }
 
+export function csvToLaborRules(csv: string): LaborRule[] {
+  const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true, delimiter: ',' });
+  if (result.errors.length > 0) {
+    throw new Error(result.errors[0]?.message ?? 'CSV parse error');
+  }
+  const seen = new Set<string>();
+  return result.data.map((row) => {
+    const driverId = String(row.driver_id ?? '').trim();
+    if (!driverId) {
+      throw new Error('driver_id is required');
+    }
+    if (seen.has(driverId)) {
+      throw new Error(`driver_id is duplicated: ${driverId}`);
+    }
+    seen.add(driverId);
+
+    const maxContinuousDriveMin = parseOptionalNumber(row.max_continuous_drive_min, 'max_continuous_drive_min', driverId);
+    const minBreakMin = parseOptionalNumber(row.min_break_min, 'min_break_min', driverId);
+    const maxDutySpanMin = parseOptionalNumber(row.max_duty_span_min, 'max_duty_span_min', driverId);
+    const maxWorkMin = parseOptionalNumber(row.max_work_min, 'max_work_min', driverId);
+
+    return {
+      driverId,
+      maxContinuousDriveMin,
+      minBreakMin,
+      maxDutySpanMin,
+      maxWorkMin,
+      nightWindowStart: normalizeOptionalString(row.night_window_start),
+      nightWindowEnd: normalizeOptionalString(row.night_window_end),
+      qualifications: parseQualifications(row.qualifications),
+      affiliation: normalizeOptionalString(row.affiliation),
+    } satisfies LaborRule;
+  });
+}
+
 function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
@@ -300,6 +352,21 @@ function parseOptionalNumber(value: unknown, field: string, id: string): number 
     throw new Error(`${field} must be numeric (${field} for ${id})`);
   }
   return numeric;
+}
+
+function parseQualifications(value: unknown): string[] | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const tokens = trimmed
+    .split('|')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return tokens.length > 0 ? tokens : undefined;
 }
 
 function booleanToCsv(value: boolean | undefined): string {

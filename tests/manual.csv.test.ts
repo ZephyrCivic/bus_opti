@@ -17,6 +17,8 @@ import {
   csvToVehicleTypes,
   vehiclesToCsv,
   csvToVehicles,
+  laborRulesToCsv,
+  csvToLaborRules,
 } from '../src/services/manual/manualCsv';
 
 test('depots CSV round-trip preserves numeric fields', () => {
@@ -136,4 +138,36 @@ test('vehicles CSV round-trip preserves references and optional fields', () => {
 test('vehicles CSV parser requires vehicle_type', () => {
   const csv = `vehicle_id,vehicle_type\nBUS_001,\n`;
   assert.throws(() => csvToVehicles(csv), /vehicle_type is required/);
+});
+
+test('labor rules CSV round-trip preserves numeric and list fields', () => {
+  const csv = laborRulesToCsv([
+    {
+      driverId: 'DRV_A',
+      maxContinuousDriveMin: 240,
+      minBreakMin: 45,
+      maxDutySpanMin: 780,
+      maxWorkMin: 480,
+      nightWindowStart: '22:00',
+      nightWindowEnd: '05:00',
+      qualifications: ['large_bus', 'route'],
+      affiliation: 'DepotA',
+    },
+  ]);
+  const parsed = csvToLaborRules(csv);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.driverId, 'DRV_A');
+  assert.equal(parsed[0]?.maxContinuousDriveMin, 240);
+  assert.equal(parsed[0]?.minBreakMin, 45);
+  assert.equal(parsed[0]?.maxDutySpanMin, 780);
+  assert.equal(parsed[0]?.maxWorkMin, 480);
+  assert.equal(parsed[0]?.nightWindowStart, '22:00');
+  assert.equal(parsed[0]?.nightWindowEnd, '05:00');
+  assert.deepEqual(parsed[0]?.qualifications, ['large_bus', 'route']);
+  assert.equal(parsed[0]?.affiliation, 'DepotA');
+});
+
+test('labor rules CSV parser detects duplicate driver ids', () => {
+  const csv = `driver_id\nDRV_A\nDRV_A\n`;
+  assert.throws(() => csvToLaborRules(csv), /duplicated/);
 });

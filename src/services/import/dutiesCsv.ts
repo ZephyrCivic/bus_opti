@@ -36,8 +36,12 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
     const endTripId = normalizeString(raw.segment_end_trip_id);
     const driverId = normalizeString(raw.driver_id);
     const segmentTypeRaw = normalizeString(raw.segment_type);
-    const segmentType = (segmentTypeRaw === 'break' ? 'break' : 'drive') as 'drive' | 'break';
+    const segmentType = segmentTypeRaw === 'break' ? 'break' : segmentTypeRaw === 'deadhead' ? 'deadhead' : 'drive';
     const breakUntilTripIdRaw = normalizeString(raw.break_until_trip_id);
+    const deadheadMinutesRaw = normalizeString(raw.deadhead_minutes);
+    const deadheadRuleId = normalizeString(raw.deadhead_rule_id);
+    const deadheadFromStopId = normalizeString(raw.deadhead_from_stop_id);
+    const deadheadToStopId = normalizeString(raw.deadhead_to_stop_id);
 
     if (settingsHash === undefined) {
       settingsHash = normalizeString(raw.settings_hash);
@@ -64,6 +68,16 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
       throw new Error(`duty_id=${dutyId} の行で block_id / segment_start_trip_id / segment_end_trip_id のいずれかが欠けています。`);
     }
     const breakUntilTripId = segmentType === 'break' ? breakUntilTripIdRaw || endTripId : undefined;
+    let deadheadMinutes: number | undefined;
+    if (segmentType === 'deadhead') {
+      if (deadheadMinutesRaw) {
+        const parsedMinutes = Number(deadheadMinutesRaw);
+        if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
+          throw new Error(`duty_id=${dutyId} の deadhead_minutes が不正です。`);
+        }
+        deadheadMinutes = parsedMinutes;
+      }
+    }
 
     const tripMap = index.get(blockId);
     if (!tripMap) {
@@ -88,6 +102,10 @@ export function parseDutiesCsv(csv: string, index: BlockTripSequenceIndex): Pars
       endSequence: Number(endSequence),
       kind: segmentType,
       breakUntilTripId,
+      deadheadMinutes: segmentType === 'deadhead' ? deadheadMinutes : undefined,
+      deadheadRuleId: segmentType === 'deadhead' ? deadheadRuleId || undefined : undefined,
+      deadheadFromStopId: segmentType === 'deadhead' ? deadheadFromStopId || undefined : undefined,
+      deadheadToStopId: segmentType === 'deadhead' ? deadheadToStopId || undefined : undefined,
     });
     duties.set(dutyId, duty);
   }
@@ -111,8 +129,12 @@ interface DutySegmentDraft {
   endTripId: string;
   startSequence: number;
   endSequence: number;
-  kind: 'drive' | 'break';
+  kind: 'drive' | 'break' | 'deadhead';
   breakUntilTripId?: string;
+  deadheadMinutes?: number;
+  deadheadRuleId?: string;
+  deadheadFromStopId?: string;
+  deadheadToStopId?: string;
 }
 
 function createDutyDraft(id: string): DutyDraft {
@@ -142,6 +164,10 @@ function toDuty(draft: DutyDraft): Duty {
             endSequence: segment.endSequence,
             kind: segment.kind,
             breakUntilTripId: segment.breakUntilTripId,
+            deadheadMinutes: segment.deadheadMinutes,
+            deadheadRuleId: segment.deadheadRuleId,
+            deadheadFromStopId: segment.deadheadFromStopId,
+            deadheadToStopId: segment.deadheadToStopId,
           })),
   };
 }

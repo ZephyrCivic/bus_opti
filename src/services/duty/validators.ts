@@ -40,7 +40,7 @@ export function ensureNoOverlap(
   ignoreId?: string,
 ): void {
   const candidateKind = candidate.kind ?? 'drive';
-  if (candidateKind === 'break') {
+  if (candidateKind === 'break' || candidateKind === 'deadhead') {
     return;
   }
   for (const segment of segments) {
@@ -48,7 +48,7 @@ export function ensureNoOverlap(
       continue;
     }
     const segmentKind = segment.kind ?? 'drive';
-    if (segmentKind === 'break') {
+    if (segmentKind === 'break' || segmentKind === 'deadhead') {
       continue;
     }
     const overlaps = candidate.startSequence <= segment.endSequence && candidate.endSequence >= segment.startSequence;

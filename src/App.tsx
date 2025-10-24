@@ -12,14 +12,16 @@ import BlocksView from './features/blocks/BlocksView';
 import DutiesView from './features/duties/DutiesView';
 import DashboardView from './features/dashboard/DashboardView';
 import DiffView from './features/dashboard/DiffView';
+import { DiffSidebarActions } from './features/dashboard/DiffSidebarActions';
 import ManualDataView from './features/manual/ManualDataView';
 import { GtfsImportProvider } from './services/import/GtfsImportProvider';
 import { SectionNavigationContext } from './components/layout/SectionNavigationContext';
 import { ExportConfirmationProvider } from './components/export/ExportConfirmationProvider';
+import { isStepOne } from './config/appStep';
 
 const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView'));
 
-const SECTIONS: NavigationSection[] = [
+const BASE_SECTIONS: NavigationSection[] = [
   { id: 'import', label: 'GTFS・保存データ取込' },
   { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'manual', label: '制約条件（手動入力）' },
@@ -28,6 +30,9 @@ const SECTIONS: NavigationSection[] = [
   { id: 'dashboard', label: '運行指標' },
   { id: 'diff', label: '差分・出力' },
 ];
+const SECTIONS: NavigationSection[] = isStepOne
+  ? BASE_SECTIONS.filter((s) => !['dashboard', 'diff'].includes(s.id))
+  : BASE_SECTIONS;
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -62,11 +67,26 @@ export default function App(): JSX.Element {
     }
   }, [activeSection]);
 
+  const sidebarContent = useMemo(
+    () => (!isStepOne && activeSection === 'diff' ? <DiffSidebarActions variant="desktop" /> : null),
+    [activeSection],
+  );
+  const mobileSidebarContent = useMemo(
+    () => (!isStepOne && activeSection === 'diff' ? <DiffSidebarActions variant="mobile" /> : null),
+    [activeSection],
+  );
+
   return (
     <GtfsImportProvider>
       <ExportConfirmationProvider>
         <SectionNavigationContext.Provider value={{ currentSection: activeSection, navigate: handleSectionSelect }}>
-          <AppShell sections={SECTIONS} activeSection={activeSection} onSectionSelect={handleSectionSelect}>
+          <AppShell
+            sections={SECTIONS}
+            activeSection={activeSection}
+            onSectionSelect={handleSectionSelect}
+            sidebarContent={sidebarContent}
+            mobileSidebarContent={mobileSidebarContent}
+          >
             <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
           </AppShell>
           <Toaster position="top-right" richColors closeButton />

@@ -25,6 +25,7 @@ import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
 import { fromSaved, fromSavedProject } from '@/services/import/gtfsPersistence';
 import { useSectionNavigation } from '@/components/layout/SectionNavigationContext';
 import { recordTelemetryEvent } from '@/services/telemetry/telemetry';
+import { isStepOne } from '@/config/appStep';
 
 const ACCEPTED_MIME = ['application/zip', 'application/x-zip-compressed'];
 const ACCEPTED_SAVED = ['application/json'];
@@ -165,9 +166,12 @@ export default function ImportView(): JSX.Element {
     return ids.size;
   }, [result]);
 
-  const hasOptionalWarnings = Boolean(result?.missingFiles.length);
-  const hasAlerts = Boolean(result?.alerts && result.alerts.length > 0);
+  const hasOptionalWarnings = !isStepOne && Boolean(result?.missingFiles.length);
+  const hasAlerts = !isStepOne && Boolean(result?.alerts && result.alerts.length > 0);
   const hasRouteSelection = selectedRouteIds.length > 0;
+  const footerMessage = isStepOne
+    ? '保存・出力は各画面の CSV ボタンからいつでも実行できます。'
+    : '保存・出力は左ナビの「差分・出力」から行えます。';
 
   return (
     <div className="space-y-6">
@@ -356,7 +360,7 @@ export default function ImportView(): JSX.Element {
             </section>
           </CardContent>
           <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">保存・出力は左ナビの「差分・出力」から行えます。</p>
+            <p className="text-xs text-muted-foreground">{footerMessage}</p>
             <Button
               type="button"
               onClick={() => {
@@ -383,5 +387,9 @@ export default function ImportView(): JSX.Element {
     </div>
   );
 }
+
+
+
+
 
 

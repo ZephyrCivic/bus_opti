@@ -15,8 +15,9 @@ export interface DutyTimelineMeta {
   blockId: string;
   startTripId: string;
   endTripId: string;
-  kind: 'drive' | 'break';
+  kind: 'drive' | 'break' | 'deadhead';
   breakUntilTripId?: string;
+  deadheadMinutes?: number;
 }
 
 export function useDutyTimelineData(duties: Duty[], tripLookup: BlockTripLookup): TimelineLane<DutyTimelineMeta>[] {
@@ -25,21 +26,38 @@ export function useDutyTimelineData(duties: Duty[], tripLookup: BlockTripLookup)
       const enriched = enrichDutySegments(duty, tripLookup);
       const segments = enriched.map((segment) => ({
         id: segment.id,
-        label:
-          (segment.kind ?? 'drive') === 'break'
-            ? `休憩 ${formatMinutes(Math.max(segment.endMinutes - segment.startMinutes, 0))}`
-            : `${segment.startTripId} → ${segment.endTripId}`,
+        label: (() => {
+          const kind = segment.kind ?? 'drive';
+          if (kind === 'break') {
+            return `休憩 ${formatMinutes(Math.max(segment.endMinutes - segment.startMinutes, 0))}`;
+          }
+          if (kind === 'deadhead') {
+            const minutes = segment.deadheadMinutes ?? Math.max(segment.endMinutes - segment.startMinutes, 0);
+            return `回送 ${formatMinutes(minutes)}`;
+          }
+          return `${segment.startTripId} → ${segment.endTripId}`;
+        })(),
         startMinutes: segment.startMinutes,
         endMinutes: segment.endMinutes,
-        color: (segment.kind ?? 'drive') === 'break' ? 'var(--muted)' : 'var(--primary)',
+        color: (() => {
+          const kind = segment.kind ?? 'drive';
+          if (kind === 'break') {
+            return 'var(--muted)';
+          }
+          if (kind === 'deadhead') {
+            return 'var(--secondary)';
+          }
+          return 'var(--primary)';
+        })(),
         meta: {
           dutyId: duty.id,
           segmentId: segment.id,
           blockId: segment.blockId,
           startTripId: segment.startTripId,
           endTripId: segment.endTripId,
-          kind: (segment.kind ?? 'drive') as 'drive' | 'break',
+          kind: (segment.kind ?? 'drive') as 'drive' | 'break' | 'deadhead',
           breakUntilTripId: segment.breakUntilTripId,
+          deadheadMinutes: segment.deadheadMinutes,
         } satisfies DutyTimelineMeta,
       }));
       return {

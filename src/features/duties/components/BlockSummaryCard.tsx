@@ -26,6 +26,8 @@ interface BlockSummaryCardProps {
   onStartTripChange: (value: string) => void;
   onEndTripChange: (value: string) => void;
   onAdd(): void;
+  onAddBreak?: () => void;
+  onAddDeadhead?: () => void;
   onMove(): void;
   onDelete(): void;
   onUndo(): void;
@@ -42,6 +44,8 @@ export function BlockSummaryCard({
   onStartTripChange,
   onEndTripChange,
   onAdd,
+  onAddBreak,
+  onAddDeadhead,
   onMove,
   onDelete,
   onUndo,
@@ -138,6 +142,16 @@ export function BlockSummaryCard({
           <Button data-testid="duty-add-segment" onClick={onAdd}>
             区間を追加
           </Button>
+          {onAddBreak ? (
+            <Button data-testid="duty-add-break" variant="secondary" onClick={onAddBreak}>
+              休憩を追加
+            </Button>
+          ) : null}
+          {onAddDeadhead ? (
+            <Button data-testid="duty-add-deadhead" variant="secondary" onClick={onAddDeadhead}>
+              回送を追加
+            </Button>
+          ) : null}
           <Button data-testid="duty-move-segment" variant="secondary" onClick={onMove}>
             区間を移動
           </Button>

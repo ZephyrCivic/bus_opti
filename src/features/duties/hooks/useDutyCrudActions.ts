@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { toast } from 'sonner';
 
 import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
+import type { DeadheadRule, Duty } from '@/types';
 import type { BlockTripSequenceIndex } from '@/services/duty/dutyState';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 import { toMinutes } from '@/services/duty/dutyMetrics';
@@ -35,18 +36,20 @@ interface DutyCrudParams {
   selectedDutyId: string | null;
   selectedSegment: SegmentSelection | null;
   defaultDriverId: string;
-  selectedDuty: { id: string } | null;
+  selectedDuty: Duty | null;
   setSelectedSegment: (selection: SegmentSelection | null) => void;
   setSelectedBlockId?: (blockId: string | null) => void;
   setStartTripId?: (tripId: string | null) => void;
   setEndTripId?: (tripId: string | null) => void;
   startTripId: string | null;
   endTripId: string | null;
+  deadheadRules: DeadheadRule[];
 }
 
 interface DutyCrudResult {
   handleAdd: () => void;
   handleAddBreak: () => void;
+  handleAddDeadhead: () => void;
   handleMove: () => void;
   handleDelete: () => void;
   handleAutoCorrect: () => void;
@@ -70,6 +73,7 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     setEndTripId,
     startTripId,
     endTripId,
+    deadheadRules,
   } = params;
 
   const selectionResult = useCallback(() => {
@@ -167,6 +171,91 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     }
   }, [dutyActions, selectedDuty, selectedDutyId, selectionResult, tripIndex, tripLookup]);
 
+  const handleAddDeadhead = useCallback(() => {
+    if (!selectedDutyId || !selectedDuty) {
+      toast.error('回送を追加する Duty を選択してください。');
+      return;
+    }
+    const resultRange = selectionResult();
+    if (!resultRange.ok) {
+      toast.error('回送の開始と終了となる便を選択してください。');
+      return;
+    }
+    const { blockId, startTripId: startId, endTripId: endId } = resultRange.selection;
+    if (startId === endId) {
+      return;
+    }
+
+    const previousSegment = selectedDuty.segments.find(
+      (segment) => (segment.kind ?? 'drive') !== 'break' && segment.endTripId === startId,
+    );
+    if (!previousSegment) {
+      toast.error('指定した開始便で終了する区間が見つかりません。');
+      return;
+    }
+    const nextSegment = selectedDuty.segments.find(
+      (segment) => (segment.kind ?? 'drive') !== 'break' && segment.startTripId === endId,
+    );
+    if (!nextSegment) {
+      toast.error('指定した終了便で開始する区間が見つかりません。');
+      return;
+    }
+
+    const blockTrips = tripLookup.get(blockId);
+    const startRow = blockTrips?.get(startId);
+    const endRow = blockTrips?.get(endId);
+    const fromStopId = startRow?.toStopId;
+    const toStopId = endRow?.fromStopId;
+    if (!fromStopId || !toStopId) {
+      toast.error('回送区間の停留所情報が不足しています。');
+      return;
+    }
+
+    const startMinutes = toMinutes(startRow?.tripEnd);
+    const endMinutes = toMinutes(endRow?.tripStart);
+    if (startMinutes === undefined || endMinutes === undefined) {
+      toast.error('便の時刻情報が不足しているため回送を設定できません。');
+      return;
+    }
+    const gapMinutes = endMinutes - startMinutes;
+    if (gapMinutes <= 0) {
+      toast.error('指定した便の間に回送を挿入できる余裕がありません。');
+      return;
+    }
+
+    const matchedRule = deadheadRules.find((rule) => rule.fromId === fromStopId && rule.toId === toStopId);
+    let deadheadMinutes = matchedRule?.travelTimeMin ?? gapMinutes;
+    if (!Number.isFinite(deadheadMinutes) || deadheadMinutes <= 0) {
+      deadheadMinutes = gapMinutes;
+    }
+    if (deadheadMinutes > gapMinutes) {
+      toast.info('deadhead_rules の所要時間がギャップを超えているため、ギャップ時間を使用します。');
+      deadheadMinutes = gapMinutes;
+    } else if (!matchedRule) {
+      toast.info('deadhead_rules.csv に該当ルールが見つからなかったため、ギャップ時間を使用します。');
+    }
+
+    try {
+      dutyActions.addSegment(
+        {
+          dutyId: selectedDutyId,
+          blockId,
+          startTripId: startId,
+          endTripId: endId,
+          kind: 'deadhead',
+          deadheadMinutes,
+          deadheadRuleId: matchedRule ? `${matchedRule.fromId}->${matchedRule.toId}` : undefined,
+          deadheadFromStopId: fromStopId,
+          deadheadToStopId: toStopId,
+        },
+        tripIndex,
+      );
+      toast.success(`回送（約${Math.round(deadheadMinutes)}分）を追加しました。`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '回送の追加に失敗しました。');
+    }
+  }, [deadheadRules, dutyActions, selectedDuty, selectedDutyId, selectionResult, tripIndex, tripLookup]);
+
   const handleMove = useCallback(() => {
     if (!selectedSegment) {
       toast.error('移動する区間を選んでください。');
@@ -174,15 +263,15 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
     }
     const currentSegment =
       selectedDuty?.segments.find((segment) => segment.id === selectedSegment.segmentId) ?? null;
-    if ((currentSegment?.kind ?? 'drive') === 'break') {
-      toast.error('休憩区間は移動できません。削除して再追加してください。');
+    if ((currentSegment?.kind ?? 'drive') === 'break' || (currentSegment?.kind ?? 'drive') === 'deadhead') {
+      toast.error('休憩や回送区間は移動できません。削除して再追加してください。');
       return;
     }
     const resultRange = selectionResult();
     let selection = resultRange.ok ? resultRange.selection : null;
     if (!resultRange.ok) {
       // 候補推定（承認ガード）
-      const candidates = inferBlockCandidates(startTripId, endTripId, tripIndex, selectedSegment.blockId);
+      const candidates = inferBlockCandidates(startTripId, endTripId, tripIndex, currentSegment?.blockId);
       if (candidates.length === 1 && startTripId && endTripId) {
         selection = { blockId: candidates[0]!, startTripId, endTripId };
       } else {
@@ -254,5 +343,6 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
   const handleUndo = useCallback(() => dutyActions.undo(), [dutyActions]);
   const handleRedo = useCallback(() => dutyActions.redo(), [dutyActions]);
 
-  return { handleAdd, handleAddBreak, handleMove, handleDelete, handleAutoCorrect, handleUndo, handleRedo };
+  return { handleAdd, handleAddBreak, handleAddDeadhead, handleMove, handleDelete, handleAutoCorrect, handleUndo, handleRedo };
 }
+

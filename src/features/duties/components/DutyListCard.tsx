@@ -88,9 +88,21 @@ export function DutyListCard({
                         onSelectSegment(duty, segment);
                       }}
                     >
-                      <div className="flex justify-between">
+                      <div className="flex items-center justify-between">
                         <span>{segment.blockId}</span>
-                        <span>{segment.id}</span>
+                        <span className="flex items-center gap-2">
+                          {segment.kind === 'break' ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              休憩
+                            </Badge>
+                          ) : null}
+                          {segment.kind === 'deadhead' ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              回送
+                            </Badge>
+                          ) : null}
+                          <span>{segment.id}</span>
+                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {segment.startTripId} → {segment.endTripId}

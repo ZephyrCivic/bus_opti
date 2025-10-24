@@ -182,6 +182,8 @@ export default function DutiesView(): JSX.Element {
 
   const {
     handleAdd,
+    handleAddBreak,
+    handleAddDeadhead,
     handleMove,
     handleDelete,
     handleAutoCorrect,
@@ -202,6 +204,7 @@ export default function DutiesView(): JSX.Element {
     setEndTripId,
     startTripId,
     endTripId,
+    deadheadRules: manual.deadheadRules,
   });
 
   const { handleImportFile, handleExport, handleImportClick } = useDutyCsvHandlers({
@@ -312,6 +315,7 @@ export default function DutiesView(): JSX.Element {
         onExport={handleExport}
         onAdd={handleAdd}
         onAddBreak={handleAddBreak}
+        onAddDeadhead={handleAddDeadhead}
         onMove={handleMove}
         onDelete={handleDelete}
         onAutoCorrect={handleAutoCorrect}
@@ -343,7 +347,8 @@ export default function DutiesView(): JSX.Element {
             onStartTripChange={(value) => setStartTripId(value)}
             onEndTripChange={(value) => setEndTripId(value)}
             onAdd={handleAdd}
-        onAddBreak={handleAddBreak}
+            onAddBreak={handleAddBreak}
+            onAddDeadhead={handleAddDeadhead}
             onMove={handleMove}
             onDelete={handleDelete}
             onUndo={handleUndo}

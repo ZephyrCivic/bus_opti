@@ -175,6 +175,7 @@ test('buildExplorerDataset aggregates manual overlay duty impacts', () => {
       { fromId: 'RELIEF_1', toId: 'DEPOT_MAIN', mode: 'bus', travelTimeMin: 15 },
     ],
     drivers: [{ driverId: 'DRV1', name: 'Driver One' }],
+    laborRules: [],
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
 

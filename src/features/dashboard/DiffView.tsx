@@ -179,6 +179,24 @@ export default function DiffView(): JSX.Element {
     toast.success('履歴データをダウンロードしました。');
   };
 
+  if (isStepOne) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>差分ビュー（Step1では無効）</CardTitle>
+            <CardDescription>
+              Step1 は推奨/警告/KPIなどの計算を行わないため、このビューは無効化しています。保存と履歴は Import/Explorer/Duties から実施してください。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Step2 以降で有効になります。</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>

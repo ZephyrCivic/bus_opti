@@ -68,6 +68,61 @@ test('addDutySegment refuses overlaps within the same block', () => {
   );
 });
 
+test('addDutySegment allows inserting deadhead segments with metadata', () => {
+  const index = createIndexFromSequences({ BLOCK_001: ['T1', 'T2', 'T3'] });
+  let state = addDutySegment(
+    createDutyEditState(),
+    { blockId: 'BLOCK_001', startTripId: 'T1', endTripId: 'T1' },
+    index,
+  );
+  state = addDutySegment(
+    state,
+    { dutyId: 'DUTY_001', blockId: 'BLOCK_001', startTripId: 'T2', endTripId: 'T2' },
+    index,
+  );
+
+  const withDeadhead = addDutySegment(
+    state,
+    {
+      dutyId: 'DUTY_001',
+      blockId: 'BLOCK_001',
+      startTripId: 'T1',
+      endTripId: 'T2',
+      kind: 'deadhead',
+      deadheadMinutes: 5,
+      deadheadRuleId: 'STOP_A->STOP_B',
+      deadheadFromStopId: 'STOP_A',
+      deadheadToStopId: 'STOP_B',
+    },
+    index,
+  );
+
+  const duty = withDeadhead.duties[0];
+  assert.ok(duty);
+  assert.equal(duty.segments.length, 3);
+  const deadhead = duty.segments.find((segment) => segment.kind === 'deadhead');
+  assert.ok(deadhead);
+  assert.equal(deadhead?.deadheadMinutes, 5);
+  assert.equal(deadhead?.deadheadRuleId, 'STOP_A->STOP_B');
+
+  assert.throws(
+    () =>
+      addDutySegment(
+        withDeadhead,
+        {
+          dutyId: 'DUTY_001',
+          blockId: 'BLOCK_001',
+          startTripId: 'T1',
+          endTripId: 'T2',
+          kind: 'deadhead',
+          deadheadMinutes: 5,
+        },
+        index,
+      ),
+    /回送が登録されています/,
+  );
+});
+
 test('moveDutySegment keeps ordering and updates sequences', () => {
   const index = createIndexFromSequences({ BLOCK_001: ['T1', 'T2', 'T3', 'T4'] });
   const state = addDutySegment(

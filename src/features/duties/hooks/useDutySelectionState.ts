@@ -9,6 +9,7 @@ import type { Duty, DutyEditState, DutySegment, ManualInputs } from '@/types';
 import type { BlockPlan } from '@/services/blocks/blockBuilder';
 import type { BlockTripLookup, DutyWarningSummary } from '@/services/duty/dutyMetrics';
 import { computeDutyMetrics, summarizeDutyWarnings } from '@/services/duty/dutyMetrics';
+import { isStepOne } from '@/config/appStep';
 
 export interface SegmentSelection {
   dutyId: string;
@@ -97,6 +98,15 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
   }, [dutyState.duties, selectedDutyId, selectedSegment]);
 
   const dutyMetricsMap = useMemo(() => {
+    if (isStepOne) {
+      return new Map<
+        string,
+        {
+          metrics: ReturnType<typeof computeDutyMetrics>;
+          warnings: DutyWarningSummary;
+        }
+      >();
+    }
     const map = new Map<
       string,
       {
@@ -115,6 +125,7 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
   }, [dutyState.duties, tripLookup, dutyState.settings]);
 
   const warningTotals = useMemo(() => {
+    if (isStepOne) return { hard: 0, soft: 0 };
     let hard = 0;
     let soft = 0;
     for (const { warnings } of dutyMetricsMap.values()) {
@@ -129,7 +140,7 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
     [dutyState.duties, selectedDutyId],
   );
 
-  const selectedMetrics = selectedDuty ? dutyMetricsMap.get(selectedDuty.id)?.metrics : undefined;
+  const selectedMetrics = isStepOne ? undefined : selectedDuty ? dutyMetricsMap.get(selectedDuty.id)?.metrics : undefined;
 
   const selectedSegmentDetail = useMemo(() => {
     if (!selectedSegment) {
@@ -229,7 +240,9 @@ export function useDutySelectionState(params: DutySelectionParams): DutySelectio
     selectedDuty,
     selectedSegmentDetail,
     selectedMetrics,
-    dutyWarnings: new Map([...dutyMetricsMap.entries()].map(([key, value]) => [key, value.warnings])),
+    dutyWarnings: isStepOne
+      ? new Map()
+      : new Map([...dutyMetricsMap.entries()].map(([key, value]) => [key, value.warnings])),
     warningTotals,
     filteredTrips,
     segmentCount,

@@ -10,6 +10,10 @@ export interface SegmentRangeInput {
   endTripId: string;
   kind?: DutySegmentKind;
   breakUntilTripId?: string;
+  deadheadMinutes?: number;
+  deadheadRuleId?: string;
+  deadheadFromStopId?: string;
+  deadheadToStopId?: string;
 }
 
 export interface AddDutySegmentInput extends SegmentRangeInput {

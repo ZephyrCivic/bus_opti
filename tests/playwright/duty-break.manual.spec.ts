@@ -10,6 +10,8 @@ test.describe('S1: Duty 休憩操作', () => {
 
   test('休憩を挿入してすぐに削除できる', async ({ page }) => {
     test.setTimeout(45_000);
+    page.on('console', (msg) => console.log('[console]', msg.type(), msg.text()));
+    page.on('pageerror', (error) => console.log('[pageerror]', error.message));
     await importSampleGtfs(page);
     await waitForDutyTestHooks(page);
 

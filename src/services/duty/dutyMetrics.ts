@@ -137,6 +137,30 @@ export function enrichSegmentTiming(segment: DutySegment, lookup: BlockTripLooku
     };
   }
 
+  if (kind === 'deadhead') {
+    const startTrip = block?.get(segment.startTripId);
+    const resumeTrip = block?.get(segment.endTripId);
+    const startMinutes = toMinutes(startTrip?.tripEnd ?? startTrip?.tripStart);
+    let endMinutes: number | undefined;
+    if (typeof segment.deadheadMinutes === 'number' && startMinutes !== undefined) {
+      endMinutes = startMinutes + segment.deadheadMinutes;
+    } else {
+      endMinutes = toMinutes(resumeTrip?.tripStart);
+    }
+    const normalizedMinutes =
+      typeof segment.deadheadMinutes === 'number'
+        ? segment.deadheadMinutes
+        : startMinutes !== undefined && endMinutes !== undefined
+          ? Math.max(endMinutes - startMinutes, 0)
+          : undefined;
+    return {
+      ...segment,
+      deadheadMinutes: normalizedMinutes,
+      startMinutes,
+      endMinutes,
+    };
+  }
+
   const startTrip = block?.get(segment.startTripId);
   const endTrip = block?.get(segment.endTripId);
   return {

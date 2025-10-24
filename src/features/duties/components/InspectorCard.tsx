@@ -211,13 +211,22 @@ function SegmentDetails({
   selection: { dutyId: string; segmentId: string } | null;
   segment: DutySegment;
 }): JSX.Element {
+  const kind = segment.kind ?? 'drive';
+  const kindLabel = kind === 'break' ? '休憩' : kind === 'deadhead' ? '回送' : '運行';
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm">
       <h4 className="font-semibold">選択中の区間</h4>
       <DetailRow label="乗務ID" value={selection?.dutyId ?? '-'} />
       <DetailRow label="区間ID" value={segment.id} />
       <DetailRow label="ブロックID" value={segment.blockId} />
+      <DetailRow label="区間種別" value={kindLabel} />
       <DetailRow label="便区間" value={`${segment.startTripId} → ${segment.endTripId}`} />
+      {kind === 'deadhead' && typeof segment.deadheadMinutes === 'number' ? (
+        <DetailRow label="回送所要" value={`${Math.round(segment.deadheadMinutes)}分`} />
+      ) : null}
+      {kind === 'deadhead' && segment.deadheadRuleId ? (
+        <DetailRow label="回送ルール" value={segment.deadheadRuleId} />
+      ) : null}
     </div>
   );
 }

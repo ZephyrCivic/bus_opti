@@ -53,7 +53,7 @@ function makeDuty(segmentTuples: Array<[string, string]>): Duty {
   return {
     id: 'DUTY_001',
     segments: segmentTuples.map(([startTripId, endTripId], index) => ({
-      id: `SEG_${String(index + 1).padStart(3, '0')}`,
+      id: 'SEG_' + String(index + 1).padStart(3, '0'),
       blockId: 'BLOCK_001',
       startTripId,
       endTripId,
@@ -130,6 +130,45 @@ test('computeDutyMetrics flags insufficient break duration', () => {
   const metrics = computeDutyMetrics(duty, lookup, DEFAULT_DUTY_SETTINGS);
   assert.equal(metrics.warnings.insufficientBreak, true);
   assert.equal(formatMinutes(metrics.shortestBreakMinutes ?? undefined), '15分');
+});
+
+test('computeDutyMetrics treats deadhead segments as連続運転', () => {
+  const duty: Duty = {
+    id: 'DUTY_DEADHEAD',
+    segments: [
+      {
+        id: 'SEG_001',
+        blockId: 'BLOCK_001',
+        startTripId: 'TRIP_A',
+        endTripId: 'TRIP_A',
+        startSequence: 1,
+        endSequence: 1,
+      },
+      {
+        id: 'SEG_002',
+        blockId: 'BLOCK_001',
+        startTripId: 'TRIP_A',
+        endTripId: 'TRIP_B',
+        startSequence: 2,
+        endSequence: 3,
+        kind: 'deadhead',
+        deadheadMinutes: 15,
+      },
+      {
+        id: 'SEG_003',
+        blockId: 'BLOCK_001',
+        startTripId: 'TRIP_B',
+        endTripId: 'TRIP_B',
+        startSequence: 4,
+        endSequence: 4,
+      },
+    ],
+  };
+
+  const metrics = computeDutyMetrics(duty, lookup, DEFAULT_DUTY_SETTINGS);
+  assert.equal(formatMinutes(metrics.longestContinuousMinutes), '1時間30分');
+  assert.equal(formatMinutes(metrics.shortestBreakMinutes ?? undefined), '-');
+  assert.equal(metrics.warnings.insufficientBreak, false);
 });
 
 test('computeDutyMetrics flags total span beyond daily limit', () => {

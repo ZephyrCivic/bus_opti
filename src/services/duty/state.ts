@@ -75,6 +75,31 @@ export function addDutySegment(
     }
   }
 
+  if (segmentKind === 'deadhead') {
+    if (!input.dutyId || !targetDuty) {
+      throw new Error('回送を追加する Duty を選択してください。');
+    }
+    if (input.startTripId === input.endTripId) {
+      throw new Error('回送には開始・終了で異なる便を指定してください。');
+    }
+    if (typeof input.deadheadMinutes !== 'number' || !Number.isFinite(input.deadheadMinutes) || input.deadheadMinutes <= 0) {
+      throw new Error('回送の所要時間が正しく設定されていません。');
+    }
+    const exists = targetDuty.segments.some((segment) => {
+      if ((segment.kind ?? 'drive') !== 'deadhead') {
+        return false;
+      }
+      return (
+        segment.blockId === input.blockId &&
+        segment.startTripId === input.startTripId &&
+        segment.endTripId === input.endTripId
+      );
+    });
+    if (exists) {
+      throw new Error('同じ位置に既に回送が登録されています。');
+    }
+  }
+
   const { startSequence, endSequence } = resolveRange(input, tripIndex);
   const segment = createSegment(targetDuty, input, startSequence, endSequence, breakEndTripId);
 
@@ -113,8 +138,9 @@ export function moveDutySegment(
   if (!segment) {
     throw new Error(`segment ${input.segmentId} が見つかりません。`);
   }
-  if ((segment.kind ?? 'drive') === 'break') {
-    throw new Error('休憩区間は移動できません。削除してから再追加してください。');
+  const segmentKind = segment.kind ?? 'drive';
+  if (segmentKind === 'break' || segmentKind === 'deadhead') {
+    throw new Error('休憩や回送区間は移動できません。削除してから再追加してください。');
   }
 
   ensureBlockConsistency(duty, input.blockId);
@@ -239,6 +265,10 @@ function createSegment(
     startSequence,
     endSequence,
     breakUntilTripId: kind === 'break' ? breakTripId : undefined,
+    deadheadMinutes: kind === 'deadhead' ? input.deadheadMinutes : undefined,
+    deadheadRuleId: kind === 'deadhead' ? input.deadheadRuleId : undefined,
+    deadheadFromStopId: kind === 'deadhead' ? input.deadheadFromStopId : undefined,
+    deadheadToStopId: kind === 'deadhead' ? input.deadheadToStopId : undefined,
   };
 }
 

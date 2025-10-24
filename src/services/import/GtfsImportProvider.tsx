@@ -78,6 +78,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     reliefPoints: [],
     deadheadRules: [],
     drivers: [],
+    laborRules: [],
     vehicleTypes: [],
     vehicles: [],
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },

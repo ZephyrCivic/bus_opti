@@ -14,14 +14,17 @@ import {
   toSavedProject,
 } from '@/services/import/gtfsPersistence';
 import { useExportConfirmation, type ExportConfirmationSummary } from '@/components/export/ExportConfirmationProvider';
+import { addSaveHistory } from '@/services/dashboard/saveHistory';
 import type { GtfsImportResult } from '@/services/import/gtfsParser';
 import type { ManualInputs } from '@/types';
 import { recordAuditEvent } from '@/services/audit/auditLog';
+import { isStepOne } from '@/config/appStep';
 
 interface UseDiffSaveActionsOptions {
   summary: ExportConfirmationSummary;
   result?: GtfsImportResult;
   manual: ManualInputs;
+  onAfterSave?: () => void;
 }
 
 interface UseDiffSaveActions {
@@ -29,7 +32,12 @@ interface UseDiffSaveActions {
   handleSaveProject: () => void;
 }
 
-export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActionsOptions): UseDiffSaveActions {
+export function useDiffSaveActions({
+  summary,
+  result,
+  manual,
+  onAfterSave,
+}: UseDiffSaveActionsOptions): UseDiffSaveActions {
   const { requestConfirmation } = useExportConfirmation();
 
   const handleSaveImportResult = useCallback(() => {
@@ -40,7 +48,9 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
     const fileName = defaultFileName(result.sourceName);
     requestConfirmation({
       title: '取込結果を保存しますか？',
-      description: '現在の警告件数と未割当状況を確認してから保存を続行できます。',
+      description: isStepOne
+        ? 'Step1 では非ブロッキングでいつでも保存できます。'
+        : '現在の警告件数と未割当状況を確認してから保存を続行できます。',
       summary,
       context: { entity: 'saved-result', exportType: 'saved-json', fileName },
       onConfirm: async () => {
@@ -53,6 +63,12 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
             warnings: { hard: summary.hardWarnings, soft: summary.softWarnings },
             format: 'json',
           });
+          addSaveHistory({
+            type: 'saved-result',
+            fileName: latestFileName,
+            warnings: { hard: summary.hardWarnings, soft: summary.softWarnings },
+          });
+          onAfterSave?.();
           toast.success('取込結果JSONを保存しました。');
         } catch (error) {
           const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
@@ -61,7 +77,7 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
         }
       },
     });
-  }, [requestConfirmation, result, summary]);
+  }, [onAfterSave, requestConfirmation, result, summary]);
 
   const handleSaveProject = useCallback(() => {
     if (!result) {
@@ -71,7 +87,9 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
     const projectFileName = defaultFileName(result.sourceName).replace('gtfs-import', 'project');
     requestConfirmation({
       title: 'プロジェクト JSON を保存しますか？',
-      description: '警告件数と未割当状況を確認してから保存を続行してください。',
+      description: isStepOne
+        ? 'Step1 では非ブロッキングでいつでも保存できます。'
+        : '警告件数と未割当状況を確認してから保存を続行してください。',
       summary,
       context: { entity: 'project', exportType: 'project-json', fileName: projectFileName },
       onConfirm: async () => {
@@ -84,6 +102,12 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
             warnings: { hard: summary.hardWarnings, soft: summary.softWarnings },
             format: 'json',
           });
+          addSaveHistory({
+            type: 'project',
+            fileName: latestProjectFileName,
+            warnings: { hard: summary.hardWarnings, soft: summary.softWarnings },
+          });
+          onAfterSave?.();
           toast.success('プロジェクトJSONを保存しました。');
         } catch (error) {
           const message = error instanceof Error ? error.message : '保存処理で予期しないエラーが発生しました。';
@@ -92,7 +116,7 @@ export function useDiffSaveActions({ summary, result, manual }: UseDiffSaveActio
         }
       },
     });
-  }, [manual, requestConfirmation, result, summary]);
+  }, [manual, onAfterSave, requestConfirmation, result, summary]);
 
   return {
     handleSaveImportResult,

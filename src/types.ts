@@ -80,7 +80,7 @@ export interface ScheduleState {
   dashboard: DashboardData;
 }
 
-export type DutySegmentKind = 'drive' | 'break';
+export type DutySegmentKind = 'drive' | 'break' | 'deadhead';
 
 export interface DutySegment {
   id: string;
@@ -99,6 +99,22 @@ export interface DutySegment {
    * CSV との往復のため endTripId と同じ値を入れる。
    */
   breakUntilTripId?: string;
+  /**
+   * kind === 'deadhead' の場合、所要時間（分）を保持する。未指定時は gap を利用。
+   */
+  deadheadMinutes?: number;
+  /**
+   * 回送の参照元ルール識別子。from→to など任意の文字列。
+   */
+  deadheadRuleId?: string;
+  /**
+   * 回送出発地点の stop/depot/relief ID。
+   */
+  deadheadFromStopId?: string;
+  /**
+   * 回送到着地点の stop/depot/relief ID。
+   */
+  deadheadToStopId?: string;
 }
 
 export interface Duty {
@@ -158,6 +174,18 @@ export interface ManualDriver {
   name: string;
 }
 
+export interface LaborRule {
+  driverId: string;
+  maxContinuousDriveMin?: number;
+  minBreakMin?: number;
+  maxDutySpanMin?: number;
+  maxWorkMin?: number;
+  nightWindowStart?: string;
+  nightWindowEnd?: string;
+  qualifications?: string[];
+  affiliation?: string;
+}
+
 export interface ManualVehicleType {
   typeId: string;
   name?: string;
@@ -190,6 +218,7 @@ export interface ManualInputs {
   reliefPoints: ReliefPoint[];
   deadheadRules: DeadheadRule[];
   drivers: ManualDriver[];
+  laborRules: LaborRule[];
   vehicleTypes: ManualVehicleType[];
   vehicles: ManualVehicle[];
   linking: LinkingSettings;
