@@ -54,6 +54,7 @@ export default function BlocksView(): JSX.Element {
   const [toBlockId, setToBlockId] = useState<string>('');
   const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [timelineAxis, setTimelineAxis] = useState<TimelineAxisMode>('block');
+  const [globalDropActive, setGlobalDropActive] = useState(false);
   const blockMeta = manual.blockMeta ?? {};
   const vehicleTypeOptions = useMemo(
     () =>
@@ -367,7 +368,55 @@ useEffect(() => {
   }, [visibleSummaries, overlapMinutesByBlock, blockMeta, timelineAxis]);
 
   return (
-    <div className="space-y-6">
+    <div
+      className="relative space-y-6"
+      onDragOver={(event) => {
+        // 未割当便のドラッグ時のみドロップを許可
+        const types = Array.from(event.dataTransfer?.types ?? []);
+        const isTripDrag = types.includes('application/x-trip-id') || types.includes('text/plain');
+        if (isTripDrag) {
+          event.preventDefault();
+          if (!globalDropActive) setGlobalDropActive(true);
+        }
+      }}
+      onDragLeave={() => {
+        if (globalDropActive) setGlobalDropActive(false);
+      }}
+      onDrop={(event) => {
+        const tripId =
+          event.dataTransfer?.getData('application/x-trip-id') ?? event.dataTransfer?.getData('text/plain');
+        if (tripId) {
+          event.preventDefault();
+          setGlobalDropActive(false);
+          // 未割当便→新規行路の作成を実行
+          void (async () => {
+            try {
+              const seed = await buildSingleTripBlockSeed(result, tripId);
+              if (!seed) {
+                toast.error(`trip_id=${tripId} の行路シードを生成できませんでした。`);
+                return;
+              }
+              const created = manualPlanState.createBlockFromTrip(seed);
+              if (created) {
+                toast.success(`新しい行路 ${created.blockId} を作成しました。`);
+              } else {
+                toast.error('新しい行路を作成できませんでした。割当済みの可能性があります。');
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : '行路の作成に失敗しました。';
+              toast.error(message);
+            }
+          })();
+        }
+      }}
+    >
+      {globalDropActive ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="mx-4 w-full max-w-3xl rounded-xl border-4 border-dashed border-primary/60 bg-primary/5 p-6 text-center text-sm text-primary">
+            未割当の便をここにドロップすると、新しい行路を作成します。
+          </div>
+        </div>
+      ) : null}
       <div>
         <h2 className="text-lg font-semibold">行路編集</h2>
         <p className="text-sm text-muted-foreground">
@@ -381,6 +430,8 @@ useEffect(() => {
             <CardTitle>手動連結（最小UI）</CardTitle>
             <CardDescription>
               Step1 ではブロックを手作業で連結します。候補提示や自動判定は行わず、連結/取り消しのみ提供します。
+              タイムライン上でのドラッグ＆ドロップによる連結は非対応です（未割当便→新規行路の作成のみ D&amp;D 対応）。
+              画面全体がドロップターゲットになっているため、未割当便の行をそのままタイムライン領域へドロップしても作成できます。
             </CardDescription>
           </div>
           <Badge variant="outline">連結数: {manualPlanState.connections.length}</Badge>

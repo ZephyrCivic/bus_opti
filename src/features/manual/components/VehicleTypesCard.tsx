@@ -65,7 +65,7 @@ export function VehicleTypesCard({ rows, onAdd, onDelete, onImport, onExport }: 
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>車両タイプ（Vehicle Types）</CardTitle>
+          <CardTitle>車両タイプ</CardTitle>
           <CardDescription>
             `manual-vehicle_types.csv`（type_id, name, wheelchair_accessible, low_floor, capacity_seated, capacity_total, tags）を管理します。
           </CardDescription>

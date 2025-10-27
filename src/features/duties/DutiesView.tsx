@@ -316,7 +316,18 @@ export default function DutiesView(): JSX.Element {
         </p>
       </div>
 
-      <DutyTimelineCard
+      {dutyState.duties.length === 0 ? (
+        <div className="rounded-md border border-border/60 bg-card/60 p-3 text-sm">
+          <p className="font-medium">最初の操作ガイド</p>
+          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+            <li>下の「未割当区間」から範囲を選び、「区間を追加」で Duty を作成します。</li>
+            <li>Duty タイムライン上のバーはドラッグで移動、両端のハンドルで長さ調整ができます。</li>
+            <li>ブロック同士の連結は Vehicle 面（行路編集）で From/To を選んで実行します（Step1 ではドラッグ連結は非対応）。</li>
+          </ul>
+        </div>
+      ) : null}
+
+          <DutyTimelineCard
         ref={fileInputRef}
         heading="タイムライン編集"
         description="ブロックをドラッグ＆ドロップして Duty を構成します。必要に応じて CSV の入出力も実行できます。"

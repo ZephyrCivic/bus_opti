@@ -26,7 +26,7 @@ export function DriversCard({ rows, onAdd, onDelete, onImport, onExport }: Drive
     <Card data-testid="manual-drivers-card">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>運転士（Drivers）</CardTitle>
+          <CardTitle>運転士</CardTitle>
           <CardDescription>`drivers.csv`（driver_id,name）を取り込んで乗務割当の候補に利用します。</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">

@@ -83,7 +83,7 @@ export function VehiclesCard({
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>車両（Vehicles）</CardTitle>
+          <CardTitle>車両</CardTitle>
           <CardDescription>
             `manual-vehicles.csv`（vehicle_id, vehicle_type, depot_id, seats, wheelchair_accessible, low_floor, notes）を管理します。
           </CardDescription>

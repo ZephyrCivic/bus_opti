@@ -332,7 +332,7 @@ export default function ImportView(): JSX.Element {
             <div>
               <CardTitle>取込サマリー</CardTitle>
               <CardDescription>
-                {new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(result.importedAt)} ／ Source: {result.sourceName}
+                {new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short' }).format(result.importedAt)} ／ ファイル名: {result.sourceName}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
