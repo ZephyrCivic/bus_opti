@@ -7,7 +7,7 @@ import { useCallback, useMemo, useRef, useEffect } from 'react';
 import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
 import { parseTimeLabel } from '@/features/timeline/timeScale';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
-import type { Duty, DutySegment } from '@/types';
+import type { Duty, DutySegment, BlockMetaEntry } from '@/types';
 
 import { BlockSummaryCard } from './components/BlockSummaryCard';
 import { DutyListCard } from './components/DutyListCard';
@@ -31,6 +31,7 @@ import { isStepOne } from '@/config/appStep';
 
 export default function DutiesView(): JSX.Element {
   const { result, dutyState, dutyActions, manual } = useGtfsImport();
+  const blockMeta = manual.blockMeta ?? {};
   const { plan, tripIndex, tripLookup, blockTripMinutes } = useDutyPlan({ result, manual });
   const unassignedRanges = useMemo(
     () => computeUnassignedRanges(plan, dutyState.duties),
@@ -71,6 +72,8 @@ export default function DutiesView(): JSX.Element {
     return plan.summaries
       .map((summary) => {
         const trips = blockTripMinutes.get(summary.blockId) ?? [];
+        const meta: BlockMetaEntry | undefined = blockMeta[summary.blockId];
+        const vehicleTypeLabel = meta?.vehicleTypeId?.trim();
 
         let segments: TimelineSegment[];
         if (trips.length > 0) {
@@ -103,12 +106,18 @@ export default function DutiesView(): JSX.Element {
         const lane: TimelineLane = {
           id: summary.blockId,
           label: `${summary.blockId}（${summary.tripCount}便）`,
+          tag: vehicleTypeLabel
+            ? {
+                label: vehicleTypeLabel,
+                title: `想定車両タイプ: ${vehicleTypeLabel}`,
+              }
+            : undefined,
           segments,
         };
         return lane;
       })
       .filter((lane): lane is TimelineLane => lane !== null);
-  }, [blockTripMinutes, plan.summaries]);
+  }, [blockTripMinutes, plan.summaries, blockMeta]);
 
   if (typeof window !== 'undefined') {
     const testWindow = window as typeof window & {
@@ -228,7 +237,8 @@ export default function DutiesView(): JSX.Element {
     () =>
       buildDutiesCsv(dutyState.duties, {
         dutySettings: dutyState.settings,
-        tripLookup,
+        // Step1 では警告計算を行わないため tripLookup を渡さない
+        tripLookup: isStepOne ? undefined : tripLookup,
         generatedAt: new Date(previewTimestamp),
       }),
     [dutyState.duties, dutyState.settings, tripLookup, previewTimestamp],

@@ -1,3 +1,4 @@
-type_id,name,wheelchair_accessible,low_floor,capacity_seated,capacity_total,tags
-LARGE,大型40人乗り,1,0,45,70,高速,都市間
-MID,中型,0,1,28,45,コミュニティ
+vehicle_type_id,size,label
+S,Small,小型
+M,Medium,中型
+L,Large,大型

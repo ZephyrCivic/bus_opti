@@ -22,6 +22,9 @@ const manual: ManualInputs = {
   ],
   drivers: [{ driverId: 'DRIVER_A', name: 'Alice' }],
   laborRules: [],
+  vehicleTypes: [],
+  vehicles: [],
+  blockMeta: {},
   linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
 };
 

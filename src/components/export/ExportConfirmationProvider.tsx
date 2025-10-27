@@ -4,31 +4,39 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { isStepOne } from '@/config/appStep';
+import { useStepOneExportCounts } from './useStepOneExportCounts';
 import { Badge } from '@/components/ui/badge';
-import { ensureWorkflowSession, completeWorkflowSave, type WorkflowSummary, type WorkflowSaveContext } from '@/services/workflow/workflowTelemetry';
-import { recordExportConfirmationEvent } from '@/services/audit/auditLog';
 
 export interface ExportSummaryMetric {
   label: string;
   value: string;
 }
 
-export interface ExportConfirmationSummary extends WorkflowSummary {
+export interface ExportConfirmationSummary {
+  hardWarnings: number;
+  softWarnings: number;
+  unassigned: number;
   coveragePercentage?: number;
   fairnessScore?: number;
   metrics?: ExportSummaryMetric[];
+}
+
+export interface ExportConfirmationContextInfo {
+  entity: string;
+  exportType: string;
+  fileName?: string;
 }
 
 export interface ExportConfirmationRequest {
   title: string;
   description?: string;
   summary: ExportConfirmationSummary;
-  context: WorkflowSaveContext & { entity: string };
+  context: ExportConfirmationContextInfo;
   onConfirm: () => Promise<void> | void;
   onCancel?: () => void;
 }
@@ -42,6 +50,7 @@ const ExportConfirmationContext = createContext<ExportConfirmationContextValue |
 export function ExportConfirmationProvider({ children }: PropsWithChildren): JSX.Element {
   const [current, setCurrent] = useState<ExportConfirmationRequest | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const stepOneCounts = useStepOneExportCounts();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -76,14 +85,6 @@ export function ExportConfirmationProvider({ children }: PropsWithChildren): JSX
       return;
     }
     current.onCancel?.();
-    recordExportConfirmationEvent({
-      entity: current.context.entity,
-      exportType: current.context.exportType,
-      outcome: 'cancel',
-      hardWarnings: current.summary.hardWarnings,
-      softWarnings: current.summary.softWarnings,
-      unassigned: current.summary.unassigned,
-    });
     handleClose();
   }, [current, handleClose]);
 
@@ -94,15 +95,6 @@ export function ExportConfirmationProvider({ children }: PropsWithChildren): JSX
     setIsProcessing(true);
     try {
       await current.onConfirm();
-      completeWorkflowSave(current.summary, current.context);
-      recordExportConfirmationEvent({
-        entity: current.context.entity,
-        exportType: current.context.exportType,
-        outcome: 'proceed',
-        hardWarnings: current.summary.hardWarnings,
-        softWarnings: current.summary.softWarnings,
-        unassigned: current.summary.unassigned,
-      });
       handleClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : '出力処理に失敗しました。';
@@ -112,7 +104,6 @@ export function ExportConfirmationProvider({ children }: PropsWithChildren): JSX
   }, [current, handleClose, isProcessing]);
 
   const requestConfirmation = useCallback((request: ExportConfirmationRequest) => {
-    ensureWorkflowSession(toWorkflowSummary(request.summary));
     setCurrent(request);
   }, []);
 
@@ -149,30 +140,36 @@ export function ExportConfirmationProvider({ children }: PropsWithChildren): JSX
               </button>
             </header>
             <div className="space-y-4 pt-4">
-              {isStepOne ? (
-                <p className="text-sm text-muted-foreground">Step1 では警告やKPIの表示・計算は行いません。いつでも保存できます。</p>
-              ) : (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <SummaryPill icon={AlertTriangle} label="重大" value={current.summary.hardWarnings} tone="destructive" />
-                    <SummaryPill icon={AlertTriangle} label="注意" value={current.summary.softWarnings} tone="warning" />
-                    <SummaryPill icon={CheckCircle2} label="未割当" value={current.summary.unassigned} tone="neutral" />
-                  </div>
-                  {current.summary.metrics && current.summary.metrics.length > 0 ? (
-                    <div className="space-y-2 rounded-md border border-dashed border-border/60 bg-card/40 p-4">
-                      <p className="text-xs font-semibold text-muted-foreground">主要指標</p>
-                      <ul className="grid gap-2 text-sm sm:grid-cols-2">
-                        {current.summary.metrics.map((metric) => (
-                          <li key={metric.label} className="flex items-center justify-between rounded-md bg-background/80 px-3 py-2">
-                            <span className="text-muted-foreground">{metric.label}</span>
-                            <span className="font-medium">{metric.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </>
-              )}
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Step1 では警告や KPI の計算は行わず、いつでも出力できます。以下の未割当件数は参考情報として表示されます（出力はブロックされません）。
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StepOneCountCard
+                    label="車両未割当の行路"
+                    count={stepOneCounts.unassignedVehicleBlocks}
+                    total={stepOneCounts.totalBlocks}
+                    unit="行路"
+                  />
+                  <StepOneCountCard
+                    label="運転士未割当の交番"
+                    count={stepOneCounts.unassignedDrivers}
+                    total={stepOneCounts.totalDuties}
+                    unit="交番"
+                  />
+                  <StepOneCountCard
+                    label="未配置の便"
+                    count={stepOneCounts.unassignedTrips}
+                    total={stepOneCounts.totalTrips}
+                    unit="便"
+                  />
+                </div>
+                {!isStepOne ? (
+                  <p className="text-xs text-muted-foreground">
+                    将来の Step2/Step3 では警告や KPI をここに復帰させる予定です。
+                  </p>
+                ) : null}
+              </div>
             </div>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button data-testid="export-confirm-cancel" variant="ghost" onClick={handleCancel} disabled={isProcessing}>
@@ -204,35 +201,24 @@ export function useExportConfirmation(): ExportConfirmationContextValue {
   return value;
 }
 
-function toWorkflowSummary(summary: ExportConfirmationSummary): WorkflowSummary {
-  return {
-    hardWarnings: summary.hardWarnings,
-    softWarnings: summary.softWarnings,
-    unassigned: summary.unassigned,
-    coveragePercentage: summary.coveragePercentage,
-    fairnessScore: summary.fairnessScore,
-  };
-}
-
-function SummaryPill({
-  icon: Icon,
+function StepOneCountCard({
   label,
-  value,
-  tone,
+  count,
+  total,
+  unit,
 }: {
-  icon: typeof AlertTriangle;
   label: string;
-  value: number;
-  tone: 'destructive' | 'warning' | 'neutral';
+  count: number;
+  total: number;
+  unit: string;
 }): JSX.Element {
-  const variant = tone === 'destructive' ? 'destructive' : tone === 'warning' ? 'secondary' : 'outline';
   return (
-    <div className="flex items-center justify-between rounded-md border border-border/60 bg-card/60 px-4 py-3">
-      <div className="flex items-center gap-2 text-sm">
-        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
-        <span className="text-muted-foreground">{label}</span>
+    <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-card/60 px-4 py-3">
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      <div className="flex items-baseline justify-between">
+        <span className="text-2xl font-semibold">{count.toLocaleString('ja-JP')}</span>
+        <span className="text-xs text-muted-foreground">全 {total.toLocaleString('ja-JP')} {unit}</span>
       </div>
-      <Badge variant={variant}>{value}</Badge>
     </div>
   );
 }

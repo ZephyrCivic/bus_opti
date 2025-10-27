@@ -22,6 +22,7 @@ import DiffTable from './DiffTable';
 import { buildDutyScheduleState, downloadBaseline } from '@/services/dashboard/dutyBaseline';
 import type { ScheduleState } from '@/types';
 import diffSchedules from '@/services/state/scheduleDiff';
+import { isStepOne } from '@/config/appStep';
 import {
   addBaselineHistory,
   clearBaselineHistory,

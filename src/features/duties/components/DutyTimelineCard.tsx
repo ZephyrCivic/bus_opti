@@ -104,6 +104,27 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
       [onBlockSelect],
     );
 
+    const actions = useMemo(
+      () => {
+        const list = [
+          { id: 'add', label: '区間を追加', onClick: onAdd },
+          { id: 'add-break', label: '休憩を追加', onClick: onAddBreak },
+          { id: 'add-deadhead', label: '回送を追加', onClick: onAddDeadhead },
+          { id: 'move', label: '区間を移動', onClick: onMove },
+          { id: 'delete', label: '区間を削除', onClick: onDelete },
+        ];
+        if (showWarnings) {
+          list.push({ id: 'autocorrect', label: '区間を調整', onClick: onAutoCorrect });
+        }
+        list.push(
+          { id: 'undo', label: '元に戻す', onClick: onUndo },
+          { id: 'redo', label: 'やり直す', onClick: onRedo },
+        );
+        return list;
+      },
+      [onAdd, onAddBreak, onAddDeadhead, onMove, onDelete, onAutoCorrect, onUndo, onRedo, showWarnings],
+    );
+
     return (
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -139,18 +160,7 @@ export const DutyTimelineCard = forwardRef<HTMLInputElement, DutyTimelineCardPro
               <Badge variant={warningTotals.soft > 0 ? 'secondary' : 'outline'}>注意 {warningTotals.soft}</Badge>
             </div>
           ) : null}
-          <ExportBar
-            actions={[
-              { id: 'add', label: '区間を追加', onClick: onAdd },
-              { id: 'add-break', label: '休憩を追加', onClick: onAddBreak },
-              { id: 'add-deadhead', label: '回送を追加', onClick: onAddDeadhead },
-              { id: 'move', label: '区間を移動', onClick: onMove },
-              { id: 'delete', label: '区間を削除', onClick: onDelete },
-              { id: 'autocorrect', label: '区間を調整', onClick: onAutoCorrect },
-              { id: 'undo', label: '元に戻す', onClick: onUndo },
-              { id: 'redo', label: 'やり直す', onClick: onRedo },
-            ]}
-          />
+          <ExportBar actions={actions} />
           {hasBlockTimeline ? (
             <div className="space-y-2" data-testid="vehicle-timeline">
               <div className="flex items-center justify-between text-xs text-muted-foreground">

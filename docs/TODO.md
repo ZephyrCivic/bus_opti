@@ -106,8 +106,9 @@ Motto: "Small, clear, safe steps — always grounded in real docs."
  - [x] ブロック差し替え方針の整理（直列 vs 迂回など）  
   DoD: README か DECISIONS に判断基準を文書化。  
   メモ: DECISIONS に直列/迂回の基準・手順を追記し、テストで確認（2025-10-08, Owner: Codex）。
-- [ ] KPI × UX パネル（拡張UI: グラフ/詳細ビュー）  
-  DoD: 4カードはP0で実装済。追加のグラフや詳細テーブルを提供。
+- [x] KPI × UX パネル（拡張UI: グラフ/詳細ビュー）  
+  DoD: 4カードはP0で実装済。追加のグラフや詳細テーブルを提供。  
+  メモ: Step2 復帰にあわせて DashboardView のスパークライン・Top5 棒グラフ・KPI 詳細テーブル・警告タイムラインを再有効化（2025-10-27, Owner: Codex）。
 - [x] KPI × UX パネルの設計調査  
   DoD: グラフ/詳細ビュー/監査連動の要件を整理したメモを作成し、テストで確認。  
   メモ: `docs/specs/kpi-ux-panel.md` に仕様メモを追加し、`tests/dashboard.kpi-ux.design.test.ts` で検証（2025-10-08, Owner: Codex）。  

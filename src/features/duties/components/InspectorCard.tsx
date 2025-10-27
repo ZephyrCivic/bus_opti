@@ -68,6 +68,7 @@ export function InspectorCard(props: InspectorCardProps): JSX.Element {
             placeholder="DRIVER_001"
           />
         </div>
+        <p className="text-xs text-muted-foreground">Step1 では運転士の識別子（driver_id）だけを記録します。CSV を読み込むか、上の入力欄で直接 ID を指定してください（氏名などは任意）。</p>
         <div className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">運転士候補から選択</span>
           {driverOptions.length > 0 ? (

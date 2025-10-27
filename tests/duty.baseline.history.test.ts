@@ -10,8 +10,8 @@ import {
   clearBaselineHistory,
   loadBaselineHistory,
   type BaselineHistoryEntry,
-} from '@/services/dashboard/baselineHistory';
-import type { ScheduleState } from '@/types';
+} from '../src/services/dashboard/baselineHistory';
+import type { ScheduleState } from '../src/types';
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();

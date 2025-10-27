@@ -1,4 +1,4 @@
-import type { DayOfWeek, DashboardData, Schedule, ScheduleState } from '../../../src/types';
+import type { DayOfWeek, DashboardData, Schedule, ScheduleState } from '@/types';
 
 export interface ScheduleDiffResult {
   added: Array<{ day: DayOfWeek; routeId: string; driverId: string }>;

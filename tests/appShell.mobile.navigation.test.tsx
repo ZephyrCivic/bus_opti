@@ -13,11 +13,10 @@ import AppShell from '../src/components/layout/AppShell';
 
 const SECTIONS_UNDER_TEST: NavigationSection[] = [
   { id: 'import', label: 'GTFS・保存データ取込' },
-  { id: 'blocks', label: '系統計画' },
-  { id: 'duties', label: '乗務計画' },
-  { id: 'dashboard', label: '指標ダッシュボード' },
-  { id: 'diff', label: '差分確認' },
-  { id: 'manual', label: '手動設定' },
+  { id: 'explorer', label: '行路編集対象の便を選択' },
+  { id: 'manual', label: '制約条件（手動入力）' },
+  { id: 'blocks', label: '行路編集' },
+  { id: 'duties', label: '勤務編集' },
 ];
 
 function escapeRegExp(input: string): string {

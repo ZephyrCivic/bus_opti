@@ -9,50 +9,38 @@ import {
   getWorkflowStats,
   exportWorkflowSessionsCsv,
   clearWorkflowTelemetry,
+  subscribeWorkflowTelemetry,
 } from '../src/services/workflow/workflowTelemetry';
 
-test('workflow telemetry records session and computes stats', () => {
+test('workflow telemetry is disabled in Step1', () => {
   clearWorkflowTelemetry();
 
-  const summary = { hardWarnings: 1, softWarnings: 0, unassigned: 0 } as const;
+  const summary = { hardWarnings: 1, softWarnings: 2, unassigned: 3 } as const;
   ensureWorkflowSession(summary);
   markWorkflowWarningsViewed(summary);
   completeWorkflowSave(summary, { exportType: 'unit-test' });
 
   const sessions = getWorkflowSessions();
-  assert.equal(sessions.length, 1);
-  const session = sessions[0]!;
-  assert.equal(session.summary.hardWarnings, 1);
-  assert.equal(session.context.exportType, 'unit-test');
-  assert.ok(session.linkToSaveMs >= 0);
+  assert.equal(sessions.length, 0);
 
   const stats = getWorkflowStats();
-  assert.equal(stats.total, 1);
-  assert.equal(stats.medianLinkToSaveMs, session.linkToSaveMs);
+  assert.deepEqual(stats, {
+    total: 0,
+    medianLinkToWarningsMs: null,
+    medianWarningsToSaveMs: null,
+    medianLinkToSaveMs: null,
+    recent: [],
+  });
 
   const csv = exportWorkflowSessionsCsv();
-  assert.ok(csv.includes('session_id'));
-  assert.ok(csv.includes('unit-test'));
+  assert.equal(csv.trimEnd(), 'session_id,started_at,warnings_at,saved_at,link_to_warnings_ms,warnings_to_save_ms,link_to_save_ms,hard_warnings,soft_warnings,unassigned,coverage_percentage,fairness_score,export_type,export_file_name');
 });
 
-test('clearWorkflowTelemetry removes history', () => {
-test('workflow telemetry records session even without warnings', () => {
-  clearWorkflowTelemetry();
-
-  const summary = { hardWarnings: 0, softWarnings: 0, unassigned: 0 } as const;
-  ensureWorkflowSession(summary);
-  completeWorkflowSave(summary, { exportType: 'unit-test-zero' });
-
-  const sessions = getWorkflowSessions();
-  assert.equal(sessions.length, 1);
-  const session = sessions[0]!;
-  assert.equal(session.summary.hardWarnings, 0);
-  assert.equal(session.summary.unassigned, 0);
-  assert.equal(session.context.exportType, 'unit-test-zero');
-  assert.ok(session.linkToSaveMs >= 0);
-});
-
-  clearWorkflowTelemetry();
-  const sessions = getWorkflowSessions();
-  assert.equal(sessions.length, 0);
+test('subscribeWorkflowTelemetry returns a disposable no-op', () => {
+  let called = 0;
+  const unsubscribe = subscribeWorkflowTelemetry(() => {
+    called += 1;
+  });
+  unsubscribe();
+  assert.equal(called, 0);
 });

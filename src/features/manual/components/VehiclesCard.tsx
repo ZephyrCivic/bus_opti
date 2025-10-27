@@ -11,6 +11,8 @@ import type { ManualVehicle, ManualVehicleType } from '@/types';
 
 import { DataTable, LabeledInput } from './FormControls';
 
+const NO_VEHICLE_TYPES_OPTION_VALUE = '__no-vehicle-types__';
+
 type BooleanChoice = 'unset' | 'true' | 'false';
 
 interface VehicleDraft {
@@ -127,7 +129,7 @@ export function VehiclesCard({
               </SelectTrigger>
               <SelectContent>
                 {vehicleTypeOptions.length === 0 ? (
-                  <SelectItem value="" disabled>
+                  <SelectItem value={NO_VEHICLE_TYPES_OPTION_VALUE} disabled>
                     先に車両タイプを登録してください
                   </SelectItem>
                 ) : (

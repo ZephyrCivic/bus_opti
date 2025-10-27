@@ -21,6 +21,7 @@ import {
 import { parseTimeLabel } from '@/features/timeline/timeScale';
 import type { DutyTimelineTrip } from '@/features/duties/utils/timelineSnap';
 import type { ManualInputs } from '@/types';
+import { isStepOne } from '@/config/appStep';
 import type { GtfsImportResult } from '@/services/import/gtfsParser';
 
 export interface DutyPlanData {
@@ -40,6 +41,7 @@ export function buildDutyPlanData(result: GtfsImportResult | undefined, manual: 
     maxTurnGapMinutes: DEFAULT_MAX_TURN_GAP_MINUTES,
     linkingEnabled: false,
     minTurnaroundMinutes: manual.linking.minTurnaroundMin,
+    diagnosticsEnabled: !isStepOne,
   });
   const tripIndex = buildTripIndexFromPlan(plan);
   const tripLookup = buildTripLookup(plan.csvRows);

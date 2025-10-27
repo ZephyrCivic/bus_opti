@@ -50,10 +50,10 @@ test('buildDutiesCsv outputs rows with metadata and settings hash', () => {
   const exportData = buildDutiesCsv(duties, { dutySettings, generatedAt });
 
   const expectedCsv = [
-    'duty_id,seq,block_id,segment_start_trip_id,segment_end_trip_id,driver_id,generated_at,settings_hash,violations_summary,violations_hard,violations_soft',
-    'DUTY_001,1,BLOCK_001,TRIP_A,TRIP_B,DRIVER_A,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
-    'DUTY_001,2,BLOCK_001,TRIP_C,TRIP_C,DRIVER_A,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
-    'DUTY_EMPTY,1,,,,,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
+    'duty_id,seq,block_id,segment_start_trip_id,segment_end_trip_id,segment_type,break_until_trip_id,deadhead_minutes,deadhead_rule_id,deadhead_from_stop_id,deadhead_to_stop_id,driver_id,generated_at,settings_hash,violations_summary,violations_hard,violations_soft',
+    'DUTY_001,1,BLOCK_001,TRIP_A,TRIP_B,drive,,,,,,DRIVER_A,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
+    'DUTY_001,2,BLOCK_001,TRIP_C,TRIP_C,drive,,,,,,DRIVER_A,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
+    'DUTY_EMPTY,1,,,,,,,,,,,2025-10-07T15:00:00.000Z,1989780b,H:0;S:0,0,0',
   ].join('\n');
 
   assert.equal(exportData.rowCount, 3, 'two segments + one empty duty row');

@@ -23,7 +23,7 @@ export function DriversCard({ rows, onAdd, onDelete, onImport, onExport }: Drive
   const [draft, setDraft] = useState<ManualDriver>({ driverId: '', name: '' });
 
   return (
-    <Card>
+    <Card data-testid="manual-drivers-card">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle>運転士（Drivers）</CardTitle>

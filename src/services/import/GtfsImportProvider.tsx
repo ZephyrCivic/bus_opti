@@ -81,6 +81,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     laborRules: [],
     vehicleTypes: [],
     vehicles: [],
+    blockMeta: {},
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   }));
   const [selectedRouteIds, setSelectedRouteIdsState] = useState<string[]>([]);
@@ -248,6 +249,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     }
     const testWindow = window as typeof window & {
       __TEST_DUTY_PLAN?: ReturnType<typeof buildDutyPlanData>;
+      __TEST_MANUAL_INPUTS?: ManualInputs;
     };
     if (!state.result) {
       delete testWindow.__TEST_DUTY_PLAN;
@@ -255,6 +257,19 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     }
     testWindow.__TEST_DUTY_PLAN = buildDutyPlanData(state.result, manual);
   }, [state.result, manual]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_MANUAL_INPUTS?: ManualInputs;
+    };
+    testWindow.__TEST_MANUAL_INPUTS = manual;
+    return () => {
+      delete (window as typeof window & { __TEST_MANUAL_INPUTS?: ManualInputs }).__TEST_MANUAL_INPUTS;
+    };
+  }, [manual]);
 
   return <GtfsImportContext.Provider value={value}>{children}</GtfsImportContext.Provider>;
 }

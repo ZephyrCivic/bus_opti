@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { importSampleGtfs } from './utils/importHelpers';
 
-test.describe('G4: 手動操作ワークフロー', () => {
+test.describe.skip('G4: 手動操作ワークフロー（Step2機能のためStep1ではskip）', () => {
   test('ブロック連結と Duty 編集が手動操作で完結する', async ({ page }) => {
     await importSampleGtfs(page);
 

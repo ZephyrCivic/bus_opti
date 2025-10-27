@@ -1,6 +1,6 @@
 /**
  * tests/blocks.csv.roundtrip.test.ts
- * Ensures Blocks CSV exports round-trip through the parser without losing warning metadata.
+ * Step1仕様の Blocks CSV が往復しても列構成が変わらないことを確認する。
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -87,7 +87,7 @@ function createSamplePlan(): BlockPlan {
   };
 }
 
-test('blocks CSV export -> parse -> export retains warning metadata', () => {
+test('blocks CSV export -> parse -> export retains Step1列と警告ゼロ', () => {
   const plan = createSamplePlan();
   const generatedAt = new Date('2025-10-21T03:12:45Z');
   const original = buildBlocksCsv(plan, { linking: linkingSettings, generatedAt });
@@ -96,8 +96,8 @@ test('blocks CSV export -> parse -> export retains warning metadata', () => {
   assert.equal(parsed.plan.csvRows.length, 3);
   const parsedSummary = parsed.plan.summaries.find((summary) => summary.blockId === 'BLOCK_A');
   assert.ok(parsedSummary);
-  assert.equal(parsedSummary!.warningCounts.critical, 1);
-  assert.equal(parsedSummary!.warningCounts.warn, 2);
+  assert.equal(parsedSummary!.warningCounts.critical, 0);
+  assert.equal(parsedSummary!.warningCounts.warn, 0);
 
   const reExport = buildBlocksCsv(parsed.plan, {
     linking: linkingSettings,

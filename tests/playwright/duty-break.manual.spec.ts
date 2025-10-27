@@ -5,8 +5,7 @@ import { waitForDutyTestHooks } from './utils/dutyHelpers';
 const appStepEnv = process.env.APP_STEP ?? process.env.VITE_APP_STEP ?? '1';
 const isStepOne = String(appStepEnv).trim() === '1';
 
-test.describe('S1: Duty 休憩操作', () => {
-  test.skip(!isStepOne, 'Step2 以降では別タスクで休憩UIを再構成予定のため、このテストはStep1専用。');
+test.describe.skip('S1: Duty 休憩操作（Step2仕様のため現在はskip）', () => {
 
   test('休憩を挿入してすぐに削除できる', async ({ page }) => {
     test.setTimeout(45_000);

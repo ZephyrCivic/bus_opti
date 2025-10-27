@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateDashboardMetrics } from '../src/services/state/dashboardCalculator';
-import type { Schedule, Driver, DayOfWeek, Route } from '../src/types';
+import type { Schedule, Driver, DayOfWeek, Route } from '../../src/types';
 
 const drivers: Driver[] = [
   { id: 'd1', name: 'Driver 1', availability: ['月', '火', '水', '木', '金'], preferences: { vacationDays: [] } },

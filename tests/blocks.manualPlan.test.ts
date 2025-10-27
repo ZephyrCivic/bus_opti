@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import type { BlockPlan } from '../src/services/blocks/blockBuilder';
 import {
   connectBlocksPlan,
+  createBlockFromTrip,
   getConnectionCandidates,
   type ManualPlanConfig,
 } from '../src/services/blocks/manualPlan';
@@ -100,5 +101,44 @@ test('getConnectionCandidates returns sorted candidates within thresholds', () =
   const candidates = getConnectionCandidates(plan, 'BLOCK_A', config);
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0]!.blockId, 'BLOCK_B');
+});
+
+test('createBlockFromTrip promotes an unassigned trip into a new block', () => {
+  const plan = createPlan();
+  plan.unassignedTripIds = ['TRIP_ORPHAN'];
+  plan.totalTripCount = 4;
+  plan.coverageRatio = 0.75;
+  const next = createBlockFromTrip(plan, {
+    tripId: 'TRIP_ORPHAN',
+    tripStart: '12:00',
+    tripEnd: '12:40',
+    serviceId: 'WKD',
+    serviceDayIndex: 0,
+    fromStopId: 'STOP_E',
+    toStopId: 'STOP_F',
+  });
+  assert.ok(next);
+  assert.equal(next?.summaries.length, 3);
+  assert.equal(next?.csvRows.length, 4);
+  assert.equal(next?.unassignedTripIds.length, 0);
+  const newSummary = next?.summaries.find((summary) => summary.tripCount === 1 && summary.firstTripStart === '12:00');
+  assert.ok(newSummary);
+  assert.equal(newSummary?.blockId, 'BLOCK_001');
+  assert.equal(next?.assignedTripCount, 4);
+  assert.equal(next?.coverageRatio, 1);
+});
+
+test('createBlockFromTrip returns null when trip is already assigned', () => {
+  const plan = createPlan();
+  const result = createBlockFromTrip(plan, {
+    tripId: 'TRIP_A1',
+    tripStart: '08:00',
+    tripEnd: '08:30',
+    serviceId: 'WKD',
+    serviceDayIndex: 0,
+    fromStopId: 'STOP_A',
+    toStopId: 'STOP_B',
+  });
+  assert.equal(result, null);
 });
 

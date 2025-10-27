@@ -15,6 +15,7 @@ export interface TimelineLane<SegmentMeta = unknown> {
   id: string;
   label: string;
   segments: TimelineSegment<SegmentMeta>[];
+  tag?: TimelineLaneTag;
 }
 
 export interface TimelineSelection<Meta = unknown> {
@@ -42,4 +43,9 @@ export interface TimelineSegmentDragEvent<Meta = unknown> {
   segment: TimelineSegment<Meta>;
   originalStartMinutes: number;
   originalEndMinutes: number;
+}
+
+export interface TimelineLaneTag {
+  label: string;
+  title?: string;
 }

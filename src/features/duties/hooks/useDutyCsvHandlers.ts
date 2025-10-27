@@ -15,6 +15,7 @@ import { downloadCsv } from '@/utils/downloadCsv';
 import { recordAuditEvent } from '@/services/audit/auditLog';
 import { aggregateDutyWarnings } from '@/services/duty/aggregateDutyWarnings';
 import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
+import { isStepOne } from '@/config/appStep';
 import type { SegmentSelection } from './useDutySelectionState';
 
 interface DutyCsvParams {
@@ -59,11 +60,16 @@ export function useDutyCsvHandlers(params: DutyCsvParams): DutyCsvResult {
   const { requestConfirmation } = useExportConfirmation();
 
   const buildSnapshot = useCallback(() => {
+    // Step1 では警告計算を行わない: tripLookup を渡さず、集計も tripLookup なしでゼロ化
     const exportData = buildDutiesCsv(dutyState.duties, {
       dutySettings: dutyState.settings,
-      tripLookup,
+      tripLookup: isStepOne ? undefined : tripLookup,
     });
-    const warningTotals = aggregateDutyWarnings(dutyState.duties, tripLookup, dutyState.settings);
+    const warningTotals = aggregateDutyWarnings(
+      dutyState.duties,
+      isStepOne ? undefined : tripLookup,
+      dutyState.settings,
+    );
     return { exportData, warningTotals };
   }, [dutyState.duties, dutyState.settings, tripLookup]);
 

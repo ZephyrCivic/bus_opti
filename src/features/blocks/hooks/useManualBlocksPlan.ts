@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { BlockPlan } from '@/services/blocks/blockBuilder';
+import type { BlockPlan, SingleTripBlockSeed } from '@/services/blocks/blockBuilder';
 import {
   cloneBlockPlan,
   connectBlocksPlan,
+  createBlockFromTrip as createBlockFromTripPlan,
   getConnectionCandidates,
   type BlockConnectionCandidate,
   type ManualConnection,
@@ -11,7 +12,7 @@ import {
 } from '@/services/blocks/manualPlan';
 
 interface HistoryEntry {
-  connection: ManualConnection;
+  connection?: ManualConnection;
   previousPlan: BlockPlan;
 }
 
@@ -22,6 +23,7 @@ export interface UseManualBlocksPlanResult {
   undoLastConnection: () => boolean;
   candidatesFor: (blockId: string) => BlockConnectionCandidate[];
   config: ManualPlanConfig;
+  createBlockFromTrip: (seed: SingleTripBlockSeed) => boolean;
 }
 
 export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanConfig): UseManualBlocksPlanResult {
@@ -76,7 +78,32 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
     [manualPlan, config],
   );
 
-  const connections = useMemo(() => history.map((entry) => entry.connection), [history]);
+  const createBlock = useCallback(
+    (seed: SingleTripBlockSeed) => {
+      let created = false;
+      setManualPlan((previous) => {
+        const nextPlan = createBlockFromTripPlan(previous, seed);
+        if (!nextPlan) {
+          return previous;
+        }
+        created = true;
+        setHistory((current) => [
+          ...current,
+          {
+            previousPlan: cloneBlockPlan(previous),
+          },
+        ]);
+        return nextPlan;
+      });
+      return created;
+    },
+    [],
+  );
+
+  const connections = useMemo(
+    () => history.map((entry) => entry.connection).filter((entry): entry is ManualConnection => Boolean(entry)),
+    [history],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -106,5 +133,6 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
     undoLastConnection,
     candidatesFor,
     config,
+    createBlockFromTrip: createBlock,
   };
 }

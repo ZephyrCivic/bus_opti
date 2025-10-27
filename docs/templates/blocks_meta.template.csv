@@ -1,0 +1,4 @@
+block_id,vehicle_type_id,vehicle_id
+BLOCK_001,M,BUS_001
+BLOCK_002,,BUS_002
+BLOCK_003,L,

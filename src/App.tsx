@@ -10,29 +10,30 @@ import { Toaster } from './components/ui/sonner';
 import ImportView from './features/import/ImportView';
 import BlocksView from './features/blocks/BlocksView';
 import DutiesView from './features/duties/DutiesView';
-import DashboardView from './features/dashboard/DashboardView';
-import DiffView from './features/dashboard/DiffView';
-import { DiffSidebarActions } from './features/dashboard/DiffSidebarActions';
 import ManualDataView from './features/manual/ManualDataView';
 import { GtfsImportProvider } from './services/import/GtfsImportProvider';
 import { SectionNavigationContext } from './components/layout/SectionNavigationContext';
 import { ExportConfirmationProvider } from './components/export/ExportConfirmationProvider';
-import { isStepOne } from './config/appStep';
+import { isStepTwoOrHigher } from './config/appStep';
 
 const ExplorerView = lazy(async () => import('./features/explorer/ExplorerView'));
+const DashboardView = lazy(async () => import('./features/dashboard/DashboardView'));
+const DiffView = lazy(async () => import('./features/dashboard/DiffView'));
 
 const BASE_SECTIONS: NavigationSection[] = [
   { id: 'import', label: 'GTFS・保存データ取込' },
   { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'manual', label: '制約条件（手動入力）' },
-  { id: 'blocks', label: '行路推定' },
+  { id: 'blocks', label: '行路編集' },
   { id: 'duties', label: '勤務編集' },
-  { id: 'dashboard', label: '運行指標' },
-  { id: 'diff', label: '差分・出力' },
 ];
-const SECTIONS: NavigationSection[] = isStepOne
-  ? BASE_SECTIONS.filter((s) => !['dashboard', 'diff'].includes(s.id))
-  : BASE_SECTIONS;
+const STEP_TWO_SECTIONS: NavigationSection[] = isStepTwoOrHigher
+  ? [
+      { id: 'dashboard', label: 'KPIダッシュボード' },
+      { id: 'diff', label: '差分と基準' },
+    ]
+  : [];
+const SECTIONS: NavigationSection[] = [...BASE_SECTIONS, ...STEP_TWO_SECTIONS];
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -56,25 +57,24 @@ export default function App(): JSX.Element {
         return <BlocksView />;
       case 'duties':
         return <DutiesView />;
-      case 'dashboard':
-        return <DashboardView />;
-      case 'diff':
-        return <DiffView />;
       case 'manual':
         return <ManualDataView />;
+      case 'dashboard':
+        return isStepTwoOrHigher ? (
+          <Suspense fallback={<LazyPaneFallback label="ダッシュボードを読み込み中…" />}>
+            <DashboardView />
+          </Suspense>
+        ) : null;
+      case 'diff':
+        return isStepTwoOrHigher ? (
+          <Suspense fallback={<LazyPaneFallback label="差分ビューを読み込み中…" />}>
+            <DiffView />
+          </Suspense>
+        ) : null;
       default:
         return null;
     }
   }, [activeSection]);
-
-  const sidebarContent = useMemo(
-    () => (!isStepOne && activeSection === 'diff' ? <DiffSidebarActions variant="desktop" /> : null),
-    [activeSection],
-  );
-  const mobileSidebarContent = useMemo(
-    () => (!isStepOne && activeSection === 'diff' ? <DiffSidebarActions variant="mobile" /> : null),
-    [activeSection],
-  );
 
   return (
     <GtfsImportProvider>
@@ -84,8 +84,6 @@ export default function App(): JSX.Element {
             sections={SECTIONS}
             activeSection={activeSection}
             onSectionSelect={handleSectionSelect}
-            sidebarContent={sidebarContent}
-            mobileSidebarContent={mobileSidebarContent}
           >
             <ErrorBoundary fallback={<ErrorPaneFallback />}>{content}</ErrorBoundary>
           </AppShell>
@@ -112,4 +110,5 @@ function ErrorPaneFallback(): JSX.Element {
     </div>
   );
 }
+
 

@@ -176,6 +176,9 @@ test('buildExplorerDataset aggregates manual overlay duty impacts', () => {
     ],
     drivers: [{ driverId: 'DRV1', name: 'Driver One' }],
     laborRules: [],
+    vehicleTypes: [],
+    vehicles: [],
+    blockMeta: {},
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
 

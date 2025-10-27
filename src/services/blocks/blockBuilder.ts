@@ -36,6 +36,16 @@ export interface BlockWarningDetail {
   gapMinutes?: number;
 }
 
+export interface SingleTripBlockSeed {
+  tripId: string;
+  serviceId?: string;
+  serviceDayIndex: number;
+  tripStart: string;
+  tripEnd: string;
+  fromStopId?: string;
+  toStopId?: string;
+}
+
 export interface BlockSummary {
   blockId: string;
   serviceId?: string;
@@ -64,6 +74,7 @@ export interface BuildBlocksOptions {
   maxTurnGapMinutes?: number;
   linkingEnabled?: boolean;
   minTurnaroundMinutes?: number;
+  diagnosticsEnabled?: boolean;
 }
 
 export const DEFAULT_MAX_TURN_GAP_MINUTES = 15;
@@ -97,6 +108,7 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const maxTurnGapMinutes = Math.max(0, options?.maxTurnGapMinutes ?? DEFAULT_MAX_TURN_GAP_MINUTES);
   const minTurnaroundMinutes = Math.max(0, options?.minTurnaroundMinutes ?? DEFAULT_MIN_TURNAROUND_MINUTES);
   const linkingEnabled = options?.linkingEnabled ?? true;
+  const diagnosticsEnabled = options?.diagnosticsEnabled ?? true;
 
   if (!result) {
     return emptyPlan(maxTurnGapMinutes);
@@ -147,7 +159,9 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const totalTripCount = schedules.length;
   const coverageRatio = totalTripCount === 0 ? 0 : assignedTripCount / totalTripCount;
 
-  applyBlockWarnings(summaries, csvRows, minTurnaroundMinutes);
+  if (diagnosticsEnabled) {
+    applyBlockWarnings(summaries, csvRows, minTurnaroundMinutes);
+  }
 
   return {
     summaries,
@@ -523,4 +537,64 @@ function formatGtfsTime(totalMinutes: number): string {
 
 function formatBlockId(index: number): string {
   return `BLOCK_${String(index).padStart(3, '0')}`;
+}
+
+export function buildSingleTripBlockSeed(
+  result: GtfsImportResult | undefined,
+  rawTripId: string,
+): SingleTripBlockSeed | null {
+  if (!result) {
+    return null;
+  }
+  const tripsTable = result.tables['trips.txt'];
+  const stopTimesTable = result.tables['stop_times.txt'];
+  if (!tripsTable || !stopTimesTable) {
+    return null;
+  }
+  const normalizedTripId = sanitizeId(rawTripId);
+  if (!normalizedTripId) {
+    return null;
+  }
+
+  let serviceId: string | undefined;
+  for (const row of tripsTable.rows) {
+    const candidate = sanitizeId(row.trip_id);
+    if (candidate === normalizedTripId) {
+      serviceId = sanitizeId(row.service_id) ?? undefined;
+      break;
+    }
+  }
+
+  const stopRows: StopTimeRow[] = [];
+  for (const row of stopTimesTable.rows) {
+    const candidate = sanitizeId(row.trip_id);
+    if (candidate !== normalizedTripId) {
+      continue;
+    }
+    stopRows.push({
+      sequence: toNumber(row.stop_sequence) ?? Number.POSITIVE_INFINITY,
+      arrival: parseGtfsTime(row.arrival_time),
+      departure: parseGtfsTime(row.departure_time),
+      stopId: sanitizeId(row.stop_id) ?? undefined,
+    });
+  }
+
+  if (stopRows.length === 0) {
+    return null;
+  }
+
+  const schedule = buildTripSchedule(normalizedTripId, stopRows, serviceId);
+  if (!schedule) {
+    return null;
+  }
+
+  return {
+    tripId: schedule.tripId,
+    serviceId: schedule.serviceId,
+    serviceDayIndex: schedule.serviceDayIndex,
+    tripStart: schedule.startTime,
+    tripEnd: schedule.endTime,
+    fromStopId: schedule.fromStopId,
+    toStopId: schedule.toStopId,
+  };
 }

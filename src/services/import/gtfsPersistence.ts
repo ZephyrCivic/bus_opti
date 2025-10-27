@@ -94,6 +94,7 @@ export function fromSavedProject(payload: unknown): { gtfs: GtfsImportResult; ma
     laborRules: [],
     vehicleTypes: [],
     vehicles: [],
+    blockMeta: {},
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
   const any = payload as any;
@@ -133,6 +134,7 @@ function hydrateManual(manual: ManualInputs | undefined, defaults: ManualInputs)
       laborRules: [],
       vehicleTypes: [],
       vehicles: [],
+      blockMeta: {},
       linking: baseLinking,
     };
   }
@@ -144,6 +146,7 @@ function hydrateManual(manual: ManualInputs | undefined, defaults: ManualInputs)
     laborRules: manual.laborRules ? [...manual.laborRules] : [],
     vehicleTypes: manual.vehicleTypes ? [...manual.vehicleTypes] : [],
     vehicles: manual.vehicles ? [...manual.vehicles] : [],
+    blockMeta: manual.blockMeta ? { ...manual.blockMeta } : {},
     linking: manual.linking ? { ...manual.linking } : baseLinking,
   };
 }

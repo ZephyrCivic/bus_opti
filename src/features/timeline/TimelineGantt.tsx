@@ -271,7 +271,18 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
             )}
             style={{ height: `${LANE_HEIGHT}px` }}
           >
-            {lane.label}
+            <div className="flex w-full items-center gap-2">
+              <span className="truncate">{lane.label}</span>
+              {lane.tag ? (
+                <span
+                  className="whitespace-nowrap rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  data-lane-tag={lane.tag.label}
+                  title={lane.tag.title ?? lane.tag.label}
+                >
+                  {lane.tag.label}
+                </span>
+              ) : null}
+            </div>
           </div>
         ))}
       </div>

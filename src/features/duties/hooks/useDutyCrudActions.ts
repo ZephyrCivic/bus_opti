@@ -13,6 +13,7 @@ import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 import { toMinutes } from '@/services/duty/dutyMetrics';
 import type { SegmentSelection } from './useDutySelectionState';
 import { evaluateTripSelection, selectionErrorToMessage, inferBlockCandidates } from '../utils/tripSelection';
+import { isStepOne } from '@/config/appStep';
 
 // 既存ロジックのフォールバック：候補が1件のみのときだけ自動推定する
 function inferSingleBlockFromTrips(
@@ -327,6 +328,10 @@ export function useDutyCrudActions(params: DutyCrudParams): DutyCrudResult {
   }, [dutyActions, selectedSegment, setSelectedSegment]);
 
   const handleAutoCorrect = useCallback(() => {
+    if (isStepOne) {
+      toast.info('Step1 では自動調整は提供していません。区間は手動で編集してください。');
+      return;
+    }
     if (!selectedDuty) {
       toast.error('乗務を選んでください。');
       return;

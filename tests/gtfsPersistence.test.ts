@@ -41,6 +41,9 @@ test('projectPersistence round-trip (GTFS + manual)', () => {
     deadheadRules: [{ fromId: 'D1', toId: 'RP1', mode: 'walk', travelTimeMin: 6 }],
     drivers: [{ driverId: 'DRV1', name: 'Driver One' }],
     laborRules: [{ driverId: 'DRV1', maxContinuousDriveMin: 240, minBreakMin: 45 }],
+    vehicleTypes: [],
+    vehicles: [],
+    blockMeta: { BLOCK_A: { vehicleTypeId: 'L', vehicleId: 'BUS_99' } },
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   };
   const saved = toSavedProject(sample, manual);
@@ -56,4 +59,5 @@ test('projectPersistence round-trip (GTFS + manual)', () => {
   assert.equal(restored.manual.laborRules.length, 1);
   assert.equal(restored.manual.linking.minTurnaroundMin, 10);
   assert.equal(restored.manual.linking.enabled, true);
+  assert.equal(restored.manual.blockMeta.BLOCK_A?.vehicleId, 'BUS_99');
 });

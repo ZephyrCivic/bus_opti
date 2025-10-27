@@ -1,0 +1,593 @@
+/**
+ * src/features/explorer/ExplorerView.tsx
+ * Explorer のマップ表示・サービスフィルタ・手動オーバーレイの可視化を司るコンテナ。
+ * GTFSインポート結果とマニュアル入力をまとめ、MapView へ渡すデータセットを構築する。
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { useGtfsImport } from '@/services/import/GtfsImportProvider';
+import type { GtfsImportResult } from '@/services/import/gtfsParser';
+
+import MapView, { type ExplorerMapSelection } from './MapView';
+import {
+  buildExplorerDataset,
+  type ExplorerDataset,
+  type ExplorerServiceOption,
+  type ExplorerManualOverlay,
+} from './mapData';
+
+const ALL_SERVICES_VALUE = 'all';
+
+export default function ExplorerView(): JSX.Element {
+  const { result, manual, dutyState, selectedRouteIds, setSelectedRouteIds } = useGtfsImport();
+  const [serviceValue, setServiceValue] = useState<string>(ALL_SERVICES_VALUE);
+  const [selection, setSelection] = useState<ExplorerMapSelection | null>(null);
+  const [showDepots, setShowDepots] = useState(true);
+  const [showReliefPoints, setShowReliefPoints] = useState(true);
+  const [routeSearch, setRouteSearch] = useState('');
+
+  const dataset = useMemo(() => {
+    const filter = serviceValue === ALL_SERVICES_VALUE ? undefined : { serviceId: serviceValue };
+    return buildExplorerDataset(result, {
+      filter,
+      manual,
+      duties: dutyState.duties,
+      routeIds: selectedRouteIds,
+    });
+  }, [result, manual, dutyState.duties, serviceValue, selectedRouteIds]);
+
+  useEffect(() => {
+    if (serviceValue === ALL_SERVICES_VALUE) {
+      return;
+    }
+    if (!dataset.services.some((service) => service.serviceId === serviceValue)) {
+      setServiceValue(ALL_SERVICES_VALUE);
+    }
+  }, [dataset.services, serviceValue]);
+
+  useEffect(() => {
+    setSelection(null);
+  }, [serviceValue, result]);
+
+  const routeSelectionOptions = useMemo<RouteSelectionOption[]>(() => buildRouteSelectionOptions(result), [result]);
+  const totalRouteCount = routeSelectionOptions.length;
+  const filteredRouteSelectionOptions = useMemo(() => {
+    if (routeSearch.trim().length === 0) {
+      return routeSelectionOptions;
+    }
+    const keyword = routeSearch.trim().toLowerCase();
+    return routeSelectionOptions.filter((option) => {
+      const haystack = [option.id, option.label, option.description].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [routeSearch, routeSelectionOptions]);
+  const selectedRoutesSet = useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
+
+  const handleSelectAllRoutes = useCallback(() => {
+    if (routeSelectionOptions.length === 0) {
+      setSelectedRouteIds([]);
+      return;
+    }
+    setSelectedRouteIds(routeSelectionOptions.map((option) => option.id));
+  }, [routeSelectionOptions, setSelectedRouteIds]);
+
+  const handleClearRoutes = useCallback(() => {
+    setSelectedRouteIds([]);
+  }, [setSelectedRouteIds]);
+
+  const handleToggleRoute = useCallback((routeId: string) => {
+    setSelectedRouteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(routeId)) {
+        next.delete(routeId);
+      } else {
+        next.add(routeId);
+      }
+      if (next.size === 0) {
+        return [];
+      }
+      const ordered = routeSelectionOptions
+        .map((option) => option.id)
+        .filter((id) => next.has(id));
+      if (ordered.length === 0 && next.size > 0) {
+        return Array.from(next);
+      }
+      return ordered;
+    });
+  }, [routeSelectionOptions, setSelectedRouteIds]);
+
+  const activeServiceOption = dataset.services.find((service) => service.serviceId === dataset.selectedServiceId);
+  const serviceLabel =
+    serviceValue === ALL_SERVICES_VALUE ? '全サービス' : activeServiceOption?.label ?? `サービス ${serviceValue}`;
+  const disableSelect = dataset.services.length === 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">行路編集対象の便を選択</h2>
+        <p className="text-sm text-muted-foreground">
+          GTFS 由来の停留所・経路とマニュアルオーバーレイ（車庫・交代地点）を地図で確認しながら、行路編集対象となる便（系統）を切り替えます。
+          サービスフィルタで対象日を絞り込み、右側の選択パネルで取込対象を管理してください。
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          選択中: {selectedRouteIds.length.toLocaleString()} / {totalRouteCount.toLocaleString()} 便（系統）
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <span className="block text-xs font-medium text-muted-foreground">サービスフィルタ</span>
+          <Select value={serviceValue} onValueChange={setServiceValue} disabled={disableSelect}>
+            <SelectTrigger className="w-[240px]">
+              <SelectValue placeholder="サービスを選択">{serviceLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SERVICES_VALUE}>全サービス</SelectItem>
+              {dataset.services.map((service) => (
+                <SelectItem key={service.serviceId} value={service.serviceId}>
+                  {formatServiceOptionLabel(service)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {activeServiceOption && (
+          <Badge variant="secondary" className="h-6">
+            便 {activeServiceOption.tripCount.toLocaleString()} / 停留所 {activeServiceOption.stopCount.toLocaleString()}
+          </Badge>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">手動オーバーレイ</span>
+          <Button
+            size="sm"
+            variant={showDepots ? 'default' : 'outline'}
+            onClick={() => setShowDepots((prev) => !prev)}
+          >
+            車庫
+          </Button>
+          <Button
+            size="sm"
+            variant={showReliefPoints ? 'default' : 'outline'}
+            onClick={() => setShowReliefPoints((prev) => !prev)}
+          >
+            交代地点
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <div className="space-y-4">
+          <MapView dataset={dataset} onSelect={setSelection} showDepots={showDepots} showReliefPoints={showReliefPoints} />
+          <ManualSummaryCard overlay={dataset.manualOverlay} summary={dataset.manualSummary} />
+        </div>
+        <div className="space-y-4">
+          <RouteSelectionPanel
+            options={routeSelectionOptions}
+            filteredOptions={filteredRouteSelectionOptions}
+            selectedRouteIds={selectedRoutesSet}
+            selectedCount={selectedRouteIds.length}
+            totalCount={totalRouteCount}
+            searchValue={routeSearch}
+            onSearchChange={setRouteSearch}
+            onSelectAll={handleSelectAllRoutes}
+            onClearAll={handleClearRoutes}
+            onToggleRoute={handleToggleRoute}
+          />
+          <SelectionPanel dataset={dataset} selection={selection} serviceLabel={serviceLabel} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface RouteSelectionOption {
+  id: string;
+  label: string;
+  description?: string;
+  tripCount: number;
+  color?: string;
+}
+
+interface RouteSelectionPanelProps {
+  options: RouteSelectionOption[];
+  filteredOptions: RouteSelectionOption[];
+  selectedRouteIds: Set<string>;
+  selectedCount: number;
+  totalCount: number;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onToggleRoute: (routeId: string) => void;
+}
+
+function RouteSelectionPanel({
+  options,
+  filteredOptions,
+  selectedRouteIds,
+  selectedCount,
+  totalCount,
+  searchValue,
+  onSearchChange,
+  onSelectAll,
+  onClearAll,
+  onToggleRoute,
+}: RouteSelectionPanelProps): JSX.Element {
+  const hasOptions = options.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>取込対象の便（系統）</CardTitle>
+        <CardDescription>チェックした便だけを地図とタイムラインで表示します。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">
+            選択中: {selectedCount.toLocaleString()} / {totalCount.toLocaleString()} 便（系統）
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" type="button" onClick={onSelectAll} disabled={!hasOptions}>
+              全選択
+            </Button>
+            <Button variant="ghost" size="sm" type="button" onClick={onClearAll} disabled={!hasOptions}>
+              全解除
+            </Button>
+          </div>
+        </div>
+        <Input
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="便ID・系統名で検索"
+          disabled={!hasOptions}
+        />
+        <div className="max-h-80 overflow-y-auto rounded-md border border-border/40 bg-background/60 p-2">
+          {!hasOptions ? (
+            <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              GTFS をインポートすると便（系統）の一覧が表示されます。
+            </p>
+          ) : filteredOptions.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              該当する便が見つかりません。
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {filteredOptions.map((option) => {
+                const checked = selectedRouteIds.has(option.id);
+                return (
+                  <label
+                    key={option.id}
+                    className="flex w-full cursor-pointer items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2 text-sm shadow-sm transition hover:border-border focus-within:border-ring focus-within:ring-2 focus-within:ring-ring"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={checked}
+                      onChange={() => onToggleRoute(option.id)}
+                    />
+                    <span className="flex flex-col">
+                      <span className="font-medium text-foreground">
+                        {option.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {option.description ?? option.id}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        便数: {option.tripCount.toLocaleString()}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ManualSummaryCardProps {
+  overlay: ExplorerManualOverlay;
+  summary: ExplorerDataset['manualSummary'];
+}
+
+function ManualSummaryCard({ overlay, summary }: ManualSummaryCardProps): JSX.Element {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>マニュアルオーバーレイ概要</CardTitle>
+        <CardDescription>車庫 / 交代地点と乗務への影響件数のサマリです。</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 text-sm sm:grid-cols-3">
+        <InfoRow label="車庫数" value={summary.depotCount.toLocaleString()} />
+        <InfoRow label="交代地点数" value={summary.reliefPointCount.toLocaleString()} />
+        <InfoRow
+          label="Duty 影響件数"
+          value={(summary.totalDutyImpacts ?? 0).toLocaleString()}
+        />
+        {overlay.depots.features.length === 0 && overlay.reliefPoints.features.length === 0 && (
+          <p className="sm:col-span-3 text-muted-foreground">
+            マニュアル入力が未登録です。手動入力タブから車庫や交代地点を追加すると表示されます。
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SelectionPanelProps {
+  dataset: ExplorerDataset;
+  selection: ExplorerMapSelection | null;
+  serviceLabel: string;
+}
+
+function SelectionPanel({ dataset, selection, serviceLabel }: SelectionPanelProps): JSX.Element {
+  if (!selection) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>選択詳細</CardTitle>
+          <CardDescription>地図上の停留所 / 経路 / オーバーレイをクリックすると詳細を表示します。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {dataset.geoJson.stops.features.length === 0
+              ? 'GTFSフィードを取り込むと地図にデータが表示されます。'
+              : '対象を選択してください。'}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (selection.type === 'manualDepot') {
+    const depot = dataset.manualOverlay.depots.features.find(
+      (feature) => feature.properties?.depotId === selection.id,
+    );
+    if (!depot) {
+      return fallbackCard('車庫情報を取得できませんでした。入力内容を確認してください。');
+    }
+    const properties = depot.properties ?? {};
+    const coordinates = depot.geometry.coordinates as [number, number];
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>車庫 {properties.depotId ?? selection.id}</CardTitle>
+          <CardDescription>Duty 影響件数: {(properties.dutyImpactCount ?? 0).toLocaleString()}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {properties.name && <InfoRow label="名称" value={String(properties.name)} />}
+          <InfoRow label="座標" value={`${coordinates[1].toFixed(5)}, ${coordinates[0].toFixed(5)}`} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (selection.type === 'manualRelief') {
+    const relief = dataset.manualOverlay.reliefPoints.features.find(
+      (feature) => feature.properties?.reliefId === selection.id,
+    );
+    if (!relief) {
+      return fallbackCard('交代地点情報を取得できませんでした。入力内容を確認してください。');
+    }
+    const properties = relief.properties ?? {};
+    const coordinates = relief.geometry.coordinates as [number, number];
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>交代地点 {properties.reliefId ?? selection.id}</CardTitle>
+          <CardDescription>Duty 影響件数: {(properties.dutyImpactCount ?? 0).toLocaleString()}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {properties.name && <InfoRow label="名称" value={String(properties.name)} />}
+          {properties.stopId && <InfoRow label="停留所ID" value={String(properties.stopId)} />}
+          <InfoRow label="座標" value={`${coordinates[1].toFixed(5)}, ${coordinates[0].toFixed(5)}`} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (selection.type === 'stop') {
+    const detail = dataset.stopDetails[selection.id];
+    if (!detail) {
+      return fallbackCard('停留所情報を取得できませんでした。フィルタを変更して再試行してください。');
+    }
+
+    const activeTripCount = dataset.selectedServiceId ? detail.activeTripCount : detail.totalTripCount;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>停留所 {detail.stopId}</CardTitle>
+          <CardDescription>{serviceLabel} の便数: {activeTripCount.toLocaleString()}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {detail.name && <InfoRow label="名称" value={detail.name} />}
+          {detail.code && <InfoRow label="コード" value={detail.code} />}
+          <InfoRow label="座標" value={`${detail.latitude.toFixed(5)}, ${detail.longitude.toFixed(5)}`} />
+          <InfoRow label="総便数" value={detail.totalTripCount.toLocaleString()} />
+          {dataset.selectedServiceId && (
+            <InfoRow label="フィルタ適用時便数" value={detail.activeTripCount.toLocaleString()} />
+          )}
+          {detail.serviceIds.length > 0 && (
+            <div>
+              <span className="mb-1 block text-xs font-medium text-muted-foreground">関連サービス</span>
+              <div className="flex flex-wrap gap-2">
+                {detail.serviceIds.map((serviceId) => (
+                  <Badge
+                    key={serviceId}
+                    variant={serviceId === dataset.selectedServiceId ? 'default' : 'outline'}
+                  >
+                    {serviceId}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const detail = dataset.shapeDetails[selection.id];
+  if (!detail) {
+    return fallbackCard('形状情報を取得できませんでした。フィルタを変更して再試行してください。');
+  }
+
+  const activeTripCount = dataset.selectedServiceId ? detail.activeTripCount : detail.tripCount;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>経路形状 {detail.shapeId}</CardTitle>
+        <CardDescription>{serviceLabel} の便数: {activeTripCount.toLocaleString()}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <InfoRow label="総便数" value={detail.tripCount.toLocaleString()} />
+        {dataset.selectedServiceId && (
+          <InfoRow label="フィルタ適用時便数" value={detail.activeTripCount.toLocaleString()} />
+        )}
+        {detail.serviceIds.length > 0 && (
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted-foreground">関連サービス</span>
+            <div className="flex flex-wrap gap-2">
+              {detail.serviceIds.map((serviceId) => (
+                <Badge
+                  key={serviceId}
+                  variant={serviceId === dataset.selectedServiceId ? 'default' : 'outline'}
+                >
+                  {serviceId}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border/50 bg-card/40 px-3 py-2">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function fallbackCard(message: string): JSX.Element {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>詳細情報</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{message}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatServiceOptionLabel(option: ExplorerServiceOption): string {
+  return `${option.label} · 便 ${option.tripCount.toLocaleString()} / 停留所 ${option.stopCount.toLocaleString()}`;
+}
+
+function buildRouteSelectionOptions(result?: GtfsImportResult): RouteSelectionOption[] {
+  if (!result) {
+    return [];
+  }
+  const trips = result.tables['trips.txt']?.rows ?? [];
+  const routes = result.tables['routes.txt']?.rows ?? [];
+
+  const meta = new Map<string, { label?: string; description?: string; color?: string }>();
+  for (const row of routes) {
+    const routeId = sanitizeId(row.route_id);
+    if (!routeId) {
+      continue;
+    }
+    const shortName = sanitizeText(row.route_short_name);
+    const longName = sanitizeText(row.route_long_name);
+    let label: string | undefined;
+    let description: string | undefined;
+    if (shortName && longName) {
+      label = `${shortName} · ${longName}`;
+      description = routeId;
+    } else if (shortName) {
+      label = shortName;
+      description = longName ?? routeId;
+    } else if (longName) {
+      label = longName;
+      description = routeId;
+    }
+    meta.set(routeId, {
+      label,
+      description,
+      color: sanitizeColor(row.route_color),
+    });
+  }
+
+  const counts = new Map<string, number>();
+  for (const trip of trips) {
+    const routeId = sanitizeId(trip.route_id);
+    if (!routeId) {
+      continue;
+    }
+    counts.set(routeId, (counts.get(routeId) ?? 0) + 1);
+  }
+
+  const ids = Array.from(counts.keys()).sort((a, b) => a.localeCompare(b, 'ja-JP-u-nu-latn'));
+  return ids.map((routeId) => {
+    const metaEntry = meta.get(routeId);
+    const label = metaEntry?.label ?? routeId;
+    const description = metaEntry?.description ?? routeId;
+    return {
+      id: routeId,
+      label,
+      description,
+      tripCount: counts.get(routeId) ?? 0,
+      color: metaEntry?.color,
+    };
+  });
+}
+
+function sanitizeId(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sanitizeText(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sanitizeColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim().replace(/^#/u, '').toUpperCase();
+  if (!/^[0-9A-F]{6}$/u.test(normalized)) {
+    return undefined;
+  }
+  return `#${normalized}`;
+}
+

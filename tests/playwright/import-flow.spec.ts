@@ -80,18 +80,22 @@ const SAVED_PROJECT_PAYLOAD = {
     ],
     alerts: [],
   },
-  manual: {
-    depots: [],
-    reliefPoints: [],
-    deadheadRules: [],
-    drivers: [],
-    linking: {
-      enabled: true,
-      minTurnaroundMin: 10,
-      maxConnectRadiusM: 100,
-      allowParentStation: true,
+    manual: {
+      depots: [],
+      reliefPoints: [],
+      deadheadRules: [],
+      drivers: [],
+      laborRules: [],
+      vehicleTypes: [],
+      vehicles: [],
+      blockMeta: {},
+      linking: {
+        enabled: true,
+        minTurnaroundMin: 10,
+        maxConnectRadiusM: 100,
+        allowParentStation: true,
+      },
     },
-  },
 };
 
 const SAVED_PROJECT_FILE = {

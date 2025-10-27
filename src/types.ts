@@ -213,6 +213,11 @@ export interface LinkingSettings {
   allowParentStation: boolean; // 親子駅許容
 }
 
+export interface BlockMetaEntry {
+  vehicleTypeId?: string;
+  vehicleId?: string;
+}
+
 export interface ManualInputs {
   depots: Depot[];
   reliefPoints: ReliefPoint[];
@@ -221,5 +226,6 @@ export interface ManualInputs {
   laborRules: LaborRule[];
   vehicleTypes: ManualVehicleType[];
   vehicles: ManualVehicle[];
+  blockMeta: Record<string, BlockMetaEntry>;
   linking: LinkingSettings;
 }

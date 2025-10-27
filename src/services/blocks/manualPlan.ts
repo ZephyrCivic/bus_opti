@@ -1,4 +1,4 @@
-import type { BlockCsvRow, BlockPlan, BlockSummary } from './blockBuilder';
+import type { BlockCsvRow, BlockPlan, BlockSummary, SingleTripBlockSeed } from './blockBuilder';
 import { evaluateBlockWarnings, countWarnings } from './blockBuilder';
 
 export interface ManualPlanConfig {
@@ -177,6 +177,53 @@ export function getConnectionCandidates(
   return candidates.slice(0, 8);
 }
 
+export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed): BlockPlan | null {
+  if (!plan.unassignedTripIds.includes(seed.tripId)) {
+    return null;
+  }
+
+  const next = cloneBlockPlan(plan);
+  const blockId = generateNextBlockId(next.summaries);
+
+  const row: BlockCsvRow = {
+    blockId,
+    seq: 1,
+    tripId: seed.tripId,
+    tripStart: seed.tripStart,
+    tripEnd: seed.tripEnd,
+    fromStopId: seed.fromStopId,
+    toStopId: seed.toStopId,
+    serviceId: seed.serviceId,
+  };
+
+  const summary: BlockSummary = {
+    blockId,
+    serviceId: seed.serviceId,
+    serviceDayIndex: seed.serviceDayIndex,
+    tripCount: 1,
+    firstTripStart: seed.tripStart,
+    lastTripEnd: seed.tripEnd,
+    gaps: [],
+    overlapScore: 0,
+    gapWarnings: 0,
+    warningCounts: { critical: 0, warn: 0, info: 0 },
+    warnings: [],
+  };
+
+  next.csvRows = [...next.csvRows, row];
+  next.summaries = [...next.summaries, summary].sort((a, b) => {
+    if (a.serviceDayIndex === b.serviceDayIndex) {
+      return a.firstTripStart.localeCompare(b.firstTripStart);
+    }
+    return a.serviceDayIndex - b.serviceDayIndex;
+  });
+  next.unassignedTripIds = next.unassignedTripIds.filter((tripId) => tripId !== seed.tripId);
+  next.assignedTripCount = Math.min(next.totalTripCount, next.assignedTripCount + 1);
+  next.coverageRatio = next.totalTripCount === 0 ? 0 : next.assignedTripCount / next.totalTripCount;
+
+  return next;
+}
+
 function buildSummaryForRows(
   blockId: string,
   rows: BlockCsvRow[],
@@ -237,6 +284,29 @@ function computeGapMinutes(endTime: string, nextStart: string): number | null {
   }
   const gap = start - end;
   return gap >= 0 ? gap : null;
+}
+
+function generateNextBlockId(summaries: BlockSummary[]): string {
+  const existing = new Set(summaries.map((summary) => summary.blockId));
+  let nextIndex = summaries.reduce((max, summary) => {
+    const match = summary.blockId.match(/^BLOCK_(\d{1,})$/);
+    if (!match) {
+      return max;
+    }
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  nextIndex += 1;
+  let candidate = formatManualBlockId(nextIndex);
+  while (existing.has(candidate)) {
+    nextIndex += 1;
+    candidate = formatManualBlockId(nextIndex);
+  }
+  return candidate;
+}
+
+function formatManualBlockId(index: number): string {
+  return `BLOCK_${String(index).padStart(3, '0')}`;
 }
 
 function toMinutes(label: string | undefined): number | null {

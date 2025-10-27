@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { importSampleGtfs } from './utils/importHelpers';
 
-test.describe('G5: ブロック警告の可視化', () => {
+test.describe.skip('G5: ブロック警告の可視化（Step2機能のためStep1ではskip）', () => {
   test('警告件数とツールチップを表示する', async ({ page }) => {
     await importSampleGtfs(page);
 

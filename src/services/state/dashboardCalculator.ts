@@ -9,7 +9,7 @@ import type {
   Schedule,
   WorkloadItem,
   DutySettings,
-} from '../../../src/types';
+} from '@/types';
 import { DEFAULT_DUTY_SETTINGS } from '@/services/duty/constants';
 
 function toMinutes(hhmm: string): number {

@@ -3,7 +3,7 @@
  * ブロック（行路）編集結果を確認し、ターン間隔や重複状況を把握する画面。
  * タイムライン、統計カード、詳細テーブル、未割当便一覧を提供する。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -17,37 +17,61 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import TimelineGantt from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
 import type { TimelineLane } from '@/features/timeline/types';
 import {
   buildBlocksPlan,
-  countWarnings,
+  buildSingleTripBlockSeed,
   DEFAULT_MAX_TURN_GAP_MINUTES,
-  evaluateBlockWarnings,
   type BlockCsvRow,
   type BlockPlan,
   type BlockSummary,
-  type BlockWarningCounts,
-  type BlockWarningDetail,
 } from '@/services/blocks/blockBuilder';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import { useBlocksPlan } from './hooks/useBlocksPlan';
 import { useManualBlocksPlan } from './hooks/useManualBlocksPlan';
 import { isStepOne } from '@/config/appStep';
+import { buildBlocksMetaCsv } from '@/services/export/blocksMetaCsv';
+import { downloadCsv } from '@/utils/downloadCsv';
+import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
+import { recordAuditEvent } from '@/services/audit/auditLog';
+import { toast } from 'sonner';
+import type { BlockMetaEntry } from '@/types';
 
-const MIN_TURN_GAP = 0;
-const MAX_TURN_GAP = 180;
+const TIMELINE_AXIS_LABELS = {
+  block: '行路ID',
+  vehicle: '車両ID',
+} as const;
+
+type TimelineAxisMode = keyof typeof TIMELINE_AXIS_LABELS;
 
 export default function BlocksView(): JSX.Element {
-  const { result, manual } = useGtfsImport();
-  const [turnGap, setTurnGap] = useState<number>(DEFAULT_MAX_TURN_GAP_MINUTES);
+  const { result, manual, setManual } = useGtfsImport();
+  const turnGap = DEFAULT_MAX_TURN_GAP_MINUTES;
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
   const [fromBlockId, setFromBlockId] = useState<string>('');
   const [toBlockId, setToBlockId] = useState<string>('');
   const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const diagnosticsEnabled = !isStepOne;
+  const [timelineAxis, setTimelineAxis] = useState<TimelineAxisMode>('block');
+  const blockMeta = manual.blockMeta ?? {};
+  const vehicleTypeOptions = useMemo(
+    () =>
+      manual.vehicleTypes.map((type) => ({
+        value: type.typeId,
+        label: type.name ? `${type.typeId}（${type.name}）` : type.typeId,
+      })),
+    [manual.vehicleTypes],
+  );
+  const vehicleIdOptions = useMemo(
+    () =>
+      manual.vehicles.map((vehicle) => ({
+        value: vehicle.vehicleId,
+        label: vehicle.vehicleTypeId ? `${vehicle.vehicleId}（${vehicle.vehicleTypeId}）` : vehicle.vehicleId,
+      })),
+    [manual.vehicles],
+  );
+  const { requestConfirmation } = useExportConfirmation();
 
   const initialPlan = useMemo<BlockPlan>(
     () =>
@@ -55,6 +79,7 @@ export default function BlocksView(): JSX.Element {
         maxTurnGapMinutes: turnGap,
         minTurnaroundMinutes: manual.linking.minTurnaroundMin,
         linkingEnabled: false,
+        diagnosticsEnabled: !isStepOne,
       }),
     [result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled],
   );
@@ -68,11 +93,31 @@ export default function BlocksView(): JSX.Element {
   const manualPlanState = useManualBlocksPlan(initialPlan, manualPlanConfig);
   const { days, allDays, overlaps } = useBlocksPlan(manualPlanState.plan, { activeDay: activeDayIndex ?? undefined });
 
+useEffect(() => {
+  const blockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
+  setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
+  setToBlockId((current) => (current && !blockIds.has(current) ? '' : current));
+}, [manualPlanState.plan]);
+
   useEffect(() => {
-    const blockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
-    setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
-    setToBlockId((current) => (current && !blockIds.has(current) ? '' : current));
-  }, [manualPlanState.plan]);
+    const validBlockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
+    setManual((prev) => {
+      const prevMeta = prev.blockMeta ?? {};
+      let changed = false;
+      const nextMeta: Record<string, BlockMetaEntry> = {};
+      for (const [blockId, entry] of Object.entries(prevMeta)) {
+        if (validBlockIds.has(blockId)) {
+          nextMeta[blockId] = entry;
+        } else {
+          changed = true;
+        }
+      }
+      if (!changed) {
+        return prev;
+      }
+      return { ...prev, blockMeta: nextMeta };
+    });
+  }, [manualPlanState.plan.summaries, setManual]);
 
   const manualBlockSummaries = useMemo(
     () =>
@@ -133,6 +178,117 @@ export default function BlocksView(): JSX.Element {
     }
   };
 
+  const handleCreateBlockFromTrip = useCallback(
+    (tripId: string) => {
+      if (!result) {
+        toast.error('GTFSデータが読み込まれていません。');
+        return;
+      }
+      const seed = buildSingleTripBlockSeed(result, tripId);
+      if (!seed) {
+        toast.error(`便 ${tripId} の情報を復元できませんでした。`);
+        return;
+      }
+      const created = manualPlanState.createBlockFromTrip(seed);
+      if (created) {
+        toast.success(`便 ${tripId} から新しい行路を作成しました。`);
+      } else {
+        toast.info('この便は既に行路に割り当てられています。');
+      }
+    },
+    [manualPlanState, result],
+  );
+
+  const handleBlockMetaChange = useCallback(
+    (blockId: string, field: 'vehicleTypeId' | 'vehicleId', value: string) => {
+      const normalized = value.trim();
+      setManual((prev) => {
+        const prevMeta = prev.blockMeta ?? {};
+        const currentEntry = prevMeta[blockId] ?? {};
+        const nextEntry: BlockMetaEntry = { ...currentEntry };
+
+        if (field === 'vehicleTypeId') {
+          if (normalized.length > 0) {
+            nextEntry.vehicleTypeId = normalized;
+          } else {
+            delete nextEntry.vehicleTypeId;
+          }
+        } else if (field === 'vehicleId') {
+          if (normalized.length > 0) {
+            nextEntry.vehicleId = normalized;
+          } else {
+            delete nextEntry.vehicleId;
+          }
+        }
+
+        const hasValue =
+          (nextEntry.vehicleTypeId && nextEntry.vehicleTypeId.length > 0) ||
+          (nextEntry.vehicleId && nextEntry.vehicleId.length > 0);
+
+        const prevEntry = prevMeta[blockId];
+        if (!hasValue) {
+          if (!prevEntry) {
+            return prev;
+          }
+          const { [blockId]: _removed, ...rest } = prevMeta;
+          return { ...prev, blockMeta: rest };
+        }
+
+        if (
+          prevEntry?.vehicleTypeId === nextEntry.vehicleTypeId &&
+          prevEntry?.vehicleId === nextEntry.vehicleId
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          blockMeta: {
+            ...prevMeta,
+            [blockId]: nextEntry,
+          },
+        };
+      });
+    },
+    [setManual],
+  );
+
+  const handleExportMeta = useCallback(() => {
+    if (manualPlanState.plan.summaries.length === 0) {
+      toast.info('行路が存在しないため、出力できるデータがありません。');
+      return;
+    }
+    const preview = buildBlocksMetaCsv({
+      plan: manualPlanState.plan,
+      blockMeta,
+    });
+    requestConfirmation({
+      title: 'blocks_meta.csv を出力しますか？',
+      description: '行路ごとの車両タイプ・車両IDの記録を CSV で保存します。',
+      summary: {
+        hardWarnings: 0,
+        softWarnings: 0,
+        unassigned: manualPlanState.plan.unassignedTripIds.length,
+      },
+      context: { entity: 'blocks', exportType: 'blocks-meta-csv', fileName: preview.fileName },
+      onConfirm: () => {
+        const latest = buildBlocksMetaCsv({
+          plan: manualPlanState.plan,
+          blockMeta,
+        });
+        downloadCsv({ fileName: latest.fileName, content: latest.csv });
+        recordAuditEvent({
+          entity: 'blocks',
+          fileName: latest.fileName,
+          rowCount: latest.rowCount,
+          generatedAt: latest.generatedAt,
+          format: 'csv',
+        });
+        toast.success(`blocks_meta.csv をダウンロードしました（${latest.rowCount} 行）。`);
+      },
+    });
+  }, [blockMeta, manualPlanState.plan, requestConfirmation]);
+
   const canConnect = fromBlockId !== '' && toBlockId !== '';
   const canUndo = manualPlanState.connections.length > 0;
 
@@ -141,12 +297,6 @@ export default function BlocksView(): JSX.Element {
       setToBlockId('');
     }
   }, [manualToSummaries, toBlockId]);
-
-  useEffect(() => {
-    if (!result) {
-      setTurnGap(DEFAULT_MAX_TURN_GAP_MINUTES);
-    }
-  }, [result]);
 
   useEffect(() => {
     if (allDays.length === 0) {
@@ -158,8 +308,6 @@ export default function BlocksView(): JSX.Element {
       setActiveDayIndex(firstDay);
     }
   }, [allDays, activeDayIndex]);
-
-  const coveragePercentage = Math.round(manualPlanState.plan.coverageRatio * 100);
 
   const overlapMinutesByBlock = useMemo(() => {
     const map = new Map<string, number>();
@@ -187,13 +335,26 @@ export default function BlocksView(): JSX.Element {
       }
       const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
       const color = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
-        const lane: TimelineLane = {
-          id: summary.blockId,
-          label: `${summary.blockId}（便 ${summary.tripCount} 件）`,
+      const meta = blockMeta[summary.blockId];
+      const laneLabel = formatTimelineLaneLabel(summary, meta, timelineAxis);
+      const vehicleTypeLabel = meta?.vehicleTypeId?.trim();
+      const segmentLabel =
+        timelineAxis === 'vehicle'
+          ? `${summary.blockId}: ${summary.firstTripStart} ~ ${summary.lastTripEnd}`
+          : `${summary.firstTripStart} ~ ${summary.lastTripEnd}`;
+      const lane: TimelineLane = {
+        id: summary.blockId,
+        label: laneLabel,
+        tag: vehicleTypeLabel
+          ? {
+              label: vehicleTypeLabel,
+              title: `想定車両タイプ: ${vehicleTypeLabel}`,
+            }
+          : undefined,
         segments: [
           {
             id: `${summary.blockId}-window`,
-            label: `${summary.firstTripStart} ~ ${summary.lastTripEnd}`,
+            label: segmentLabel,
             startMinutes,
             endMinutes: Math.max(endMinutes, startMinutes + 1),
             color,
@@ -203,41 +364,7 @@ export default function BlocksView(): JSX.Element {
       lanes.push(lane);
       return lanes;
     }, []);
-  }, [visibleSummaries, overlapMinutesByBlock]);
-
-  const visibleOverlapSummaries = useMemo(() => {
-    return visibleSummaries
-      .map((summary) => ({
-        blockId: summary.blockId,
-        minutes: overlapMinutesByBlock.get(summary.blockId) ?? 0,
-      }))
-      .filter((item) => item.minutes > 0)
-      .sort((a, b) => b.minutes - a.minutes);
-  }, [visibleSummaries, overlapMinutesByBlock]);
-
-  const warningDiagnostics = useMemo(() => {
-    if (!diagnosticsEnabled) {
-      return null;
-    }
-    const minTurn = Math.max(0, manual.linking.minTurnaroundMin);
-    const grouped = new Map<string, BlockCsvRow[]>();
-    for (const row of manualPlanState.plan.csvRows) {
-      const list = grouped.get(row.blockId) ?? [];
-      list.push(row);
-      grouped.set(row.blockId, list);
-    }
-    const map = new Map<string, { counts: BlockWarningCounts; warnings: BlockWarningDetail[] }>();
-    for (const [blockId, rows] of grouped.entries()) {
-      const warnings = evaluateBlockWarnings(rows, minTurn);
-      map.set(blockId, {
-        counts: countWarnings(warnings),
-        warnings,
-      });
-    }
-    return map;
-  }, [diagnosticsEnabled, manual.linking.minTurnaroundMin, manualPlanState.plan.csvRows]);
-
-  const showDiagnostics = diagnosticsEnabled;
+  }, [visibleSummaries, overlapMinutesByBlock, blockMeta, timelineAxis]);
 
   return (
     <div className="space-y-6">
@@ -334,49 +461,11 @@ export default function BlocksView(): JSX.Element {
         </CardContent>
       </Card>
 
-      {showDiagnostics ? (
-        <Card>
-          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div className="space-y-1">
-              <CardTitle>ターン設定（参考）</CardTitle>
-              <CardDescription>
-              ターン間隔は参考指標として表示されます。必要に応じて手動連結の前後確認に利用してください。
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-muted-foreground" htmlFor="turn-gap-input">
-                最大ターン間隔 (分)
-              </label>
-              <Input
-                id="turn-gap-input"
-                type="number"
-                min={MIN_TURN_GAP}
-                max={MAX_TURN_GAP}
-                value={turnGap}
-                onChange={(event) => setTurnGap(clampTurnGap(event.target.value))}
-                className="w-24"
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <StatCard label="割り当て済み便" value={manualPlanState.plan.assignedTripCount.toLocaleString()} />
-              <StatCard label="対象便件数" value={manualPlanState.plan.totalTripCount.toLocaleString()} />
-              <StatCard
-                label="カバレッジ率"
-                value={`${coveragePercentage}%`}
-                trend={coverageBadgeVariant(coveragePercentage)}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
       <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <CardTitle>日別タイムライン</CardTitle>
-            <CardDescription>サービス日ごとのブロック稼働時間と重複を視覚化します。</CardDescription>
+            <CardDescription>サービス日ごとのブロック稼働時間と重複を視覚化します（表示軸は行路ID/車両IDで切替可能）。</CardDescription>
           </div>
           <Badge variant="outline">サービス日数: {allDays.length}</Badge>
         </CardHeader>
@@ -385,40 +474,43 @@ export default function BlocksView(): JSX.Element {
             <p className="text-sm text-muted-foreground">サービス日の集計がありません。GTFS フィードを取り込んでください。</p>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2">
-                {allDays.map((day) => (
-                  <Button
-                    key={day.dayIndex}
-                    size="sm"
-                    variant={activeDayIndex === day.dayIndex ? 'default' : 'outline'}
-                    onClick={() => setActiveDayIndex(day.dayIndex)}
-                  >
-                    {day.label}
-                  </Button>
-                ))}
+              <div className="flex flex-wrap items-center gap-2 justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  {allDays.map((day) => (
+                    <Button
+                      key={day.dayIndex}
+                      size="sm"
+                      variant={activeDayIndex === day.dayIndex ? 'default' : 'outline'}
+                      onClick={() => setActiveDayIndex(day.dayIndex)}
+                    >
+                      {day.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>表示軸</span>
+                  <div className="flex items-center gap-1" role="group" aria-label="タイムライン表示軸">
+                    {(Object.keys(TIMELINE_AXIS_LABELS) as TimelineAxisMode[]).map((axis) => (
+                      <Button
+                        key={axis}
+                        type="button"
+                        size="sm"
+                        variant={timelineAxis === axis ? 'default' : 'outline'}
+                        className="h-7 px-3 text-xs"
+                        aria-pressed={timelineAxis === axis}
+                        onClick={() => setTimelineAxis(axis)}
+                      >
+                        {TIMELINE_AXIS_LABELS[axis]}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
               <TimelineGantt
                 lanes={timelineLanes}
                 pixelsPerMinute={DEFAULT_PIXELS_PER_MINUTE}
                 emptyMessage="選択したサービス日に表示できるブロックがありません。"
               />
-              {showDiagnostics ? (
-                visibleOverlapSummaries.length > 0 ? (
-                  <div>
-                    <h4 className="text-sm font-semibold">重複があるブロック</h4>
-                    <ul className="mt-2 space-y-1 text-sm">
-                      {visibleOverlapSummaries.map((item) => (
-                        <li key={item.blockId} className="flex items-center justify-between">
-                          <span className="font-medium">{item.blockId}</span>
-                          <span className="text-muted-foreground">{item.minutes.toFixed(1)} 分</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">選択したサービス日に重複はありません。</p>
-                )
-              ) : null}
             </>
           )}
         </CardContent>
@@ -427,10 +519,16 @@ export default function BlocksView(): JSX.Element {
       <BlocksTable
         summaries={manualPlanState.plan.summaries}
         overlapMinutesByBlock={overlapMinutesByBlock}
-        showDiagnostics={showDiagnostics}
-        warningDiagnostics={warningDiagnostics ?? undefined}
+        blockMeta={blockMeta}
+        vehicleTypeOptions={vehicleTypeOptions}
+        vehicleIdOptions={vehicleIdOptions}
+        onUpdateBlockMeta={handleBlockMetaChange}
+        onExportMeta={handleExportMeta}
       />
-      <UnassignedTable unassigned={manualPlanState.plan.unassignedTripIds} />
+      <UnassignedTable
+        unassigned={manualPlanState.plan.unassignedTripIds}
+        onCreateBlock={handleCreateBlockFromTrip}
+      />
     </div>
   );
 }
@@ -455,77 +553,118 @@ function StatCard({ label, value, trend = 'outline' }: StatCardProps): JSX.Eleme
 interface BlocksTableProps {
   summaries: BlockSummary[];
   overlapMinutesByBlock: Map<string, number>;
-  showDiagnostics: boolean;
-  warningDiagnostics?: Map<string, { counts: BlockWarningCounts; warnings: BlockWarningDetail[] }>;
+  blockMeta: Record<string, BlockMetaEntry | undefined>;
+  vehicleTypeOptions: Array<{ value: string; label: string }>;
+  vehicleIdOptions: Array<{ value: string; label: string }>;
+  onUpdateBlockMeta: (blockId: string, field: 'vehicleTypeId' | 'vehicleId', value: string) => void;
+  onExportMeta: () => void;
 }
 
 function BlocksTable({
   summaries,
   overlapMinutesByBlock,
-  showDiagnostics,
-  warningDiagnostics,
+  blockMeta,
+  vehicleTypeOptions,
+  vehicleIdOptions,
+  onUpdateBlockMeta,
+  onExportMeta,
 }: BlocksTableProps): JSX.Element {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>ブロック一覧</CardTitle>
-        <CardDescription>編集した行路の概要やターン間隔、重複量を確認できます。</CardDescription>
+      <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <CardTitle>ブロック一覧</CardTitle>
+          <CardDescription>
+            行路単位で想定車両タイプ・車両IDを記録し、CSV へ出力できます。未入力のままでも保存・出力は可能です。
+          </CardDescription>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={onExportMeta} disabled={summaries.length === 0}>
+            blocks_meta.csv を出力
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {summaries.length === 0 ? (
           <p className="text-sm text-muted-foreground">ブロックの計算結果がありません。GTFS フィードを取り込んでください。</p>
         ) : (
-          <TooltipProvider delayDuration={0}>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>行路ID</TableHead>
-                    <TableHead>サービスID</TableHead>
-                    <TableHead>サービス日</TableHead>
-                    <TableHead>便数</TableHead>
-                    <TableHead>始発時刻</TableHead>
-                    <TableHead>最終時刻</TableHead>
-                    <TableHead>平均ターン (分)</TableHead>
-                    <TableHead>最大ターン (分)</TableHead>
-                    <TableHead>重複合計 (分)</TableHead>
-                    {showDiagnostics ? <TableHead>警告 (H/S/I)</TableHead> : null}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {summaries.map((summary) => {
-                    const averageGap =
-                      summary.gaps.length === 0
-                        ? 0
-                        : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
-                    const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
-                    const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
-                    return (
-                      <TableRow key={summary.blockId} data-block-id={summary.blockId}>
-                        <TableCell className="font-medium">{summary.blockId}</TableCell>
-                        <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
-                        <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
-                        <TableCell>{summary.tripCount}</TableCell>
-                        <TableCell>{summary.firstTripStart}</TableCell>
-                        <TableCell>{summary.lastTripEnd}</TableCell>
-                        <TableCell>{averageGap}</TableCell>
-                        <TableCell>{maxGap}</TableCell>
-                        <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
-                        {showDiagnostics ? (
-                          <TableCell data-testid="blocks-warning-cell">
-                            <WarningsBadge
-                              summary={summary}
-                              diagnostics={warningDiagnostics?.get(summary.blockId)}
-                            />
-                          </TableCell>
-                        ) : null}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </TooltipProvider>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>行路ID</TableHead>
+                  <TableHead>サービスID</TableHead>
+                  <TableHead>サービス日</TableHead>
+                  <TableHead>便数</TableHead>
+                  <TableHead>想定車両タイプ</TableHead>
+                  <TableHead>車両ID</TableHead>
+                  <TableHead>始発時刻</TableHead>
+                  <TableHead>最終時刻</TableHead>
+                  <TableHead>平均ターン (分)</TableHead>
+                  <TableHead>最大ターン (分)</TableHead>
+                  <TableHead>重複合計 (分)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summaries.map((summary) => {
+                  const averageGap =
+                    summary.gaps.length === 0
+                      ? 0
+                      : Math.round(summary.gaps.reduce((acc, gap) => acc + gap, 0) / summary.gaps.length);
+                  const maxGap = summary.gaps.length === 0 ? 0 : Math.max(...summary.gaps);
+                  const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
+                  const meta = blockMeta[summary.blockId] ?? {};
+                  return (
+                    <TableRow key={summary.blockId} data-block-id={summary.blockId}>
+                      <TableCell className="font-medium">{summary.blockId}</TableCell>
+                      <TableCell>{summary.serviceId ?? '未設定'}</TableCell>
+                      <TableCell>{formatServiceDay(summary.serviceDayIndex)}</TableCell>
+                      <TableCell>{summary.tripCount}</TableCell>
+                      <TableCell className="min-w-[10rem]">
+                        <Input
+                          value={meta.vehicleTypeId ?? ''}
+                          onChange={(event) =>
+                            onUpdateBlockMeta(summary.blockId, 'vehicleTypeId', event.target.value)
+                          }
+                          placeholder="例: M"
+                          list="block-meta-vehicle-type-options"
+                          autoComplete="off"
+                          className="h-9"
+                        />
+                      </TableCell>
+                      <TableCell className="min-w-[10rem]">
+                        <Input
+                          value={meta.vehicleId ?? ''}
+                          onChange={(event) =>
+                            onUpdateBlockMeta(summary.blockId, 'vehicleId', event.target.value)
+                          }
+                          placeholder="例: BUS_001"
+                          list="block-meta-vehicle-id-options"
+                          autoComplete="off"
+                          className="h-9"
+                        />
+                      </TableCell>
+                      <TableCell>{summary.firstTripStart}</TableCell>
+                      <TableCell>{summary.lastTripEnd}</TableCell>
+                      <TableCell>{averageGap}</TableCell>
+                      <TableCell>{maxGap}</TableCell>
+                      <TableCell>{overlapMinutes.toFixed(1)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <datalist id="block-meta-vehicle-type-options">
+              {vehicleTypeOptions.map((option) => (
+                <option key={option.value} value={option.value} label={option.label} />
+              ))}
+            </datalist>
+            <datalist id="block-meta-vehicle-id-options">
+              {vehicleIdOptions.map((option) => (
+                <option key={option.value} value={option.value} label={option.label} />
+              ))}
+            </datalist>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -534,30 +673,93 @@ function BlocksTable({
 
 interface UnassignedTableProps {
   unassigned: string[];
+  onCreateBlock?: (tripId: string) => void;
 }
 
-function UnassignedTable({ unassigned }: UnassignedTableProps): JSX.Element {
+function UnassignedTable({ unassigned, onCreateBlock }: UnassignedTableProps): JSX.Element {
+  const [isDropActive, setDropActive] = useState(false);
+
+  const allowDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (unassigned.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    if (!isDropActive) {
+      setDropActive(true);
+    }
+  };
+
+  const resetDropState = () => {
+    if (isDropActive) {
+      setDropActive(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (unassigned.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    resetDropState();
+    const tripId =
+      event.dataTransfer?.getData('application/x-trip-id') ?? event.dataTransfer?.getData('text/plain');
+    if (tripId) {
+      onCreateBlock?.(tripId);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
-      <CardTitle>未割当 便</CardTitle>
-      <CardDescription>ブロックに割り当てられていない便を一覧で確認できます。</CardDescription>
+        <CardTitle>未割当 便</CardTitle>
+        <CardDescription>
+          ブロックに割り当てられていない便を一覧で確認できます。ドラッグ＆ドロップ、またはボタン操作で新しい行路を作成できます。
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {unassigned.length === 0 ? (
           <p className="text-sm text-muted-foreground">未割当の便はありません。</p>
         ) : (
           <div className="overflow-x-auto">
+            <div
+              className={`mb-4 rounded-md border border-dashed p-4 text-sm ${
+                isDropActive ? 'border-primary bg-primary/10 text-primary-foreground' : 'border-border/70 bg-muted/30'
+              }`}
+              onDragOver={allowDrop}
+              onDragEnter={allowDrop}
+              onDragLeave={resetDropState}
+              onDrop={handleDrop}
+            >
+              未割当便をここにドラッグすると、新しい行路カードを自動作成できます。
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>trip_id</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {unassigned.map((tripId) => (
-                  <TableRow key={tripId}>
+                  <TableRow
+                    key={tripId}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer?.setData('application/x-trip-id', tripId);
+                      event.dataTransfer?.setData('text/plain', tripId);
+                      event.dataTransfer?.setDragImage(event.currentTarget, 0, 0);
+                      event.dataTransfer.effectAllowed = 'copy';
+                      setDropActive(true);
+                    }}
+                    onDragEnd={resetDropState}
+                  >
                     <TableCell>{tripId}</TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" size="sm" variant="ghost" onClick={() => onCreateBlock?.(tripId)}>
+                        新規行路
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -569,23 +771,6 @@ function UnassignedTable({ unassigned }: UnassignedTableProps): JSX.Element {
   );
 }
 
-function clampTurnGap(value: string): number {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return DEFAULT_MAX_TURN_GAP_MINUTES;
-  }
-  return Math.min(MAX_TURN_GAP, Math.max(MIN_TURN_GAP, Math.round(numeric)));
-}
-
-function coverageBadgeVariant(percentage: number): 'default' | 'secondary' | 'outline' {
-  if (percentage >= 80) {
-    return 'default';
-  }
-  if (percentage >= 60) {
-    return 'secondary';
-  }
-  return 'outline';
-}
 
 function formatBlockOption(summary: BlockSummary): string {
   return `${formatServiceDay(summary.serviceDayIndex)} - ${summary.blockId}（便 ${summary.tripCount} 件）`;
@@ -595,67 +780,18 @@ function formatServiceDay(index: number): string {
   return `サービス日 ${index + 1}`;
 }
 
-function WarningsBadge({
-  summary,
-  diagnostics,
-}: {
-  summary: BlockSummary;
-  diagnostics?: { counts: BlockWarningCounts; warnings: BlockWarningDetail[] };
-}): JSX.Element {
-  const counts = diagnostics?.counts ?? summary.warningCounts ?? { critical: 0, warn: 0, info: 0 };
-  const details = diagnostics?.warnings ?? summary.warnings ?? [];
-  const total = (counts.critical ?? 0) + (counts.warn ?? 0) + (counts.info ?? 0);
-
-  if (total === 0) {
-    return <span className="text-xs text-muted-foreground">警告なし</span>;
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-2" data-testid={`blocks-warning-badges-${summary.blockId}`}>
-          <Badge variant={counts.critical > 0 ? 'destructive' : 'outline'}>H {counts.critical ?? 0}</Badge>
-          <Badge variant={counts.warn > 0 ? 'secondary' : 'outline'}>S {counts.warn ?? 0}</Badge>
-          <Badge variant={counts.info > 0 ? 'default' : 'outline'}>I {counts.info ?? 0}</Badge>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent
-        align="end"
-        className="max-w-xs space-y-1"
-        data-testid={`blocks-warning-tooltip-${summary.blockId}`}
-      >
-        {details.length === 0 ? (
-          <p className="text-xs leading-5">警告の内訳が取得できませんでした。</p>
-        ) : (
-          details.map((warning, index) => (
-            <p key={`${warning.code}-${index}`} className="text-xs leading-5">
-              {formatWarningDetail(warning)}
-            </p>
-          ))
-        )}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function formatWarningDetail(warning: BlockWarningDetail): string {
-  switch (warning.code) {
-    case 'BLK_NEG_GAP': {
-      const from = warning.fromTripId ?? '前便';
-      const to = warning.toTripId ?? '次便';
-      const gap = warning.gapMinutes ?? 0;
-      return `${from} → ${to} の時刻が重なっています（ギャップ ${gap} 分）。`;
+function formatTimelineLaneLabel(
+  summary: BlockSummary,
+  meta: BlockMetaEntry | undefined,
+  axis: TimelineAxisMode,
+): string {
+  if (axis === 'vehicle') {
+    const vehicleId = meta?.vehicleId?.trim();
+    if (vehicleId && vehicleId.length > 0) {
+      return `${vehicleId}（行路 ${summary.blockId}）`;
     }
-    case 'BLK_TURN_SHORT': {
-      const from = warning.fromTripId ?? '前便';
-      const to = warning.toTripId ?? '次便';
-      const gap = warning.gapMinutes ?? 0;
-      return `${from} → ${to} のターン間隔が ${gap} 分で最小ターン未満です。`;
-    }
-    case 'BLK_SVC_MISMATCH':
-      return '同じブロック内で service_id が混在しています。';
-    default:
-      return '詳細不明の警告です。';
+    return `${summary.blockId}（車両未設定）`;
   }
+  return `${summary.blockId}（便 ${summary.tripCount} 件）`;
 }
 

@@ -1,2 +1,4 @@
-﻿driver_id,max_continuous_drive_min,min_break_min,max_duty_span_min,max_work_min,night_window_start,night_window_end,qualifications,affiliation
-DRV001,240,45,780,480,22:00:00,05:00:00,large_bus|route,DepotA
+rule_id,label,value,unit,notes
+MAX_CONTINUOUS_MIN,連続稼働上限,300,minutes,Step1では未使用
+MIN_BREAK_MIN,最低休憩時間,45,minutes,Step1では未使用
+MAX_DAILY_MIN,1日上限,600,minutes,Step1では未使用

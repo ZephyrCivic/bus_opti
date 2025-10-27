@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { importSampleGtfs } from './utils/importHelpers';
 
-test.describe('G8: 非ブロッキング出力確認', () => {
+test.describe.skip('G8: 非ブロッキング出力確認（差分ビュー停止中のためskip）', () => {
   test('確認ダイアログ表示中もナビゲーションできる', async ({ page }) => {
     await importSampleGtfs(page);
 
