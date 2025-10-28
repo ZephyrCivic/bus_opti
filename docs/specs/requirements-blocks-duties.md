@@ -34,7 +34,7 @@
   - Depot: `openTime/closeTime` の既存項目を行路境界の制約源として使用（未活用→活用）。
   - ReliefPoint: `allowedWindow` をDuty交代候補のフィルタに使用（未活用→活用）。
 - DeadheadRule の解釈強化
-  - `mode`, `travelTimeMin`, `allowedWindow` を連結判定と評価指標に反映。未定義時は距離近似（shapes/緯度経度）で代替。
+  - Step1では `travelTimeMin` など手入力した値のみを連結判定と評価指標に反映し、未定義区間は警告対象とする（距離近似は後続ステップで検討）。
 
 ### 機材データ（Vehicles / VehicleTypes）— 手動インポート＋UI編集＋エクスポート
 - 目的: 自動割当は行わず、可視化・警告・将来の最適化入力を支える台帳として扱う。
@@ -64,7 +64,7 @@
   - ルート一覧→個別ビューで便タイムラインと地図表示（可能なら）を提供。
   - フィルタ: service_id、時間帯、方向。
 - 行路エディタ（Block Builder）
-  - 便の start/end をドラッグまたは選択で連結。複数候補がある場合は「実効gap（gap-Deadhead）」が小さい順に候補提示。
+  - 便の start/end をドラッグまたは選択で連結。複数候補がある場合は「実効gap（gap-Deadhead）」が小さい順に候補提示（Deadheadは手入力ルールのみ参照）。
 - 画面に現在の `linking` 設定（minTurn, radius, 親駅許容）を常時表示。（Step1では非表示・Step2で復帰予定）
   - 連結直後に警告を評価し、行単位でアイコン/バッジ表示。
 - 交番エディタ（Duty Builder）
@@ -112,7 +112,7 @@
   1) `linkingEnabled` が true のとき、次の新条件で連結候補をスコアリング：
      - サービス日一致（現行維持）。
      - 折返し下限: `min(turnGap, depot.minTurnaroundMin at terminal) ≥ requiredMin` を満たす。
-     - Deadhead所要: `DeadheadRule(fromStop→toStop)` があれば gap から控除。無い場合は距離推定×速度（閾値）で近似。
+     - Deadhead所要: `DeadheadRule(fromStop→toStop)` があれば gap から控除。未定義の場合は控除せず警告し、距離推定による近似は実施しない。
      - 接続半径/親駅許容: `maxConnectRadiusM`, `allowParentStation` を考慮し終点/始点を正規化。
   2) 候補が複数ある場合は「最小の実効gap（gap-死活移動）」優先（現行の単純gapより妥当）。
 - 指標/警告の整備

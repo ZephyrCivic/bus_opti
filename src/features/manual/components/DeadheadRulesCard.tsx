@@ -1,6 +1,6 @@
 /**
  * src/features/manual/components/DeadheadRulesCard.tsx
- * Provides a UI to manage deadhead approximation rules and CSV import/export.
+ * Provides a UI to manage manual deadhead rules and CSV import/export.
  */
 import { useRef, useState } from 'react';
 
@@ -32,8 +32,8 @@ export function DeadheadRulesCard({ rows, onAdd, onDelete, onImport, onExport }:
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>回送近似（回送ルール）</CardTitle>
-          <CardDescription>最短経路の精緻化は後続対応。まずは固定分や距離などで回送時間を近似します。</CardDescription>
+          <CardTitle>回送ルール</CardTitle>
+          <CardDescription>Step1では自動計算を行わず、行路編集時に挿入する回送区間の所要をここで手入力します。</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input

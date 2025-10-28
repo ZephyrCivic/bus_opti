@@ -14,7 +14,7 @@
 - 目的: 行路（Block）をUIで直感的に作れる最小コアを提供。
 - 実装
   - タイムライン上で Start/End 選択→Connect（ui-mockの操作どおり）。
-  - 実効gap＝gap−Deadhead（Manual/近似）を計算し、接続部ラベルに表示。
+  - 実効gap＝gap−Deadhead（手入力ルール）を計算し、接続部ラベルに表示。
   - 警告（critical/warn/info）を接続部/行単位に表示。
   - Coverage/未割当の集計をフッタに表示。
   - CSV: blocks.csv 現行仕様のまま（将来列は出力しない）。
