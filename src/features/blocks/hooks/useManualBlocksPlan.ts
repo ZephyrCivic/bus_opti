@@ -6,6 +6,7 @@ import {
   connectBlocksPlan,
   createBlockFromTrip as createBlockFromTripPlan,
   getConnectionCandidates,
+  splitBlockPlan,
   type BlockConnectionCandidate,
   type ManualConnection,
   type ManualPlanConfig,
@@ -24,6 +25,7 @@ export interface UseManualBlocksPlanResult {
   candidatesFor: (blockId: string) => BlockConnectionCandidate[];
   config: ManualPlanConfig;
   createBlockFromTrip: (seed: SingleTripBlockSeed) => boolean;
+  splitBlock: (blockId: string, splitTripId: string) => boolean;
 }
 
 export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanConfig): UseManualBlocksPlanResult {
@@ -100,6 +102,28 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
     [],
   );
 
+  const splitBlock = useCallback(
+    (blockId: string, splitTripId: string) => {
+      let split = false;
+      setManualPlan((previous) => {
+        const result = splitBlockPlan(previous, blockId, splitTripId, config);
+        if (!result) {
+          return previous;
+        }
+        split = true;
+        setHistory((current) => [
+          ...current,
+          {
+            previousPlan: cloneBlockPlan(previous),
+          },
+        ]);
+        return result.plan;
+      });
+      return split;
+    },
+    [config],
+  );
+
   const connections = useMemo(
     () => history.map((entry) => entry.connection).filter((entry): entry is ManualConnection => Boolean(entry)),
     [history],
@@ -134,5 +158,6 @@ export function useManualBlocksPlan(initialPlan: BlockPlan, config: ManualPlanCo
     candidatesFor,
     config,
     createBlockFromTrip: createBlock,
+    splitBlock,
   };
 }

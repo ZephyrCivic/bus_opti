@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
+import clsx from 'clsx';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,9 +18,13 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import TimelineGantt from '@/features/timeline/TimelineGantt';
+import TimelineGantt, {
+  type TimelineLaneContextMenuEvent,
+  type TimelineLaneProps,
+  type TimelineSegmentContextMenuEvent,
+} from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
-import type { TimelineLane } from '@/features/timeline/types';
+import type { TimelineLane, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
 import {
   buildBlocksPlan,
   buildSingleTripBlockSeed,
@@ -46,6 +51,56 @@ const TIMELINE_AXIS_LABELS = {
 
 type TimelineAxisMode = keyof typeof TIMELINE_AXIS_LABELS;
 
+const DEFAULT_INTERVAL_MINUTES = 10;
+const DEADHEAD_COLOR = '#60a5fa';
+const BREAK_COLOR = '#f97316';
+
+interface BlockInterval {
+  id: string;
+  kind: 'break' | 'deadhead';
+  startMinutes: number;
+  endMinutes: number;
+}
+
+type BlockTimelineSegmentMeta =
+  | {
+      type: 'trip';
+      blockId: string;
+      tripId: string;
+      seq: number;
+      startMinutes: number;
+      endMinutes: number;
+    }
+  | {
+      type: 'break' | 'deadhead';
+      blockId: string;
+      intervalId: string;
+      startMinutes: number;
+      endMinutes: number;
+    };
+
+type BlockContextMenuState =
+  | {
+      type: 'lane';
+      blockId: string;
+      minutes: number;
+      position: { x: number; y: number };
+    }
+  | {
+      type: 'trip';
+      blockId: string;
+      tripId: string;
+      canSplit: boolean;
+      position: { x: number; y: number };
+    }
+  | {
+      type: 'interval';
+      blockId: string;
+      intervalId: string;
+      kind: 'break' | 'deadhead';
+      position: { x: number; y: number };
+    };
+
 export default function BlocksView(): JSX.Element {
   const { result, manual, setManual } = useGtfsImport();
   const turnGap = DEFAULT_MAX_TURN_GAP_MINUTES;
@@ -55,6 +110,10 @@ export default function BlocksView(): JSX.Element {
   const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [timelineAxis, setTimelineAxis] = useState<TimelineAxisMode>('block');
   const [globalDropActive, setGlobalDropActive] = useState(false);
+  const [blockIntervals, setBlockIntervals] = useState<Record<string, BlockInterval[]>>({});
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<BlockContextMenuState | null>(null);
   const blockMeta = manual.blockMeta ?? {};
   const vehicleTypeOptions = useMemo(
     () =>
@@ -100,6 +159,50 @@ useEffect(() => {
   setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
   setToBlockId((current) => (current && !blockIds.has(current) ? '' : current));
 }, [manualPlanState.plan]);
+
+  useEffect(() => {
+    const validBlockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
+    setBlockIntervals((current) => {
+      const entries = Object.entries(current).filter(([blockId]) => validBlockIds.has(blockId));
+      if (entries.length === Object.keys(current).length) {
+        return current;
+      }
+      const next: Record<string, BlockInterval[]> = {};
+      for (const [blockId, intervals] of entries) {
+        next[blockId] = intervals;
+      }
+      return next;
+    });
+    setContextMenu((state) => {
+      if (!state) {
+        return state;
+      }
+      if (!validBlockIds.has(state.blockId)) {
+        return null;
+      }
+      return state;
+    });
+  }, [manualPlanState.plan.summaries]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+    const handleGlobalClose = () => setContextMenu(null);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu(null);
+      }
+    };
+    window.addEventListener('click', handleGlobalClose);
+    window.addEventListener('contextmenu', handleGlobalClose);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('click', handleGlobalClose);
+      window.removeEventListener('contextmenu', handleGlobalClose);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     const validBlockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
@@ -170,6 +273,249 @@ useEffect(() => {
       setManualStatus({ type: 'error', message: '連結できませんでした。サービス日と時刻を確認してください。' });
     }
   };
+
+  const connectBlocksByTimeline = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (!sourceId || !targetId || sourceId === targetId) {
+        return;
+      }
+      const succeeded = manualPlanState.connect(sourceId, targetId);
+      if (succeeded) {
+        setManualStatus({ type: 'success', message: `${sourceId} と ${targetId} を連結しました。` });
+        toast.success(`${sourceId} と ${targetId} を連結しました。`);
+      } else {
+        setManualStatus({ type: 'error', message: '連結できませんでした。サービス日と時刻を確認してください。' });
+        toast.error('連結できませんでした。サービス日と時刻を確認してください。');
+      }
+    },
+    [manualPlanState],
+  );
+
+  const handleSplitBlock = useCallback(
+    (blockId: string, tripId: string) => {
+      const split = manualPlanState.splitBlock(blockId, tripId);
+      setContextMenu(null);
+      if (split) {
+        toast.success(`便 ${tripId} 以降を新しい行路として分離しました。`);
+      } else {
+        toast.error('分離できませんでした。対象の便と行路を確認してください。');
+      }
+    },
+    [manualPlanState],
+  );
+
+  const handleAddInterval = useCallback(
+    (blockId: string, kind: 'break' | 'deadhead', minutes: number) => {
+      const summary = summaryByBlockId.get(blockId);
+      const blockStart = summary ? parseTimeLabel(summary.firstTripStart) ?? 0 : 0;
+      const blockEnd = summary ? parseTimeLabel(summary.lastTripEnd) ?? 24 * 60 : 24 * 60;
+      const minBound = Math.max(0, Math.min(blockStart, minutes) - 60);
+      const maxBound = Math.min(24 * 60, Math.max(blockEnd, minutes) + 60);
+      let start = Math.max(minBound, Math.min(minutes, maxBound - 1));
+      let end = start + DEFAULT_INTERVAL_MINUTES;
+      if (end > maxBound) {
+        end = maxBound;
+        start = Math.max(minBound, end - DEFAULT_INTERVAL_MINUTES);
+      }
+      if (end <= start) {
+        end = Math.min(maxBound, start + 1);
+      }
+      const interval: BlockInterval = {
+        id: `interval-${crypto.randomUUID()}`,
+        kind,
+        startMinutes: Number(start.toFixed(2)),
+        endMinutes: Number(end.toFixed(2)),
+      };
+      setBlockIntervals((current) => {
+        const next = { ...current };
+        const existing = next[blockId] ?? [];
+        next[blockId] = [...existing, interval];
+        return next;
+      });
+      setContextMenu(null);
+      toast.success(kind === 'break' ? '休憩区間を追加しました。' : '回送区間を追加しました。');
+    },
+    [summaryByBlockId],
+  );
+
+  const handleRemoveInterval = useCallback((blockId: string, intervalId: string) => {
+    setBlockIntervals((current) => {
+      const existing = current[blockId];
+      if (!existing) {
+        return current;
+      }
+      const nextIntervals = existing.filter((interval) => interval.id !== intervalId);
+      const next = { ...current };
+      if (nextIntervals.length > 0) {
+        next[blockId] = nextIntervals;
+      } else {
+        delete next[blockId];
+      }
+      return next;
+    });
+    setContextMenu(null);
+    toast.success('区間を削除しました。');
+  }, []);
+
+  const handleTimelineSegmentDrag = useCallback(
+    (event: TimelineSegmentDragEvent<BlockTimelineSegmentMeta>) => {
+      const meta = event.segment.meta;
+      if (!meta) {
+        return;
+      }
+      if (meta.type === 'trip') {
+        toast.info('便の位置はタイムライン上で直接移動できません。');
+        return;
+      }
+      let updated = false;
+      setBlockIntervals((current) => {
+        const intervals = current[meta.blockId];
+        if (!intervals) {
+          return current;
+        }
+        const index = intervals.findIndex((interval) => interval.id === meta.intervalId);
+        if (index === -1) {
+          return current;
+        }
+        const summary = summaryByBlockId.get(meta.blockId);
+        const blockStart = summary ? parseTimeLabel(summary.firstTripStart) ?? 0 : 0;
+        const blockEnd = summary ? parseTimeLabel(summary.lastTripEnd) ?? 24 * 60 : 24 * 60;
+        const minBound = Math.max(0, blockStart - 60);
+        const maxBound = Math.min(24 * 60, blockEnd + 60);
+        const target = { ...intervals[index]! };
+        const originalDuration = Math.max(1, target.endMinutes - target.startMinutes);
+
+        if (event.mode === 'move') {
+          let nextStart = target.startMinutes + event.deltaMinutes;
+          nextStart = Math.max(minBound, Math.min(nextStart, maxBound - originalDuration));
+          const nextEnd = Math.min(maxBound, nextStart + originalDuration);
+          target.startMinutes = Number(nextStart.toFixed(2));
+          target.endMinutes = Number(nextEnd.toFixed(2));
+        } else if (event.mode === 'resize-start') {
+          let nextStart = target.startMinutes + event.deltaMinutes;
+          nextStart = Math.max(minBound, Math.min(nextStart, target.endMinutes - 1));
+          target.startMinutes = Number(nextStart.toFixed(2));
+        } else if (event.mode === 'resize-end') {
+          let nextEnd = target.endMinutes + event.deltaMinutes;
+          nextEnd = Math.min(maxBound, Math.max(nextEnd, target.startMinutes + 1));
+          target.endMinutes = Number(nextEnd.toFixed(2));
+        }
+
+        if (target.endMinutes - target.startMinutes < 1) {
+          target.endMinutes = Number((target.startMinutes + 1).toFixed(2));
+        }
+
+        if (
+          target.startMinutes === intervals[index]!.startMinutes &&
+          target.endMinutes === intervals[index]!.endMinutes
+        ) {
+          return current;
+        }
+
+        const nextIntervals = [...intervals];
+        nextIntervals[index] = target;
+        updated = true;
+        return { ...current, [meta.blockId]: nextIntervals };
+      });
+      if (updated) {
+        toast.success('区間を更新しました。');
+      }
+    },
+    [summaryByBlockId],
+  );
+
+  const handleSegmentContextMenu = useCallback(
+    (event: TimelineSegmentContextMenuEvent<BlockTimelineSegmentMeta>) => {
+      const meta = event.segment.meta;
+      if (!meta) {
+        return;
+      }
+      if (meta.type === 'trip') {
+        setContextMenu({
+          type: 'trip',
+          blockId: meta.blockId,
+          tripId: meta.tripId,
+          canSplit: meta.seq > 1,
+          position: { x: event.clientX, y: event.clientY },
+        });
+        return;
+      }
+      if (meta.type === 'break' || meta.type === 'deadhead') {
+        setContextMenu({
+          type: 'interval',
+          blockId: meta.blockId,
+          intervalId: meta.intervalId,
+          kind: meta.type,
+          position: { x: event.clientX, y: event.clientY },
+        });
+      }
+    },
+    [],
+  );
+
+  const handleLaneContextMenu = useCallback((event: TimelineLaneContextMenuEvent) => {
+    setContextMenu({
+      type: 'lane',
+      blockId: event.laneId,
+      minutes: event.minutes,
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }, []);
+
+  const getLaneProps = useCallback(
+    (lane: TimelineLane<BlockTimelineSegmentMeta>): TimelineLaneProps => {
+      const isDropTarget = dropTargetBlockId === lane.id;
+      const isDragging = draggingBlockId === lane.id;
+      return {
+        labelProps: {
+          draggable: true,
+          onDragStart: (event) => {
+            event.dataTransfer.setData('application/x-block-id', lane.id);
+            event.dataTransfer.setData('text/plain', lane.id);
+            event.dataTransfer.effectAllowed = 'move';
+            setDraggingBlockId(lane.id);
+            setDropTargetBlockId(null);
+            setManualStatus(null);
+          },
+          onDragEnd: () => {
+            setDraggingBlockId(null);
+            setDropTargetBlockId(null);
+          },
+          className: clsx(
+            isDropTarget && 'bg-muted/40',
+            isDragging && 'ring-1 ring-primary/60',
+            'cursor-grab',
+          ),
+        },
+        trackProps: {
+          onDragOver: (event) => {
+            const sourceId = event.dataTransfer.getData('application/x-block-id');
+            if (sourceId && sourceId !== lane.id) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'link';
+              if (dropTargetBlockId !== lane.id) {
+                setDropTargetBlockId(lane.id);
+              }
+            }
+          },
+          onDragLeave: () => {
+            setDropTargetBlockId((current) => (current === lane.id ? null : current));
+          },
+          onDrop: (event) => {
+            const sourceId = event.dataTransfer.getData('application/x-block-id');
+            if (sourceId && sourceId !== lane.id) {
+              event.preventDefault();
+              setDropTargetBlockId(null);
+              setDraggingBlockId(null);
+              connectBlocksByTimeline(sourceId, lane.id);
+            }
+          },
+          className: clsx(isDropTarget && 'ring-2 ring-primary/50'),
+        },
+      };
+    },
+    [dropTargetBlockId, draggingBlockId, connectBlocksByTimeline],
+  );
 
   const handleUndo = () => {
     const undone = manualPlanState.undoLastConnection();
@@ -328,23 +674,117 @@ useEffect(() => {
     [days],
   );
 
-  const timelineLanes = useMemo<TimelineLane[]>(() => {
-    return visibleSummaries.reduce<TimelineLane[]>((lanes, summary) => {
-      const startMinutes = parseTimeLabel(summary.firstTripStart);
-      const endMinutes = parseTimeLabel(summary.lastTripEnd);
-      if (startMinutes === undefined || endMinutes === undefined) {
-        return lanes;
+  const summaryByBlockId = useMemo(() => {
+    return new Map(manualPlanState.plan.summaries.map((summary) => [summary.blockId, summary] as const));
+  }, [manualPlanState.plan.summaries]);
+
+  const blockRowsById = useMemo(() => {
+    const map = new Map<string, BlockCsvRow[]>();
+    for (const row of manualPlanState.plan.csvRows) {
+      const list = map.get(row.blockId);
+      if (list) {
+        list.push(row);
+      } else {
+        map.set(row.blockId, [row]);
       }
-      const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
-      const color = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
+    }
+    for (const rows of map.values()) {
+      rows.sort((a, b) => a.seq - b.seq);
+    }
+    return map;
+  }, [manualPlanState.plan.csvRows]);
+
+  const timelineLanes = useMemo<TimelineLane<BlockTimelineSegmentMeta>[]>(() => {
+    return visibleSummaries.reduce<TimelineLane<BlockTimelineSegmentMeta>[]>((lanes, summary) => {
       const meta = blockMeta[summary.blockId];
       const laneLabel = formatTimelineLaneLabel(summary, meta, timelineAxis);
       const vehicleTypeLabel = meta?.vehicleTypeId?.trim();
-      const segmentLabel =
-        timelineAxis === 'vehicle'
-          ? `${summary.blockId}: ${summary.firstTripStart} ~ ${summary.lastTripEnd}`
-          : `${summary.firstTripStart} ~ ${summary.lastTripEnd}`;
-      const lane: TimelineLane = {
+      const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
+      const baseColor = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
+
+      const rows = blockRowsById.get(summary.blockId) ?? [];
+      const tripSegments: TimelineSegment<BlockTimelineSegmentMeta>[] = rows.reduce(
+        (segments, row) => {
+          const startMinutes = parseTimeLabel(row.tripStart);
+          const endMinutes = parseTimeLabel(row.tripEnd);
+          if (startMinutes === undefined || endMinutes === undefined) {
+            return segments;
+          }
+          const safeEnd = Math.max(endMinutes, startMinutes + 1);
+          segments.push({
+            id: `${row.blockId}-${row.tripId}`,
+            label: row.tripId,
+            startMinutes,
+            endMinutes: safeEnd,
+            color: baseColor,
+            meta: {
+              type: 'trip',
+              blockId: row.blockId,
+              tripId: row.tripId,
+              seq: row.seq,
+              startMinutes,
+              endMinutes: safeEnd,
+            },
+          });
+          return segments;
+        },
+        [] as TimelineSegment<BlockTimelineSegmentMeta>[],
+      );
+
+      const intervalSegments: TimelineSegment<BlockTimelineSegmentMeta>[] = (blockIntervals[summary.blockId] ?? []).map(
+        (interval) => {
+          const duration = Math.max(interval.endMinutes - interval.startMinutes, 0);
+          const minutesLabel = Math.max(1, Math.round(duration));
+          const safeEnd = Math.max(interval.endMinutes, interval.startMinutes + 1);
+          return {
+            id: interval.id,
+            label: `${interval.kind === 'break' ? '休憩' : '回送'} ${minutesLabel}分`,
+            startMinutes: interval.startMinutes,
+            endMinutes: safeEnd,
+            color: interval.kind === 'break' ? BREAK_COLOR : DEADHEAD_COLOR,
+            meta: {
+              type: interval.kind,
+              blockId: summary.blockId,
+              intervalId: interval.id,
+              startMinutes: interval.startMinutes,
+              endMinutes: safeEnd,
+            },
+          };
+        },
+      );
+
+      const segments = [...tripSegments, ...intervalSegments].sort(
+        (a, b) => a.startMinutes - b.startMinutes,
+      );
+
+      if (segments.length === 0) {
+        const startMinutes = parseTimeLabel(summary.firstTripStart);
+        const endMinutes = parseTimeLabel(summary.lastTripEnd);
+        if (startMinutes === undefined || endMinutes === undefined) {
+          return lanes;
+        }
+        const safeEnd = Math.max(endMinutes, startMinutes + 1);
+        segments.push({
+          id: `${summary.blockId}-window`,
+          label:
+            timelineAxis === 'vehicle'
+              ? `${summary.blockId}: ${summary.firstTripStart} ~ ${summary.lastTripEnd}`
+              : `${summary.firstTripStart} ~ ${summary.lastTripEnd}`,
+          startMinutes,
+          endMinutes: safeEnd,
+          color: baseColor,
+          meta: {
+            type: 'trip',
+            blockId: summary.blockId,
+            tripId: `${summary.blockId}-window`,
+            seq: 1,
+            startMinutes,
+            endMinutes: safeEnd,
+          },
+        });
+      }
+
+      lanes.push({
         id: summary.blockId,
         label: laneLabel,
         tag: vehicleTypeLabel
@@ -353,20 +793,18 @@ useEffect(() => {
               title: `想定車両タイプ: ${vehicleTypeLabel}`,
             }
           : undefined,
-        segments: [
-          {
-            id: `${summary.blockId}-window`,
-            label: segmentLabel,
-            startMinutes,
-            endMinutes: Math.max(endMinutes, startMinutes + 1),
-            color,
-          },
-        ],
-      };
-      lanes.push(lane);
+        segments,
+      });
       return lanes;
     }, []);
-  }, [visibleSummaries, overlapMinutesByBlock, blockMeta, timelineAxis]);
+  }, [
+    visibleSummaries,
+    blockRowsById,
+    blockIntervals,
+    overlapMinutesByBlock,
+    blockMeta,
+    timelineAxis,
+  ]);
 
   return (
     <div
@@ -400,7 +838,7 @@ useEffect(() => {
               }
               const created = manualPlanState.createBlockFromTrip(seed);
               if (created) {
-                toast.success(`新しい行路 ${created.blockId} を作成しました。`);
+                toast.success('新しい行路を作成しました。');
               } else {
                 toast.error('新しい行路を作成できませんでした。割当済みの可能性があります。');
               }
@@ -412,6 +850,65 @@ useEffect(() => {
         }
       }}
     >
+      {contextMenu ? (
+        <div
+          className="fixed z-50 min-w-[220px] overflow-hidden rounded-md border border-border/60 bg-card shadow-lg"
+          style={{ top: contextMenu.position.y, left: contextMenu.position.x }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <div className="flex flex-col text-sm">
+            {contextMenu.type === 'lane' ? (
+              <>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddInterval(contextMenu.blockId, 'break', contextMenu.minutes)}
+                >
+                  休憩をこの位置に追加
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddInterval(contextMenu.blockId, 'deadhead', contextMenu.minutes)}
+                >
+                  回送をこの位置に追加
+                </button>
+              </>
+            ) : null}
+            {contextMenu.type === 'trip' ? (
+              <button
+                type="button"
+                className={clsx(
+                  'px-3 py-2 text-left focus:outline-none',
+                  contextMenu.canSplit ? 'hover:bg-muted' : 'cursor-not-allowed text-muted-foreground',
+                )}
+                onClick={() => {
+                  if (contextMenu.canSplit) {
+                    handleSplitBlock(contextMenu.blockId, contextMenu.tripId);
+                  }
+                }}
+                disabled={!contextMenu.canSplit}
+              >
+                {contextMenu.canSplit ? 'この便から新しい行路へ分離' : '最初の便は分離できません'}
+              </button>
+            ) : null}
+            {contextMenu.type === 'interval' ? (
+              <button
+                type="button"
+                className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                onClick={() => handleRemoveInterval(contextMenu.blockId, contextMenu.intervalId)}
+              >
+                {contextMenu.kind === 'break' ? '休憩を削除' : '回送を削除'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {globalDropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="mx-4 w-full max-w-3xl rounded-xl border-4 border-dashed border-primary/60 bg-primary/5 p-6 text-center text-sm text-primary">
@@ -431,8 +928,8 @@ useEffect(() => {
           <div className="space-y-1">
             <CardTitle>手動連結（最小UI）</CardTitle>
             <CardDescription>
-              Step1 では From/To 選択でブロックを手作業連結します。候補提示や自動判定は行いません。
-              未割当便をタイムラインへドラッグすると新しい行路カードを作成できますが、既存ブロック同士のドラッグ連結は非対応です。
+              Step1 では From/To 選択に加えて、タイムライン左側の行路ラベルをドラッグ＆ドロップするとブロック同士を連結できます。
+              未割当便をタイムラインへドラッグすると新しい行路カードを作成できます。
               画面全体がドロップターゲットになっているため、未割当便の行をそのままタイムラインへドロップしてください。
             </CardDescription>
           </div>
@@ -561,8 +1058,13 @@ useEffect(() => {
               </div>
               <TimelineGantt
                 lanes={timelineLanes}
+                selectedLaneId={dropTargetBlockId ?? undefined}
                 pixelsPerMinute={DEFAULT_PIXELS_PER_MINUTE}
                 emptyMessage="選択したサービス日に表示できるブロックがありません。"
+                getLaneProps={getLaneProps}
+                onSegmentDrag={handleTimelineSegmentDrag}
+                onSegmentContextMenu={handleSegmentContextMenu}
+                onLaneContextMenu={handleLaneContextMenu}
               />
             </>
           )}
