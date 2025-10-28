@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { UploadCloud, History, RefreshCcw, FileWarning, Info } from 'lucide-react';
+import { UploadCloud, History, RefreshCcw, FileWarning } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -129,22 +129,6 @@ export default function ImportView(): JSX.Element {
     ],
     [],
   );
-
-  const missingManualInputs = useMemo(() => {
-    const missing: string[] = [];
-    if (manual.vehicleTypes.length === 0) {
-      missing.push('車両タイプ CSV');
-    }
-    if (manual.vehicles.length === 0) {
-      missing.push('車両 CSV');
-    }
-    if (manual.drivers.length === 0) {
-      missing.push('運転士 CSV');
-    }
-    return missing;
-  }, [manual.vehicleTypes.length, manual.vehicles.length, manual.drivers.length]);
-
-  const showManualNotice = isStepOne && status === 'ready' && missingManualInputs.length > 0;
 
   const selectedRoutesKey = useMemo(() => selectedRouteIds.join('|'), [selectedRouteIds]);
   const telemetrySelectionRef = useRef<string | null>(null);
@@ -289,21 +273,6 @@ export default function ImportView(): JSX.Element {
           </CardFooter>
         ) : null}
       </Card>
-
-      {showManualNotice ? (
-        <Alert>
-          <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
-          <AlertTitle>車両・運転士のCSVが未入力でも続行できます</AlertTitle>
-          <AlertDescription>
-            <p>
-              {missingManualInputs.join('、')} はまだ取り込まれていませんが、Step1では空のままでも編集を始められます。
-            </p>
-            <p className="mt-2">
-              保存や出力の前に、左ナビの「制約条件（手動入力）」からCSVを読み込むか、必要なIDを登録してください。
-            </p>
-          </AlertDescription>
-        </Alert>
-      ) : null}
 
       {localError && (
         <Alert variant="destructive">
