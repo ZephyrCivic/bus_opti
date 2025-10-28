@@ -247,6 +247,10 @@ useEffect(() => {
     return manualBlockSummaries.filter((summary) => candidateIds.has(summary.blockId));
   }, [manualBlockSummaries, manualPlanState.candidatesFor, fromBlockId]);
 
+  const summaryByBlockId = useMemo(() => {
+    return new Map(manualPlanState.plan.summaries.map((summary) => [summary.blockId, summary] as const));
+  }, [manualPlanState.plan.summaries]);
+
   const handleFromChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value;
     setFromBlockId(value);
@@ -673,10 +677,6 @@ useEffect(() => {
     () => days.flatMap((day) => day.summaries),
     [days],
   );
-
-  const summaryByBlockId = useMemo(() => {
-    return new Map(manualPlanState.plan.summaries.map((summary) => [summary.blockId, summary] as const));
-  }, [manualPlanState.plan.summaries]);
 
   const blockRowsById = useMemo(() => {
     const map = new Map<string, BlockCsvRow[]>();

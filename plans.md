@@ -6,6 +6,7 @@
 
 ## Testログ (2025-10-28)
 - `npm run generate-snapshots`: Playwright の Chromium ダウンロードが 403 Forbidden で失敗。環境要因のため差分確認は未実施。
+- `npm run typecheck`: `summaryByBlockId` のメモ化位置を見直し、型チェックが成功したことを確認。
 
 ## 北極星（読むだけで使い方が分かる版）
 目的: 1運行日の行路（Block）と交番（Duty）を、GTFS+CSV を読み込んで二面ビューで人手で作る。
