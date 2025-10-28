@@ -185,6 +185,7 @@ export function getConnectionCandidates(
 }
 
 export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed): BlockPlan | null {
+  console.debug('[manualPlan:createBlockFromTrip] attempt', seed.tripId, plan.unassignedTripIds.includes(seed.tripId));
   if (!plan.unassignedTripIds.includes(seed.tripId)) {
     return null;
   }
@@ -227,6 +228,8 @@ export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed):
   next.unassignedTripIds = next.unassignedTripIds.filter((tripId) => tripId !== seed.tripId);
   next.assignedTripCount = Math.min(next.totalTripCount, next.assignedTripCount + 1);
   next.coverageRatio = next.totalTripCount === 0 ? 0 : next.assignedTripCount / next.totalTripCount;
+
+  console.debug('[manualPlan:createBlockFromTrip] success new block', blockId, 'remaining', next.unassignedTripIds.length);
 
   return next;
 }

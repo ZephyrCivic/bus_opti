@@ -191,7 +191,7 @@ export default function DashboardView(): JSX.Element {
     const csv = [header, ...rows]
       .map((line) => line.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
       .join('\n');
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+    const timestamp = new Date().toISOString().replace(/-|:|T/g, '').slice(0, 12);
     const fileName = `duty-kpi-details-${timestamp}.csv`;
     return { csv, fileName, rowCount: rows.length };
   }, [filteredDetails]);
@@ -333,7 +333,7 @@ export default function DashboardView(): JSX.Element {
       return;
     }
     const csv = exportWorkflowSessionsCsv(sessions);
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+    const timestamp = new Date().toISOString().replace(/-|:|T/g, '').slice(0, 12);
     downloadCsv({ fileName: `workflow-kpi-${timestamp}.csv`, content: csv });
     toast.success('ワークフロー KPI ログをエクスポートしました。');
   };

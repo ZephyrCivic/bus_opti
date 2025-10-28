@@ -19,6 +19,7 @@ import {
   type MoveDutySegmentInput,
 } from '@/services/duty/dutyState';
 import type { Duty, DutyEditState, DutySettings, ManualInputs } from '@/types';
+import type { BlockPlan } from '@/services/blocks/blockBuilder';
 import { autoCorrectDuty } from '@/services/duty/dutyAutoCorrect';
 import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
 import { loadDutyState, saveDutyState } from '@/services/duty/dutyPersistence';
@@ -54,6 +55,8 @@ interface GtfsImportContextValue extends GtfsImportState {
   reset: () => void;
   manual: ManualInputs;
   setManual: (updater: (prev: ManualInputs) => ManualInputs) => void;
+  manualBlockPlan: BlockPlan | null;
+  setManualBlockPlan: (plan: BlockPlan | null) => void;
   selectedRouteIds: string[];
   setSelectedRouteIds: (next: string[] | ((prev: string[]) => string[])) => void;
 }
@@ -84,6 +87,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     blockMeta: {},
     linking: { enabled: true, minTurnaroundMin: 10, maxConnectRadiusM: 100, allowParentStation: true },
   }));
+  const [manualBlockPlan, setManualBlockPlanState] = useState<BlockPlan | null>(null);
   const [selectedRouteIds, setSelectedRouteIdsState] = useState<string[]>([]);
 
   const normalizeRouteIds = useCallback((ids: string[]): string[] => {
@@ -126,6 +130,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
       setState({ status: 'ready', result });
       resetDutyState();
       setSelectedRouteIdsState([]);
+      setManualBlockPlanState(null);
     } catch (error) {
       const message = error instanceof GtfsImportError ? error.message : '読み込み中に予期しないエラーが発生しました。';
       setState({ status: 'error', errorMessage: message });
@@ -136,6 +141,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     setState({ status: 'ready', result });
     resetDutyState();
     setSelectedRouteIdsState([]);
+    setManualBlockPlanState(null);
   }, [resetDutyState]);
 
   const reset = useCallback(() => {
@@ -151,6 +157,7 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
       vehicles: [],
     }));
     setSelectedRouteIdsState([]);
+    setManualBlockPlanState(null);
   }, [resetDutyState]);
 
   const dutyActions = useMemo<DutyEditorActions>(() => ({
@@ -213,9 +220,22 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     reset,
     manual,
     setManual: (updater) => setManualState((prev) => updater(prev)),
+    manualBlockPlan,
+    setManualBlockPlan: setManualBlockPlanState,
     selectedRouteIds,
     setSelectedRouteIds,
-  }), [state, dutyState, dutyActions, importFromFile, loadFromSaved, reset, manual, selectedRouteIds, setSelectedRouteIds]);
+  }), [
+    state,
+    dutyState,
+    dutyActions,
+    importFromFile,
+    loadFromSaved,
+    reset,
+    manual,
+    manualBlockPlan,
+    selectedRouteIds,
+    setSelectedRouteIds,
+  ]);
 
   useEffect(() => {
     if (!state.result) {
@@ -264,10 +284,17 @@ export function GtfsImportProvider({ children }: PropsWithChildren): JSX.Element
     }
     const testWindow = window as typeof window & {
       __TEST_MANUAL_INPUTS?: ManualInputs;
+      __TEST_UPDATE_MANUAL?: (updater: (prev: ManualInputs) => ManualInputs) => void;
     };
     testWindow.__TEST_MANUAL_INPUTS = manual;
+    testWindow.__TEST_UPDATE_MANUAL = (updater) => setManualState((prev) => updater(prev));
     return () => {
-      delete (window as typeof window & { __TEST_MANUAL_INPUTS?: ManualInputs }).__TEST_MANUAL_INPUTS;
+      const globalWindow = window as typeof window & {
+        __TEST_MANUAL_INPUTS?: ManualInputs;
+        __TEST_UPDATE_MANUAL?: (updater: (prev: ManualInputs) => ManualInputs) => void;
+      };
+      delete globalWindow.__TEST_MANUAL_INPUTS;
+      delete globalWindow.__TEST_UPDATE_MANUAL;
     };
   }, [manual]);
 

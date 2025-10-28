@@ -43,6 +43,7 @@ import { useExportConfirmation } from '@/components/export/ExportConfirmationPro
 import { recordAuditEvent } from '@/services/audit/auditLog';
 import { toast } from 'sonner';
 import type { BlockMetaEntry } from '@/types';
+import { cloneBlockPlan } from '@/services/blocks/manualPlan';
 
 const TIMELINE_AXIS_LABELS = {
   block: '行路ID',
@@ -102,7 +103,7 @@ type BlockContextMenuState =
     };
 
 export default function BlocksView(): JSX.Element {
-  const { result, manual, setManual } = useGtfsImport();
+  const { result, manual, setManual, manualBlockPlan, setManualBlockPlan } = useGtfsImport();
   const turnGap = DEFAULT_MAX_TURN_GAP_MINUTES;
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
   const [fromBlockId, setFromBlockId] = useState<string>('');
@@ -133,17 +134,18 @@ export default function BlocksView(): JSX.Element {
   );
   const { requestConfirmation } = useExportConfirmation();
 
-  const initialPlan = useMemo<BlockPlan>(
-    () =>
-      buildBlocksPlan(result, {
-        maxTurnGapMinutes: turnGap,
-        minTurnaroundMinutes: manual.linking.minTurnaroundMin,
-        linkingEnabled: false,
-        diagnosticsEnabled: !isStepOne,
-        startUnassigned: isStepOne,
-      }),
-    [result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled],
-  );
+  const initialPlan = useMemo<BlockPlan>(() => {
+    if (manualBlockPlan) {
+      return cloneBlockPlan(manualBlockPlan);
+    }
+    return buildBlocksPlan(result, {
+      maxTurnGapMinutes: turnGap,
+      minTurnaroundMinutes: manual.linking.minTurnaroundMin,
+      linkingEnabled: false,
+      diagnosticsEnabled: !isStepOne,
+      startUnassigned: isStepOne,
+    });
+  }, [manualBlockPlan, result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled]);
   const manualPlanConfig = useMemo(
     () => ({
       minTurnaroundMin: 0,
@@ -154,9 +156,54 @@ export default function BlocksView(): JSX.Element {
   const manualPlanState = useManualBlocksPlan(initialPlan, manualPlanConfig);
   const { days, allDays, overlaps } = useBlocksPlan(manualPlanState.plan, { activeDay: activeDayIndex ?? undefined });
 
-useEffect(() => {
-  const blockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
-  setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
+  useEffect(
+    () => () => {
+      setManualBlockPlan(cloneBlockPlan(manualPlanState.plan));
+    },
+    [manualPlanState.plan, setManualBlockPlan],
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const testWindow = window as typeof window & {
+      __TEST_BLOCKS_CREATE_FROM_TRIP?: (tripId: string) => boolean;
+    };
+    testWindow.__TEST_BLOCKS_CREATE_FROM_TRIP = (tripId: string) => {
+      if (!result) {
+        console.debug('[test:createBlockFromTrip] result not ready');
+        return false;
+      }
+      const seed = buildSingleTripBlockSeed(result, tripId);
+      if (!seed) {
+        console.debug('[test:createBlockFromTrip] seed not found', tripId);
+        return false;
+      }
+      const hasTrip = manualPlanState.plan.unassignedTripIds.includes(tripId);
+      console.debug(
+        '[test:createBlockFromTrip] attempt',
+        tripId,
+        'unassignedIncludes',
+        hasTrip,
+        'unassignedCount',
+        manualPlanState.plan.unassignedTripIds.length,
+      );
+      const created = manualPlanState.createBlockFromTrip(seed);
+      console.debug('[test:createBlockFromTrip] created', tripId, created);
+      return created;
+    };
+    return () => {
+      const globalWindow = window as typeof window & {
+        __TEST_BLOCKS_CREATE_FROM_TRIP?: (tripId: string) => boolean;
+      };
+      delete globalWindow.__TEST_BLOCKS_CREATE_FROM_TRIP;
+    };
+  }, [manualPlanState.createBlockFromTrip, result]);
+
+  useEffect(() => {
+    const blockIds = new Set(manualPlanState.plan.summaries.map((summary) => summary.blockId));
+    setFromBlockId((current) => (current && !blockIds.has(current) ? '' : current));
   setToBlockId((current) => (current && !blockIds.has(current) ? '' : current));
 }, [manualPlanState.plan]);
 
@@ -234,6 +281,10 @@ useEffect(() => {
       }),
     [manualPlanState.plan],
   );
+
+  const summaryByBlockId = useMemo(() => {
+    return new Map(manualPlanState.plan.summaries.map((summary) => [summary.blockId, summary] as const));
+  }, [manualPlanState.plan.summaries]);
 
   const manualToSummaries = useMemo(() => {
     if (!fromBlockId) {
@@ -674,10 +725,6 @@ useEffect(() => {
     [days],
   );
 
-  const summaryByBlockId = useMemo(() => {
-    return new Map(manualPlanState.plan.summaries.map((summary) => [summary.blockId, summary] as const));
-  }, [manualPlanState.plan.summaries]);
-
   const blockRowsById = useMemo(() => {
     const map = new Map<string, BlockCsvRow[]>();
     for (const row of manualPlanState.plan.csvRows) {
@@ -912,7 +959,7 @@ useEffect(() => {
       {globalDropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="mx-4 w-full max-w-3xl rounded-xl border-4 border-dashed border-primary/60 bg-primary/5 p-6 text-center text-sm text-primary">
-            未割当の便をここにドロップすると、新しい行路を作成します。
+            未割当の便をここにドロップすると、新規行路を作成します。
           </div>
         </div>
       ) : null}
@@ -929,7 +976,7 @@ useEffect(() => {
             <CardTitle>手動連結（最小UI）</CardTitle>
             <CardDescription>
               Step1 では From/To 選択に加えて、タイムライン左側の行路ラベルをドラッグ＆ドロップするとブロック同士を連結できます。
-              未割当便をタイムラインへドラッグすると新しい行路カードを作成できます。
+              未割当便をタイムラインへドラッグすると新規行路カードを作成できます。
               画面全体がドロップターゲットになっているため、未割当便の行をそのままタイムラインへドロップしてください。
             </CardDescription>
           </div>
@@ -1269,7 +1316,7 @@ function UnassignedTable({ unassigned, onCreateBlock }: UnassignedTableProps): J
       <CardHeader>
         <CardTitle>未割当 便</CardTitle>
         <CardDescription>
-          ブロックに割り当てられていない便を一覧で確認できます。便をタイムラインへドラッグすると新しい行路カードが作成されます（各行の「新規行路」ボタンでも同じ処理を実行できます）。
+          ブロックに割り当てられていない便を一覧で確認できます。便をタイムラインへドラッグすると新規行路カードが作成されます（各行の「新規行路」ボタンでも同じ処理を実行できます）。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -1287,7 +1334,7 @@ function UnassignedTable({ unassigned, onCreateBlock }: UnassignedTableProps): J
               onDrop={handleDrop}
               data-testid="blocks-unassigned-dropzone"
             >
-              未割当便をここにドラッグすると、新しい行路カードを作成できます。
+              未割当便をここにドラッグすると、新規行路カードを作成できます。
             </div>
             <Table data-testid="blocks-unassigned-table">
               <TableHeader>
@@ -1350,4 +1397,3 @@ function formatTimelineLaneLabel(
   }
   return `${summary.blockId}（便 ${summary.tripCount} 件）`;
 }
-

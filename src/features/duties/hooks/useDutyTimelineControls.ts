@@ -3,22 +3,35 @@
  * TimelineGantt 操作（ズーム・ドラッグ・クリック選択）に伴う状態更新ロジックをまとめる。
  * DutiesView からはコールバックを受け取り、選択状態の更新を集中管理する。
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import type { Duty, DutySegment } from '@/types';
 import type { BlockTripSequenceIndex } from '@/services/duty/dutyState';
-import type { TimelineInteractionEvent, TimelineSelection, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import type {
+  TimelineInteractionEvent,
+  TimelineSelection,
+  TimelineSegmentDragEvent,
+  TimelineExternalDropEvent,
+  TimelineExternalDragOverEvent,
+} from '@/features/timeline/types';
 import { DEFAULT_PIXELS_PER_MINUTE } from '@/features/timeline/timeScale';
 import { applySegmentDrag, type DutyTimelineTrip } from '@/features/duties/utils/timelineSnap';
+import { resolveDropRangeForTrips, resolveGapAroundMinutesForTrips } from '@/features/duties/utils/dnd';
 import type { DutyEditorActions } from '@/services/import/GtfsImportProvider';
 import type { DutyTimelineMeta } from './useDutyTimelineData';
 import type { SegmentSelection } from './useDutySelectionState';
+import { TIMELINE_NEW_LANE_ID } from '@/features/timeline/TimelineGantt';
+import type { BlockTripLookup } from '@/services/duty/dutyMetrics';
+import { toMinutes } from '@/services/duty/dutyMetrics';
+import { recordTelemetryEvent } from '@/services/telemetry/telemetry';
 
 interface DutyTimelineControlsParams {
   blockTripMinutes: Map<string, DutyTimelineTrip[]>;
   dutyActions: DutyEditorActions;
   tripIndex: BlockTripSequenceIndex;
+  tripLookup: BlockTripLookup;
+  duties: Duty[];
   onSelectDuty: (id: string) => void;
   onSelectSegment: (selection: SegmentSelection | null) => void;
   onSelectBlock: (blockId: string | null) => void;
@@ -35,6 +48,8 @@ interface DutyTimelineControlsResult {
   handleTimelineSelect: (selection: TimelineSelection) => void;
   handleDutySelect: (duty: Duty) => void;
   handleSegmentSelect: (duty: Duty, segment: DutySegment) => void;
+  handleExternalDrop: (event: TimelineExternalDropEvent<DutyTimelineMeta>) => boolean;
+  handleExternalDragOver: (event: TimelineExternalDragOverEvent<DutyTimelineMeta>) => void;
 }
 
 export function useDutyTimelineControls(params: DutyTimelineControlsParams): DutyTimelineControlsResult {
@@ -42,6 +57,8 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
     blockTripMinutes,
     dutyActions,
     tripIndex,
+    tripLookup,
+    duties,
     onSelectDuty,
     onSelectSegment,
     onSelectBlock,
@@ -51,6 +68,17 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
   } = params;
 
   const [timelinePixelsPerMinute, setTimelinePixelsPerMinute] = useState(DEFAULT_PIXELS_PER_MINUTE);
+
+  const dutiesById = useMemo(() => {
+    return new Map(duties.map((duty) => [duty.id, duty]));
+  }, [duties]);
+
+  const emitDropEvent = useCallback((payload: Record<string, unknown>) => {
+    recordTelemetryEvent({
+      type: 'duty.dnd.drop',
+      payload,
+    });
+  }, []);
 
   const clampPixelsPerMinute = useCallback((value: number) => {
     const MIN = 0.5;
@@ -172,6 +200,309 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
     [onEndTripChange, onSelectBlock, onSelectDuty, onSelectSegment, onStartTripChange, selectedBlockId],
   );
 
+  const resolveDropRange = useCallback(
+    (blockId: string, startTripId: string, endTripId: string, minutes: number | null | undefined) => {
+      return resolveDropRangeForTrips(blockTripMinutes.get(blockId), startTripId, endTripId, minutes);
+    },
+    [blockTripMinutes],
+  );
+
+  const resolveGapAroundMinutes = useCallback(
+    (blockId: string, minutes: number | null | undefined) => {
+      return resolveGapAroundMinutesForTrips(blockTripMinutes.get(blockId), minutes);
+    },
+    [blockTripMinutes],
+  );
+
+  const handleExternalDrop = useCallback(
+    (event: TimelineExternalDropEvent<DutyTimelineMeta>) => {
+      const { payload, laneId, minutes, isNewLane } = event;
+      const dutyId = !isNewLane && laneId !== TIMELINE_NEW_LANE_ID ? laneId : undefined;
+
+      const applyRangeAndSelect = (
+        targetDutyId: string | undefined,
+        blockId: string,
+        range: { startTripId: string; endTripId: string },
+      ) => {
+        onSelectBlock(blockId);
+        onStartTripChange(range.startTripId);
+        onEndTripChange(range.endTripId);
+        if (targetDutyId) {
+          onSelectDuty(targetDutyId);
+        }
+      };
+
+      if (payload.type === 'block-trip' || payload.type === 'block-trip-range' || payload.type === 'unassigned-range') {
+        const baseStartTripId =
+          payload.type === 'block-trip' ? payload.tripId : payload.startTripId;
+        const baseEndTripId =
+          payload.type === 'block-trip' ? payload.tripId : payload.endTripId;
+        const resolvedRange = resolveDropRange(payload.blockId, baseStartTripId, baseEndTripId, minutes);
+        try {
+          dutyActions.addSegment(
+            {
+              blockId: payload.blockId,
+              startTripId: resolvedRange.startTripId,
+              endTripId: resolvedRange.endTripId,
+              dutyId,
+            },
+            tripIndex,
+          );
+          applyRangeAndSelect(dutyId, payload.blockId, resolvedRange);
+          toast.success('ブロック行路をDutyに追加しました。');
+          emitDropEvent({
+            kind: payload.type,
+            blockId: payload.blockId,
+            startTripId: resolvedRange.startTripId,
+            endTripId: resolvedRange.endTripId,
+            dutyId: dutyId ?? null,
+          });
+          return true;
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Dutyへの追加に失敗しました。');
+          return false;
+        }
+      }
+
+      if (payload.type === 'duty-segment') {
+        const targetRange = resolveDropRange(payload.blockId, payload.startTripId, payload.endTripId, minutes);
+        if (!dutyId) {
+          try {
+            dutyActions.addSegment(
+              {
+                blockId: payload.blockId,
+                startTripId: targetRange.startTripId,
+                endTripId: targetRange.endTripId,
+              },
+              tripIndex,
+            );
+            dutyActions.deleteSegment({
+              dutyId: payload.dutyId,
+              segmentId: payload.segmentId,
+            });
+            applyRangeAndSelect(undefined, payload.blockId, targetRange);
+            onSelectSegment(null);
+            toast.success('セグメントを新しいDutyとして作成しました。');
+            emitDropEvent({
+              kind: payload.type,
+              blockId: payload.blockId,
+              startTripId: targetRange.startTripId,
+              endTripId: targetRange.endTripId,
+              dutyId: null,
+              sourceDutyId: payload.dutyId,
+            });
+            return true;
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : '新しいDutyへの移動に失敗しました。');
+            return false;
+          }
+        }
+
+        if (dutyId === payload.dutyId) {
+          if (
+            targetRange.startTripId === payload.startTripId &&
+            targetRange.endTripId === payload.endTripId
+          ) {
+            return false;
+          }
+          try {
+            dutyActions.moveSegment(
+              {
+                dutyId: payload.dutyId,
+                segmentId: payload.segmentId,
+                blockId: payload.blockId,
+                startTripId: targetRange.startTripId,
+                endTripId: targetRange.endTripId,
+              },
+              tripIndex,
+            );
+            applyRangeAndSelect(payload.dutyId, payload.blockId, targetRange);
+            onSelectSegment({ dutyId: payload.dutyId, segmentId: payload.segmentId });
+            toast.success('セグメントを移動しました。');
+            return true;
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'セグメントの移動に失敗しました。');
+            return false;
+          }
+        }
+        try {
+          dutyActions.addSegment(
+            {
+              blockId: payload.blockId,
+              startTripId: targetRange.startTripId,
+              endTripId: targetRange.endTripId,
+              dutyId,
+            },
+            tripIndex,
+          );
+          dutyActions.deleteSegment({
+            dutyId: payload.dutyId,
+            segmentId: payload.segmentId,
+          });
+          applyRangeAndSelect(dutyId, payload.blockId, targetRange);
+          onSelectSegment(null);
+          toast.success('セグメントを移動しました。');
+          emitDropEvent({
+            kind: payload.type,
+            blockId: payload.blockId,
+            startTripId: targetRange.startTripId,
+            endTripId: targetRange.endTripId,
+            dutyId,
+            sourceDutyId: payload.dutyId,
+          });
+          return true;
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'セグメントの移動に失敗しました。');
+          return false;
+        }
+      }
+
+      if (payload.type === 'break-token') {
+        if (!dutyId) {
+          toast.info('休憩トークンは既存Duty上にドロップしてください。');
+          return false;
+        }
+        const duty = dutiesById.get(dutyId);
+        if (!duty) {
+          toast.error('対象のDutyが見つかりません。');
+          return false;
+        }
+        const gap = resolveGapAroundMinutes(payload.blockId, minutes);
+        if (!gap) {
+          toast.info('ドロップ位置に休憩を挿入できるギャップが見つかりません。');
+          return false;
+        }
+        const hasPreceding = duty.segments.some(
+          (segment) => (segment.kind ?? 'drive') !== 'break' && segment.endTripId === gap.startTripId,
+        );
+        const hasFollowing = duty.segments.some(
+          (segment) => (segment.kind ?? 'drive') !== 'break' && segment.startTripId === gap.endTripId,
+        );
+        if (!hasPreceding || !hasFollowing) {
+          toast.info('連続する運行区間の間にのみ休憩を追加できます。');
+          return false;
+        }
+        try {
+          dutyActions.addSegment(
+            {
+              dutyId,
+              blockId: payload.blockId,
+              startTripId: gap.startTripId,
+              endTripId: gap.endTripId,
+              breakUntilTripId: gap.endTripId,
+              kind: 'break',
+            },
+            tripIndex,
+          );
+          applyRangeAndSelect(dutyId, payload.blockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
+          toast.success('休憩を追加しました。');
+          emitDropEvent({
+            kind: payload.type,
+            blockId: payload.blockId,
+            startTripId: gap.startTripId,
+            endTripId: gap.endTripId,
+            dutyId,
+            gapMinutes: gap.gapMinutes,
+          });
+          return true;
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : '休憩の追加に失敗しました。');
+          return false;
+        }
+      }
+
+      if (payload.type === 'deadhead-token') {
+        if (!dutyId) {
+          toast.info('回送トークンは既存Duty上にドロップしてください。');
+          return false;
+        }
+        const duty = dutiesById.get(dutyId);
+        if (!duty) {
+          toast.error('対象のDutyが見つかりません。');
+          return false;
+        }
+        const gap = resolveGapAroundMinutes(payload.blockId, minutes);
+        if (!gap) {
+          toast.info('ドロップ位置に回送を挿入できるギャップが見つかりません。');
+          return false;
+        }
+        const block = tripLookup.get(payload.blockId);
+        const startRow = block?.get(gap.startTripId);
+        const endRow = block?.get(gap.endTripId);
+        const startMinutes = toMinutes(startRow?.tripEnd ?? startRow?.tripStart);
+        const endMinutes = toMinutes(endRow?.tripStart ?? endRow?.tripEnd);
+        const gapMinutes = typeof startMinutes === 'number' && typeof endMinutes === 'number'
+          ? Math.max(endMinutes - startMinutes, 0)
+          : gap.gapMinutes;
+        if (!startRow || !endRow || !startRow.toStopId || !endRow.fromStopId || !Number.isFinite(gapMinutes) || gapMinutes <= 0) {
+          toast.info('回送を追加するための停留所情報が不足しています。');
+          return false;
+        }
+        try {
+          dutyActions.addSegment(
+            {
+              dutyId,
+              blockId: payload.blockId,
+              startTripId: gap.startTripId,
+              endTripId: gap.endTripId,
+              kind: 'deadhead',
+              deadheadMinutes: gapMinutes,
+              deadheadFromStopId: startRow.toStopId,
+              deadheadToStopId: endRow.fromStopId,
+            },
+            tripIndex,
+          );
+          applyRangeAndSelect(dutyId, payload.blockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
+          toast.success(`回送（約${Math.round(gapMinutes)}分）を追加しました。`);
+          emitDropEvent({
+            kind: payload.type,
+            blockId: payload.blockId,
+            startTripId: gap.startTripId,
+            endTripId: gap.endTripId,
+            dutyId,
+            deadheadMinutes: gapMinutes,
+          });
+          return true;
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : '回送の追加に失敗しました。');
+          return false;
+        }
+      }
+
+      toast.info('このドラッグペイロードには未対応です。');
+      return false;
+    },
+    [
+      dutyActions,
+      dutiesById,
+      onEndTripChange,
+      onSelectBlock,
+      onSelectDuty,
+      onSelectSegment,
+      onStartTripChange,
+      resolveGapAroundMinutes,
+      resolveDropRange,
+      tripIndex,
+      tripLookup,
+      emitDropEvent,
+    ],
+  );
+
+  const handleExternalDragOver = useCallback(
+    (event: TimelineExternalDragOverEvent<DutyTimelineMeta>) => {
+      if (!event.laneId || event.laneId === TIMELINE_NEW_LANE_ID || event.isNewLane) {
+        return;
+      }
+      onSelectDuty(event.laneId);
+      if (event.payload.type === 'block-trip' || event.payload.type === 'block-trip-range') {
+        onSelectBlock(event.payload.blockId);
+      } else if (event.payload.type === 'duty-segment' || event.payload.type === 'unassigned-range') {
+        onSelectBlock(event.payload.blockId);
+      }
+    },
+    [onSelectBlock, onSelectDuty],
+  );
+
   return {
     timelinePixelsPerMinute,
     setTimelinePixelsPerMinute,
@@ -180,5 +511,7 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
     handleTimelineSelect,
     handleDutySelect,
     handleSegmentSelect,
+    handleExternalDrop,
+    handleExternalDragOver,
   };
 }

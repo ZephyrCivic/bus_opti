@@ -1,3 +1,26 @@
+# Exec Plan: Duty Drag & Drop 完成
+
+## 全体像
+ドラッグ＆ドロップのみでDuty行路を構築できるUIを完成させ、Step2以降の業務フローでブロックとDutyを一貫して編集可能にする。
+
+## 進捗状況
+- [x] DragBus基盤の実装と配線
+- [ ] TimelineGanttの外部ドロップ対応
+- [ ] Blocks/DutiesビューのD&D統合
+- [ ] テレメトリ・テスト・UIスナップショット・ドキュメント更新
+
+## 発見と驚き
+- 現在なし
+
+## 決定ログ
+2025-10-28: Pointerイベント＋自前DragBusでD&Dを統一する方針を採用。
+
+## To-Do
+1. DragBusの実装と導入
+2. TimelineGanttの拡張（外部ドロップ、プレビュー）
+3. Blocks/Dutiesの各コンポーネントでドラッグ統合
+4. テレメトリ・テスト・ドキュメント更新とスナップショット取得
+
 # MVP 実行ガイド（SSOT）
 
 最終更新: 2025-10-24
@@ -5,7 +28,10 @@
 このファイルは現在の実装計画の単一情報源（SSOT）です。Step1のコア機能は完了しています。以下の残件はUI/運用補助の範囲（非ブロッキング）で、順次対応します。過去の詳細タスクは `plans.archive/2025-10-24.md` に退避しました。
 
 ## Testログ (2025-10-28)
-- `npm run generate-snapshots`: Playwright の Chromium ダウンロードが 403 Forbidden で失敗。環境要因のため差分確認は未実施。
+- `npm run build` → OK（esbuild css minify の `-: T;` 警告を解消済み）
+- `npx tsx --test tests/blocks.plan.overlap.test.tsx` → PASS（手動行路プランの重複検知ユニット）
+- `./make.cmd generate-snapshots` → FAIL（`blocks.meta.step1` / `blocks.unassigned.dragdrop` / `manual-only.no-autofinalize` / `step1.basic-flow` がドロップ後に「新しい行路を作成できませんでした。割当済みの可能性があります。」トーストを表示。`ReferenceError: Cannot access 'ne' before initialization` は解消済み。未割当→新規行路作成ロジックの再調査が必要）
+- `npm run generate-snapshots`（前回記録）: Playwright の Chromium ダウンロードが 403 Forbidden で失敗。環境要因のため差分確認は未実施。
 
 ## 北極星（読むだけで使い方が分かる版）
 目的: 1運行日の行路（Block）と交番（Duty）を、GTFS+CSV を読み込んで二面ビューで人手で作る。
@@ -217,3 +243,4 @@ pm run build を一度実行してから、make generate-snapshots を実行。
 - `npm run test -- tests/dashboardCalculator.test.ts tests/duty.dashboard.test.ts tests/duty.baseline.history.test.ts tests/duty.baseline.test.ts tests/scheduleDiff.test.ts`
   - 目的: Step2 復帰したダッシュボード算出 / 差分ロジック / 基準履歴まわりの回帰確認。
   - 結果: PASS。`tests/scheduleDiff.test.ts` で `../src/services/...` にパスを揃え、Step2 限定ロジックが最新 `manualPlan` と整合することを確認。
+

@@ -5,6 +5,7 @@
 import { useCallback, useMemo, useRef, useEffect } from 'react';
 
 import type { TimelineInteractionEvent, TimelineLane, TimelineSelection, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import { DragBusProvider } from '@/features/timeline/dragBus';
 import { parseTimeLabel } from '@/features/timeline/timeScale';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import type { Duty, DutySegment, BlockMetaEntry } from '@/types';
@@ -28,6 +29,13 @@ import { UnassignedRange } from '@/services/duty/unassigned';
 import { toast } from 'sonner';
 import { buildDutiesCsv } from '@/services/export/dutiesCsv';
 import { isStepOne } from '@/config/appStep';
+
+type BlockTimelineMeta = {
+  kind: 'block-trip';
+  blockId: string;
+  tripId: string;
+  serviceDayIndex: number;
+};
 
 export default function DutiesView(): JSX.Element {
   const { result, dutyState, dutyActions, manual } = useGtfsImport();
@@ -68,14 +76,14 @@ export default function DutiesView(): JSX.Element {
 
   const dutyTimelineLanes = useDutyTimelineData(dutyState.duties, tripLookup);
 
-  const blockTimelineLanes = useMemo<TimelineLane[]>(() => {
+  const blockTimelineLanes = useMemo<TimelineLane<BlockTimelineMeta>[]>(() => {
     return plan.summaries
       .map((summary) => {
         const trips = blockTripMinutes.get(summary.blockId) ?? [];
         const meta: BlockMetaEntry | undefined = blockMeta[summary.blockId];
         const vehicleTypeLabel = meta?.vehicleTypeId?.trim();
 
-        let segments: TimelineSegment[];
+        let segments: TimelineSegment<BlockTimelineMeta>[];
         if (trips.length > 0) {
           segments = trips.map((trip, index) => ({
             id: `${summary.blockId}-${trip.tripId}-${index}`,
@@ -103,7 +111,7 @@ export default function DutiesView(): JSX.Element {
 
         if (segments.length === 0) return null;
 
-        const lane: TimelineLane = {
+        const lane: TimelineLane<BlockTimelineMeta> = {
           id: summary.blockId,
           label: `${summary.blockId}（${summary.tripCount}便）`,
           tag: vehicleTypeLabel
@@ -116,7 +124,7 @@ export default function DutiesView(): JSX.Element {
         };
         return lane;
       })
-      .filter((lane): lane is TimelineLane => lane !== null);
+      .filter((lane): lane is TimelineLane<BlockTimelineMeta> => lane !== null);
   }, [blockTripMinutes, plan.summaries, blockMeta]);
 
   if (typeof window !== 'undefined') {
@@ -163,10 +171,14 @@ export default function DutiesView(): JSX.Element {
     handleTimelineSelect,
     handleDutySelect,
     handleSegmentSelect,
+    handleExternalDrop,
+    handleExternalDragOver,
   } = useDutyTimelineControls({
     blockTripMinutes,
     dutyActions,
     tripIndex,
+    tripLookup,
+    duties: dutyState.duties,
     onSelectDuty: setSelectedDutyId,
     onSelectSegment: setSelectedSegment,
     onSelectBlock: setSelectedBlockId,
@@ -308,125 +320,118 @@ export default function DutiesView(): JSX.Element {
   const showDutyWarnings = !isStepOne;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">勤務編集</h2>
-        <p className="text-sm text-muted-foreground">
-          ブロック推定結果をもとに Duty を作成・調整します。タイムラインで区間を編集し、一覧とインスペクターで詳細を確認してください。
-        </p>
+    <DragBusProvider>
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">勤務編集</h2>
+          <p className="text-sm text-muted-foreground">
+            ブロック推定結果をもとに Duty を作成・調整します。タイムラインで区間を編集し、一覧とインスペクターで詳細を確認してください。
+          </p>
+        </div>
+
+        {dutyState.duties.length === 0 ? (
+          <div className="rounded-md border border-border/60 bg-card/60 p-3 text-sm">
+            <p className="font-medium">最初の操作ガイド</p>
+            <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+              <li>下の「未割当区間」から範囲を選び、「区間を追加」で Duty を作成します。</li>
+              <li>Duty タイムライン上のバーはドラッグで移動、両端のハンドルで長さ調整ができます。</li>
+              <li>ブロック同士の連結は Vehicle 面（行路編集）で From/To を選んで実行します（Step1 ではドラッグ連結は非対応）。</li>
+            </ul>
+          </div>
+        ) : null}
+
+        <DutyTimelineCard
+          ref={fileInputRef}
+          heading="タイムライン編集"
+          description="ブロックをドラッグ＆ドロップして Duty を構成します。必要に応じて CSV の入出力も実行できます。"
+          onImportClick={triggerImportClick}
+          onImportFile={handleImportFile}
+          onExport={handleExport}
+          onAdd={handleAdd}
+          onAddBreak={handleAddBreak}
+          onAddDeadhead={handleAddDeadhead}
+          onMove={handleMove}
+          onDelete={handleDelete}
+          onAutoCorrect={handleAutoCorrect}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          lanes={dutyTimelineLanes}
+          pixelsPerMinute={timelinePixelsPerMinute}
+          onInteraction={handleTimelineInteractionCallback}
+          onSegmentDrag={handleTimelineSegmentDragCallback}
+          onSelect={handleTimelineSelectCallback}
+          onExternalDrop={handleExternalDrop}
+          onExternalDragOver={handleExternalDragOver}
+          warningTotals={warningTotals}
+          blockLanes={blockTimelineLanes}
+          onBlockSelect={handleBlockSelect}
+          selectedBlockId={selectedBlockId}
+          selectedDutyId={selectedDutyId}
+          selectedSegmentId={selectedSegment?.segmentId ?? null}
+          showWarnings={showDutyWarnings}
+        />
+
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          <div className="space-y-4">
+            <BlockSummaryCard
+              plan={plan}
+              selectedBlockId={selectedBlockId}
+              onSelectBlock={handleBlockSelect}
+              filteredTrips={filteredTrips}
+              startTripId={startTripId}
+              endTripId={endTripId}
+              onStartTripChange={(value) => setStartTripId(value)}
+              onEndTripChange={(value) => setEndTripId(value)}
+              onAdd={handleAdd}
+              onAddBreak={handleAddBreak}
+              onAddDeadhead={handleAddDeadhead}
+              onMove={handleMove}
+              onDelete={handleDelete}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+            />
+          <UnassignedSegmentsCard
+            ranges={unassignedRanges}
+            tripMinutes={blockTripMinutes}
+            onSelectRange={handleSelectUnassignedRange}
+          />
+            <ManualCheckCard manual={manual} plan={plan} duties={dutyState.duties} />
+          </div>
+          <div className="space-y-4">
+            <DutyListCard
+              duties={dutyState.duties}
+              dutyWarnings={dutyWarnings}
+              selectedDutyId={selectedDutyId}
+              selectedSegmentId={selectedSegment?.segmentId ?? null}
+              onSelectDuty={handleDutySelectFromList}
+              onSelectSegment={handleSegmentSelectFromList}
+              showWarnings={showDutyWarnings}
+            />
+            <InspectorCard
+              defaultDriverId={defaultDriverId}
+              onDefaultDriverChange={(value) => setDefaultDriverId(value)}
+              dutyCount={dutyState.duties.length}
+              segmentCount={segmentCount}
+              driverCount={driverCount}
+              selectedDuty={selectedDuty}
+              selectedSegment={selectedSegment}
+              selectedSegmentDetail={selectedSegmentDetail}
+              selectedMetrics={selectedMetrics}
+              warningSummary={selectedWarningSummary}
+              onAutoCorrect={handleAutoCorrect}
+              driverOptions={manual.drivers}
+              showSafetyPanel={showDutyWarnings}
+            />
+            <DutyCsvPreview
+              csv={csvPreview.csv}
+              rowCount={csvPreview.rowCount}
+              fileName={csvPreview.fileName}
+              generatedAt={csvPreviewGeneratedAt}
+            />
+          </div>
+        </div>
       </div>
-
-      {dutyState.duties.length === 0 ? (
-        <div className="rounded-md border border-border/60 bg-card/60 p-3 text-sm">
-          <p className="font-medium">最初の操作ガイド</p>
-          <ul className="mt-1 list-disc pl-5 text-muted-foreground">
-            <li>下の「未割当区間」から範囲を選び、「区間を追加」で Duty を作成します。</li>
-            <li>Duty タイムライン上のバーはドラッグで移動、両端のハンドルで長さ調整ができます。</li>
-            <li>ブロック同士の連結は Vehicle 面（行路編集）で From/To を選んで実行します（Step1 ではドラッグ連結は非対応）。</li>
-          </ul>
-        </div>
-      ) : null}
-
-          <DutyTimelineCard
-        ref={fileInputRef}
-        heading="タイムライン編集"
-        description="ブロックをドラッグ＆ドロップして Duty を構成します。必要に応じて CSV の入出力も実行できます。"
-        onImportClick={triggerImportClick}
-        onImportFile={handleImportFile}
-        onExport={handleExport}
-        onAdd={handleAdd}
-        onAddBreak={handleAddBreak}
-        onAddDeadhead={handleAddDeadhead}
-        onMove={handleMove}
-        onDelete={handleDelete}
-        onAutoCorrect={handleAutoCorrect}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        lanes={dutyTimelineLanes}
-        pixelsPerMinute={timelinePixelsPerMinute}
-        onInteraction={handleTimelineInteractionCallback}
-        onSegmentDrag={handleTimelineSegmentDragCallback}
-        onSelect={handleTimelineSelectCallback}
-        warningTotals={warningTotals}
-        blockLanes={blockTimelineLanes}
-        onBlockSelect={handleBlockSelect}
-        selectedBlockId={selectedBlockId}
-        selectedDutyId={selectedDutyId}
-        selectedSegmentId={selectedSegment?.segmentId ?? null}
-        showWarnings={showDutyWarnings}
-      />
-
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-4">
-          <BlockSummaryCard
-            plan={plan}
-            selectedBlockId={selectedBlockId}
-            onSelectBlock={handleBlockSelect}
-            filteredTrips={filteredTrips}
-            startTripId={startTripId}
-            endTripId={endTripId}
-            onStartTripChange={(value) => setStartTripId(value)}
-            onEndTripChange={(value) => setEndTripId(value)}
-            onAdd={handleAdd}
-            onAddBreak={handleAddBreak}
-            onAddDeadhead={handleAddDeadhead}
-            onMove={handleMove}
-            onDelete={handleDelete}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-          />
-          <UnassignedSegmentsCard ranges={unassignedRanges} onSelectRange={handleSelectUnassignedRange} />
-          <ManualCheckCard manual={manual} plan={plan} duties={dutyState.duties} />
-        </div>
-        <div className="space-y-4">
-          <DutyListCard
-            duties={dutyState.duties}
-            dutyWarnings={dutyWarnings}
-            selectedDutyId={selectedDutyId}
-            selectedSegmentId={selectedSegment?.segmentId ?? null}
-            onSelectDuty={handleDutySelectFromList}
-            onSelectSegment={handleSegmentSelectFromList}
-            showWarnings={showDutyWarnings}
-          />
-          <InspectorCard
-            defaultDriverId={defaultDriverId}
-            onDefaultDriverChange={(value) => setDefaultDriverId(value)}
-            dutyCount={dutyState.duties.length}
-            segmentCount={segmentCount}
-            driverCount={driverCount}
-            selectedDuty={selectedDuty}
-            selectedSegment={selectedSegment}
-            selectedSegmentDetail={selectedSegmentDetail}
-            selectedMetrics={selectedMetrics}
-            warningSummary={selectedWarningSummary}
-            onAutoCorrect={handleAutoCorrect}
-            driverOptions={manual.drivers}
-            showSafetyPanel={showDutyWarnings}
-          />
-          <DutyCsvPreview
-            csv={csvPreview.csv}
-            rowCount={csvPreview.rowCount}
-            fileName={csvPreview.fileName}
-            generatedAt={csvPreviewGeneratedAt}
-          />
-        </div>
-      </div>
-    </div>
+    </DragBusProvider>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

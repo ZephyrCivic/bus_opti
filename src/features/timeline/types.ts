@@ -2,6 +2,8 @@
  * src/features/timeline/types.ts
  * TimelineGantt が消費するデータモデルを定義し、Blocks/Duties 双方で共通利用する。
  */
+import type { ExternalDragPayload } from './dragBus';
+
 export interface TimelineSegment<Meta = unknown> {
   id: string;
   label: string;
@@ -48,4 +50,20 @@ export interface TimelineSegmentDragEvent<Meta = unknown> {
 export interface TimelineLaneTag {
   label: string;
   title?: string;
+}
+
+export interface TimelineExternalDragOverEvent<Meta = unknown> {
+  laneId: string | null;
+  minutes: number | null;
+  payload: ExternalDragPayload;
+  segment?: TimelineSegment<Meta> | null;
+  isNewLane: boolean;
+}
+
+export interface TimelineExternalDropEvent<Meta = unknown> {
+  laneId: string;
+  minutes: number;
+  payload: ExternalDragPayload;
+  segment?: TimelineSegment<Meta> | null;
+  isNewLane: boolean;
 }

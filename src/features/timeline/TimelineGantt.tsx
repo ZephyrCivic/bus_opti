@@ -3,6 +3,7 @@
  * Blocks/Duties で共通利用する最小限のSVGガント描画コンポーネント。
  */
 import { Fragment, useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import type {
   PointerEvent as ReactPointerEvent,
   UIEvent as ReactUIEvent,
@@ -10,6 +11,8 @@ import type {
   MouseEvent as ReactMouseEvent,
   HTMLAttributes,
   CSSProperties,
+  SVGProps,
+  MutableRefObject,
 } from 'react';
 import clsx from 'clsx';
 
@@ -20,6 +23,8 @@ import type {
   TimelineSegmentDragEvent,
   TimelineSegmentDragMode,
   TimelineSelection,
+  TimelineExternalDragOverEvent,
+  TimelineExternalDropEvent,
 } from './types';
 import {
   DEFAULT_PIXELS_PER_MINUTE,
@@ -27,7 +32,11 @@ import {
   formatMinutesAsTime,
   generateTicks,
   minutesToPosition,
+  type TimelineBounds,
 } from './timeScale';
+import { useOptionalDragBus, type DragHoverTarget, type DragSession, type DragEndResult, type DragPosition } from './dragBus';
+
+export const TIMELINE_NEW_LANE_ID = '__new-duty__';
 
 const LANE_HEIGHT = 44;
 const AXIS_HEIGHT = 32;
@@ -67,6 +76,18 @@ export interface TimelineLaneContextMenuEvent {
   clientY: number;
 }
 
+export interface TimelineExternalPreviewContext<Meta = unknown> {
+  lane: TimelineLane<Meta> | null;
+  laneId: string;
+  minutes: number | null;
+  segment: TimelineSegment<Meta> | null;
+  session: DragSession;
+  bounds: TimelineBounds;
+  pixelsPerMinute: number;
+  timelineWidth: number;
+  isNewLane: boolean;
+}
+
 interface TimelineGanttProps<Meta = unknown> {
   lanes: TimelineLane<Meta>[];
   selectedLaneId?: string | null;
@@ -82,6 +103,11 @@ interface TimelineGanttProps<Meta = unknown> {
   getLaneProps?(lane: TimelineLane<Meta>): TimelineLaneProps<Meta>;
   onSegmentContextMenu?(event: TimelineSegmentContextMenuEvent<Meta>): void;
   onLaneContextMenu?(event: TimelineLaneContextMenuEvent): void;
+  getSegmentProps?(lane: TimelineLane<Meta>, segment: TimelineSegment<Meta>): SVGProps<SVGGElement>;
+  enableInternalSegmentDrag?: boolean;
+  onExternalDragOver?(event: TimelineExternalDragOverEvent<Meta>): void;
+  onExternalDrop?(event: TimelineExternalDropEvent<Meta>): boolean | void;
+  renderExternalPreview?(context: TimelineExternalPreviewContext<Meta>): ReactNode;
 }
 
 export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JSX.Element {
@@ -100,7 +126,36 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
     getLaneProps,
     onSegmentContextMenu,
     onLaneContextMenu,
+    getSegmentProps,
+    enableInternalSegmentDrag = true,
+    onExternalDragOver,
+    onExternalDrop,
+    renderExternalPreview,
   } = props;
+
+  const dragBus = useOptionalDragBus();
+  const activeSession = dragBus?.activeSession ?? null;
+  const isExternalDragActive = Boolean(activeSession);
+
+  const composeHandlers = useCallback(<T extends (...args: any[]) => void>(
+    primary?: T,
+    secondary?: T,
+  ): T | undefined => {
+    if (!primary) {
+      return secondary;
+    }
+    if (!secondary) {
+      return primary;
+    }
+    const composed = ((event: Parameters<T>[0], ...rest: unknown[]) => {
+      secondary(event as never, ...(rest as never[]));
+      if ((event as unknown as { defaultPrevented?: boolean }).defaultPrevented) {
+        return;
+      }
+      primary(event as never, ...(rest as never[]));
+    }) as T;
+    return composed;
+  }, []);
 
   const nonEmptyLanes = useMemo(
     () => lanes.filter((lane) => lane.segments.length > 0),
@@ -119,12 +174,20 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
   }, [getLaneProps, nonEmptyLanes]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const laneRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const dragStateRef = useRef<SegmentDragState<Meta> | null>(null);
   const [previewRect, setPreviewRect] = useState<{
     laneId: string;
     segmentId: string;
     startX: number;
     endX: number;
+  } | null>(null);
+  const [externalHover, setExternalHover] = useState<{
+    sessionId: string;
+    laneId: string | null;
+    minutes: number | null;
+    segment: TimelineSegment<Meta> | null;
+    isNewLane: boolean;
   } | null>(null);
 
   const bounds = useMemo(
@@ -155,6 +218,164 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
       container.scrollLeft = scrollLeft;
     }
   }, [scrollLeft]);
+
+  const findLaneById = useCallback(
+    (laneId: string): TimelineLane<Meta> | undefined => nonEmptyLanes.find((lane) => lane.id === laneId),
+    [nonEmptyLanes],
+  );
+
+  const findLaneAtPosition = useCallback(
+    (clientY: number): string | null => {
+      for (const [laneId, element] of laneRefs.current.entries()) {
+        if (!element) {
+          continue;
+        }
+        const rect = element.getBoundingClientRect();
+        if (clientY >= rect.top && clientY <= rect.bottom) {
+          return laneId;
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+  const resolveExternalCandidate = useCallback(
+    (session: DragSession): {
+      sessionId: string;
+      laneId: string | null;
+      minutes: number | null;
+      segment: TimelineSegment<Meta> | null;
+      isNewLane: boolean;
+    } | null => {
+      const position: DragPosition | undefined = session.position;
+      const container = scrollContainerRef.current;
+      if (!position || !container) {
+        return null;
+      }
+      const rect = container.getBoundingClientRect();
+      const withinHorizontal = position.clientX >= rect.left && position.clientX <= rect.right;
+      const withinVertical = position.clientY >= rect.top && position.clientY <= rect.bottom;
+      if (!withinHorizontal || !withinVertical) {
+        return {
+          sessionId: session.id,
+          laneId: null,
+          minutes: null,
+          segment: null,
+          isNewLane: false,
+        };
+      }
+
+      const detectedLaneId = findLaneAtPosition(position.clientY);
+      const effectiveLaneId = detectedLaneId ?? TIMELINE_NEW_LANE_ID;
+      const relativeX = position.clientX - rect.left + container.scrollLeft;
+      const minutes = bounds.startMinutes + relativeX / pixelsPerMinute;
+      const lane = detectedLaneId ? findLaneById(detectedLaneId) : undefined;
+      let targetSegment: TimelineSegment<Meta> | null = null;
+      if (lane) {
+        targetSegment = lane.segments.find((segment) => {
+          return minutes >= segment.startMinutes && minutes <= segment.endMinutes;
+        }) ?? null;
+      }
+
+        return {
+          sessionId: session.id,
+          laneId: effectiveLaneId,
+          minutes,
+          segment: targetSegment,
+          isNewLane: !detectedLaneId,
+        };
+    },
+    [bounds.startMinutes, findLaneAtPosition, findLaneById, pixelsPerMinute],
+  );
+
+  const handleExternalDrop = useCallback(
+    (
+      session: DragSession,
+      candidate: { laneId: string; minutes: number; segment: TimelineSegment<Meta> | null; isNewLane: boolean },
+    ): DragEndResult | null => {
+      if (!onExternalDrop) {
+        return null;
+      }
+      const dropEvent: TimelineExternalDropEvent<Meta> = {
+        laneId: candidate.laneId,
+        minutes: candidate.minutes,
+        payload: session.payload,
+        segment: candidate.segment ?? undefined,
+        isNewLane: candidate.isNewLane,
+      };
+      const result = onExternalDrop(dropEvent);
+      if (result === false) {
+        return null;
+      }
+      return {
+        dropSucceeded: true,
+        dropLaneId: candidate.laneId,
+        dropMinutes: candidate.minutes,
+      };
+    },
+    [onExternalDrop],
+  );
+
+  useEffect(() => {
+    if (!dragBus) {
+      return;
+    }
+    const unsubscribe = dragBus.subscribe((event) => {
+        if (event.type === 'start') {
+          setExternalHover({ sessionId: event.session.id, laneId: null, minutes: null, segment: null, isNewLane: false });
+          dragBus.setHoverTarget(null);
+          if (onExternalDragOver) {
+            onExternalDragOver({ laneId: null, minutes: null, payload: event.session.payload, segment: null, isNewLane: false });
+          }
+        return;
+      }
+      if (event.type === 'update') {
+        const candidate = resolveExternalCandidate(event.session);
+        setExternalHover(candidate);
+        if (candidate && candidate.laneId && candidate.minutes !== null) {
+            const hoverTarget: DragHoverTarget = {
+              id: `timeline-drop-${candidate.laneId}`,
+              onDrop: (session) => handleExternalDrop(session, {
+                laneId: candidate.laneId!,
+                minutes: candidate.minutes!,
+                segment: candidate.segment ?? null,
+                isNewLane: candidate.isNewLane,
+              }),
+            };
+          dragBus.setHoverTarget(hoverTarget);
+          if (onExternalDragOver) {
+            onExternalDragOver({
+              laneId: candidate.laneId,
+              minutes: candidate.minutes,
+              payload: event.session.payload,
+              segment: candidate.segment ?? undefined,
+              isNewLane: candidate.isNewLane,
+            });
+          }
+        } else {
+          dragBus.setHoverTarget(null);
+          if (onExternalDragOver) {
+            onExternalDragOver({ laneId: null, minutes: null, payload: event.session.payload, segment: null, isNewLane: false });
+          }
+        }
+        return;
+      }
+      if (event.type === 'cancel') {
+        setExternalHover(null);
+        dragBus.setHoverTarget(null);
+        if (onExternalDragOver) {
+          onExternalDragOver({ laneId: null, minutes: null, payload: event.session.payload, segment: null, isNewLane: false });
+        }
+        return;
+      }
+      if (event.type === 'end') {
+        setExternalHover(null);
+        dragBus.setHoverTarget(null);
+      }
+    });
+    return unsubscribe;
+  }, [dragBus, handleExternalDrop, onExternalDragOver, resolveExternalCandidate]);
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -373,9 +594,38 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
           <div className="space-y-[6px] pb-4 pt-1">
             {nonEmptyLanes.map((lane, index) => {
               const laneProps = lanePropsMap?.get(lane.id);
-              const { className: trackClassName, style: trackStyleOverride, ...trackRest } =
+              const { className: trackClassName, style: trackStyleOverride, ref: trackCustomRef, ...trackRest } =
                 laneProps?.trackProps ?? {};
               const trackStyle: CSSProperties = trackStyleOverride ?? {};
+              const isExternalHover = externalHover?.laneId === lane.id;
+              const dropPreview = renderExternalPreview && activeSession && isExternalHover
+                ? renderExternalPreview({
+                    lane,
+                    laneId: lane.id,
+                    minutes: externalHover?.minutes ?? null,
+                    segment: externalHover?.segment ?? null,
+                    session: activeSession,
+                    bounds,
+                    pixelsPerMinute,
+                    timelineWidth,
+                    isNewLane: Boolean(externalHover?.isNewLane),
+                  })
+                : null;
+              const assignLaneRef = (element: HTMLDivElement | null) => {
+                if (element) {
+                  laneRefs.current.set(lane.id, element);
+                } else {
+                  laneRefs.current.delete(lane.id);
+                }
+                if (!trackCustomRef) {
+                  return;
+                }
+                if (typeof trackCustomRef === 'function') {
+                  (trackCustomRef as (instance: HTMLDivElement | null) => void)(element);
+                } else if (typeof trackCustomRef === 'object') {
+                  (trackCustomRef as MutableRefObject<HTMLDivElement | null>).current = element;
+                }
+              };
               const handleLaneContextMenuEvent = (event: ReactMouseEvent<SVGSVGElement>) => {
                 if (!onLaneContextMenu) {
                   return;
@@ -394,7 +644,12 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
               return (
                 <div
                   key={lane.id}
-                  className={clsx('relative', trackClassName)}
+                  ref={assignLaneRef}
+                  className={clsx(
+                    'relative',
+                    trackClassName,
+                    isExternalHover ? 'ring-2 ring-primary/50 ring-inset' : undefined,
+                  )}
                   style={trackStyle}
                   {...trackRest}
                 >
@@ -413,6 +668,18 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
                       fill={selectedLaneId === lane.id ? 'var(--muted)' : 'transparent'}
                     />
                     {lane.segments.map((segment) => {
+                      const segmentCustomProps = getSegmentProps?.(lane, segment) ?? {};
+                      const {
+                        className: customSegmentClassName,
+                        onClick: customOnClick,
+                        onContextMenu: customOnContextMenu,
+                        onPointerDown: customOnPointerDown,
+                        onPointerMove: customOnPointerMove,
+                        onPointerUp: customOnPointerUp,
+                        onPointerCancel: customOnPointerCancel,
+                        ...restSegmentProps
+                      } = segmentCustomProps;
+                      const segmentClassName = clsx('cursor-pointer', customSegmentClassName);
                       const startX = minutesToPosition(segment.startMinutes, bounds, pixelsPerMinute);
                       const endX = minutesToPosition(segment.endMinutes, bounds, pixelsPerMinute);
                       const width = Math.max(endX - startX, 2);
@@ -456,9 +723,14 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
                       return (
                         <g
                           key={segment.id}
-                          className="cursor-pointer"
-                          onClick={() => onSelect?.({ laneId: lane.id, segmentId: segment.id, segment })}
-                          onContextMenu={handleSegmentContextMenuEvent}
+                          className={segmentClassName}
+                          onClick={composeHandlers(() => onSelect?.({ laneId: lane.id, segmentId: segment.id, segment }), customOnClick)}
+                          onContextMenu={composeHandlers(handleSegmentContextMenuEvent, customOnContextMenu)}
+                          onPointerDown={composeHandlers(undefined, customOnPointerDown)}
+                          onPointerMove={composeHandlers(undefined, customOnPointerMove)}
+                          onPointerUp={composeHandlers(undefined, customOnPointerUp)}
+                          onPointerCancel={composeHandlers(undefined, customOnPointerCancel)}
+                          {...restSegmentProps}
                         >
                           <rect
                             x={startX}
@@ -472,7 +744,7 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
                             rx={4}
                             ry={4}
                             className="cursor-grab"
-                            {...moveHandlers}
+                            {...(enableInternalSegmentDrag ? moveHandlers : {})}
                           >
                             <title>
                               {segment.label}
@@ -496,28 +768,32 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
                               pointerEvents="none"
                             />
                           )}
-                          <rect
-                            x={leftHandleX}
-                            y={12}
-                            width={HANDLE_WIDTH}
-                            height={LANE_HEIGHT - 24}
-                            fill="var(--card)"
-                            stroke="var(--primary-foreground)"
-                            strokeWidth="1"
-                            className="cursor-ew-resize"
-                            {...resizeStartHandlers}
-                          />
-                          <rect
-                            x={rightHandleX}
-                            y={12}
-                            width={HANDLE_WIDTH}
-                            height={LANE_HEIGHT - 24}
-                            fill="var(--card)"
-                            stroke="var(--primary-foreground)"
-                            strokeWidth="1"
-                            className="cursor-ew-resize"
-                            {...resizeEndHandlers}
-                          />
+                          {enableInternalSegmentDrag ? (
+                            <>
+                              <rect
+                                x={leftHandleX}
+                                y={12}
+                                width={HANDLE_WIDTH}
+                                height={LANE_HEIGHT - 24}
+                                fill="var(--card)"
+                                stroke="var(--primary-foreground)"
+                                strokeWidth="1"
+                                className="cursor-ew-resize"
+                                {...resizeStartHandlers}
+                              />
+                              <rect
+                                x={rightHandleX}
+                                y={12}
+                                width={HANDLE_WIDTH}
+                                height={LANE_HEIGHT - 24}
+                                fill="var(--card)"
+                                stroke="var(--primary-foreground)"
+                                strokeWidth="1"
+                                className="cursor-ew-resize"
+                                {...resizeEndHandlers}
+                              />
+                            </>
+                          ) : null}
                           <text
                             x={startX + 6}
                             y={LANE_HEIGHT / 2 + 4}
@@ -539,9 +815,41 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
                       strokeWidth={index === nonEmptyLanes.length - 1 ? 0 : 1}
                     />
                   </svg>
+                  {dropPreview ? (
+                    <div className="pointer-events-none absolute inset-0">
+                      {dropPreview}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
+            {isExternalDragActive && onExternalDrop ? (
+              <div
+                className={clsx(
+                  'relative flex h-[44px] items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/10 text-xs text-muted-foreground transition-colors',
+                  externalHover?.laneId === TIMELINE_NEW_LANE_ID ? 'border-primary/70 bg-primary/10 text-primary' : undefined,
+                )}
+              >
+                新しい Duty をここにドロップ
+                {renderExternalPreview && activeSession && externalHover?.laneId === TIMELINE_NEW_LANE_ID
+                  ? (
+                    <div className="pointer-events-none absolute inset-0">
+                      {renderExternalPreview({
+                        lane: null,
+                        laneId: TIMELINE_NEW_LANE_ID,
+                        minutes: externalHover.minutes ?? null,
+                        segment: null,
+                        session: activeSession,
+                        bounds,
+                        pixelsPerMinute,
+                        timelineWidth,
+                        isNewLane: true,
+                      })}
+                    </div>
+                  )
+                  : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
