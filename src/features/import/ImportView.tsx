@@ -206,8 +206,8 @@ export default function ImportView(): JSX.Element {
           <CardDescription>新規開始（GTFS）または保存データから再開する導線を選択してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="relative flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch md:gap-16">
-            <div className="order-1 flex h-full flex-col gap-3 md:order-none md:col-start-1">
+          <div className="relative flex flex-col gap-6 md:flex-row md:flex-wrap md:items-stretch md:gap-16">
+            <div className="order-1 flex h-full flex-col gap-3 md:order-none md:flex-1">
               <div className="space-y-1 text-left">
                 <div className="flex items-center gap-2">
                   <UploadCloud className="h-5 w-5 text-muted-foreground" aria-hidden />
@@ -237,13 +237,13 @@ export default function ImportView(): JSX.Element {
               </div>
             </div>
 
-            <div className="order-2 flex items-center justify-center md:col-start-2 md:px-6">
-              <span className="rounded-full bg-amber-200 px-4 py-1.5 text-xs font-semibold text-amber-900 shadow-sm">
+            <div className="order-2 flex flex-shrink-0 items-center justify-center md:order-none md:px-6">
+              <span className="rounded-full bg-amber-200 px-4 py-1.5 text-xs font-semibold text-amber-900 shadow-sm whitespace-nowrap">
                 または
               </span>
             </div>
 
-            <div className="order-3 flex h-full flex-col gap-3 md:order-none md:col-start-3">
+            <div className="order-3 flex h-full flex-col gap-3 md:order-none md:flex-1">
               <div className="space-y-1 text-left">
                 <div className="flex items-center gap-2">
                   <History className="h-5 w-5 text-muted-foreground" aria-hidden />
@@ -262,7 +262,7 @@ export default function ImportView(): JSX.Element {
               </div>
             </div>
 
-            <p className="order-4 text-xs text-muted-foreground text-left md:order-none md:col-span-3">
+            <p className="order-4 text-left text-xs text-muted-foreground md:order-none md:basis-full">
               状態: {STATUS_COPY[status] ?? status}
             </p>
           </div>
