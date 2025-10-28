@@ -22,8 +22,8 @@ const DiffView = lazy(async () => import('./features/dashboard/DiffView'));
 
 const BASE_SECTIONS: NavigationSection[] = [
   { id: 'import', label: 'GTFS・保存データ取込' },
-  { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'manual', label: '制約条件（手動入力）' },
+  { id: 'explorer', label: '行路編集対象の便を選択' },
   { id: 'blocks', label: '行路編集' },
   { id: 'duties', label: '勤務編集' },
 ];
