@@ -184,3 +184,25 @@ test('buildBlocksPlan honours linkingEnabled flag', () => {
   assert.equal(disabledPlan.summaries[0]?.tripCount, 1);
   assert.equal(disabledPlan.summaries[1]?.tripCount, 1);
 });
+
+test('buildBlocksPlan startUnassigned lists all trips as unassigned', () => {
+  const result = baseResult();
+  result.tables['trips.txt'].rows = [
+    { trip_id: 'TRIP_ONE', service_id: 'WEEKDAY' },
+    { trip_id: 'TRIP_TWO', service_id: 'WEEKDAY' },
+  ];
+  result.tables['stop_times.txt'].rows = [
+    { trip_id: 'TRIP_ONE', stop_sequence: '1', stop_id: 'STOP_A', departure_time: '07:00' },
+    { trip_id: 'TRIP_ONE', stop_sequence: '2', stop_id: 'STOP_B', arrival_time: '07:30' },
+    { trip_id: 'TRIP_TWO', stop_sequence: '1', stop_id: 'STOP_B', departure_time: '08:00' },
+    { trip_id: 'TRIP_TWO', stop_sequence: '2', stop_id: 'STOP_C', arrival_time: '08:30' },
+  ];
+
+  const plan = buildBlocksPlan(result, { startUnassigned: true, linkingEnabled: false });
+  assert.equal(plan.totalTripCount, 2);
+  assert.equal(plan.assignedTripCount, 0);
+  assert.equal(plan.summaries.length, 0);
+  assert.equal(plan.csvRows.length, 0);
+  assert.equal(plan.coverageRatio, 0);
+  assert.deepEqual(plan.unassignedTripIds.sort(), ['TRIP_ONE', 'TRIP_TWO']);
+});

@@ -81,6 +81,7 @@ export default function BlocksView(): JSX.Element {
         minTurnaroundMinutes: manual.linking.minTurnaroundMin,
         linkingEnabled: false,
         diagnosticsEnabled: !isStepOne,
+        startUnassigned: isStepOne,
       }),
     [result, turnGap, manual.linking.minTurnaroundMin, manual.linking.enabled],
   );
@@ -370,6 +371,7 @@ useEffect(() => {
   return (
     <div
       className="relative space-y-6"
+      data-testid="blocks-view-root"
       onDragOver={(event) => {
         // 未割当便のドラッグ時のみドロップを許可
         const types = Array.from(event.dataTransfer?.types ?? []);
@@ -429,9 +431,9 @@ useEffect(() => {
           <div className="space-y-1">
             <CardTitle>手動連結（最小UI）</CardTitle>
             <CardDescription>
-              Step1 ではブロックを手作業で連結します。候補提示や自動判定は行わず、連結/取り消しのみ提供します。
-              タイムライン上でのドラッグ＆ドロップによる連結は非対応です（未割当便→新規行路の作成のみ D&amp;D 対応）。
-              画面全体がドロップターゲットになっているため、未割当便の行をそのままタイムライン領域へドロップしても作成できます。
+              Step1 では From/To 選択でブロックを手作業連結します。候補提示や自動判定は行いません。
+              未割当便をタイムラインへドラッグすると新しい行路カードを作成できますが、既存ブロック同士のドラッグ連結は非対応です。
+              画面全体がドロップターゲットになっているため、未割当便の行をそのままタイムラインへドロップしてください。
             </CardDescription>
           </div>
           <Badge variant="outline">連結数: {manualPlanState.connections.length}</Badge>
@@ -512,7 +514,7 @@ useEffect(() => {
         </CardContent>
       </Card>
 
-      <Card>
+        <Card>
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <CardTitle>日別タイムライン</CardTitle>
@@ -765,7 +767,7 @@ function UnassignedTable({ unassigned, onCreateBlock }: UnassignedTableProps): J
       <CardHeader>
         <CardTitle>未割当 便</CardTitle>
         <CardDescription>
-          ブロックに割り当てられていない便を一覧で確認できます。ドラッグ＆ドロップ、またはボタン操作で新しい行路を作成できます。
+          ブロックに割り当てられていない便を一覧で確認できます。便をタイムラインへドラッグすると新しい行路カードが作成されます（各行の「新規行路」ボタンでも同じ処理を実行できます）。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -781,10 +783,11 @@ function UnassignedTable({ unassigned, onCreateBlock }: UnassignedTableProps): J
               onDragEnter={allowDrop}
               onDragLeave={resetDropState}
               onDrop={handleDrop}
+              data-testid="blocks-unassigned-dropzone"
             >
-              未割当便をここにドラッグすると、新しい行路カードを自動作成できます。
+              未割当便をここにドラッグすると、新しい行路カードを作成できます。
             </div>
-            <Table>
+            <Table data-testid="blocks-unassigned-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>trip_id</TableHead>

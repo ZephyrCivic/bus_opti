@@ -75,6 +75,11 @@ export interface BuildBlocksOptions {
   linkingEnabled?: boolean;
   minTurnaroundMinutes?: number;
   diagnosticsEnabled?: boolean;
+  /**
+   * true の場合、初期ブロックは作成せず、全 trip を未割当に積む。
+   * デモ/体験用。linkingEnabled に優先する。
+   */
+  startUnassigned?: boolean;
 }
 
 export const DEFAULT_MAX_TURN_GAP_MINUTES = 15;
@@ -109,6 +114,7 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const minTurnaroundMinutes = Math.max(0, options?.minTurnaroundMinutes ?? DEFAULT_MIN_TURNAROUND_MINUTES);
   const linkingEnabled = options?.linkingEnabled ?? true;
   const diagnosticsEnabled = options?.diagnosticsEnabled ?? true;
+  const startUnassigned = options?.startUnassigned ?? false;
 
   if (!result) {
     return emptyPlan(maxTurnGapMinutes);
@@ -139,23 +145,25 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
   const unassignedTripIds: string[] = [];
   const openBlocks: OpenBlock[] = [];
 
-  for (const schedule of schedules) {
-    const candidate = linkingEnabled ? findAttachableBlock(openBlocks, schedule, maxTurnGapMinutes) : null;
-    if (candidate) {
-      attachTrip(candidate, schedule, csvRows);
-      continue;
+  if (!startUnassigned) {
+    for (const schedule of schedules) {
+      const candidate = linkingEnabled ? findAttachableBlock(openBlocks, schedule, maxTurnGapMinutes) : null;
+      if (candidate) {
+        attachTrip(candidate, schedule, csvRows);
+        continue;
+      }
+      createNewBlock(openBlocks, summaries, schedule, csvRows);
     }
-    createNewBlock(openBlocks, summaries, schedule, csvRows);
   }
 
   const assignedTripIds = new Set(csvRows.map((row) => row.tripId));
   for (const schedule of schedules) {
-    if (!assignedTripIds.has(schedule.tripId)) {
+    if (startUnassigned || !assignedTripIds.has(schedule.tripId)) {
       unassignedTripIds.push(schedule.tripId);
     }
   }
 
-  const assignedTripCount = assignedTripIds.size;
+  const assignedTripCount = startUnassigned ? 0 : assignedTripIds.size;
   const totalTripCount = schedules.length;
   const coverageRatio = totalTripCount === 0 ? 0 : assignedTripCount / totalTripCount;
 
