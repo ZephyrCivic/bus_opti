@@ -28,6 +28,13 @@ export interface ConnectBlocksResult {
   connection: ManualConnection;
 }
 
+export interface SplitBlockResult {
+  plan: BlockPlan;
+  newBlockId: string;
+  retainedBlockId: string;
+  splitTripId: string;
+}
+
 export function cloneBlockPlan(plan: BlockPlan): BlockPlan {
   return {
     summaries: plan.summaries.map((summary) => ({
@@ -222,6 +229,86 @@ export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed):
   next.coverageRatio = next.totalTripCount === 0 ? 0 : next.assignedTripCount / next.totalTripCount;
 
   return next;
+}
+
+export function splitBlockPlan(
+  plan: BlockPlan,
+  blockId: string,
+  splitTripId: string,
+  config: ManualPlanConfig,
+): SplitBlockResult | null {
+  const targetSummary = plan.summaries.find((summary) => summary.blockId === blockId);
+  if (!targetSummary) {
+    return null;
+  }
+
+  const rowsForBlock = plan.csvRows
+    .filter((row) => row.blockId === blockId)
+    .sort((a, b) => a.seq - b.seq);
+  if (rowsForBlock.length <= 1) {
+    return null;
+  }
+
+  const splitIndex = rowsForBlock.findIndex((row) => row.tripId === splitTripId);
+  if (splitIndex <= 0 || splitIndex >= rowsForBlock.length) {
+    return null;
+  }
+
+  const retainedRows = rowsForBlock.slice(0, splitIndex);
+  const movedRows = rowsForBlock.slice(splitIndex);
+  if (retainedRows.length === 0 || movedRows.length === 0) {
+    return null;
+  }
+
+  const next = cloneBlockPlan(plan);
+  const remainingSummaries = next.summaries.filter((summary) => summary.blockId !== blockId);
+  const newBlockId = generateNextBlockId(remainingSummaries);
+
+  const normalizedRetainedRows = retainedRows.map((row, index) => ({
+    ...row,
+    blockId,
+    seq: index + 1,
+  }));
+  const normalizedMovedRows = movedRows.map((row, index) => ({
+    ...row,
+    blockId: newBlockId,
+    seq: index + 1,
+  }));
+
+  next.csvRows = [
+    ...next.csvRows.filter((row) => row.blockId !== blockId),
+    ...normalizedRetainedRows,
+    ...normalizedMovedRows,
+  ];
+
+  const retainedSummary = buildSummaryForRows(
+    blockId,
+    normalizedRetainedRows,
+    targetSummary.serviceId,
+    targetSummary.serviceDayIndex,
+    config.minTurnaroundMin,
+  );
+  const movedSummary = buildSummaryForRows(
+    newBlockId,
+    normalizedMovedRows,
+    targetSummary.serviceId,
+    targetSummary.serviceDayIndex,
+    config.minTurnaroundMin,
+  );
+
+  next.summaries = [...remainingSummaries, retainedSummary, movedSummary].sort((a, b) => {
+    if (a.serviceDayIndex === b.serviceDayIndex) {
+      return a.firstTripStart.localeCompare(b.firstTripStart);
+    }
+    return a.serviceDayIndex - b.serviceDayIndex;
+  });
+
+  return {
+    plan: next,
+    newBlockId,
+    retainedBlockId: blockId,
+    splitTripId,
+  };
 }
 
 function buildSummaryForRows(

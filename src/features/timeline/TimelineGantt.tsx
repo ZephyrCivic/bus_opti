@@ -7,6 +7,9 @@ import type {
   PointerEvent as ReactPointerEvent,
   UIEvent as ReactUIEvent,
   WheelEvent as ReactWheelEvent,
+  MouseEvent as ReactMouseEvent,
+  HTMLAttributes,
+  CSSProperties,
 } from 'react';
 import clsx from 'clsx';
 
@@ -45,6 +48,25 @@ interface SegmentDragState<Meta = unknown> {
   originalEndMinutes: number;
 }
 
+export interface TimelineLaneProps<Meta = unknown> {
+  labelProps?: HTMLAttributes<HTMLDivElement>;
+  trackProps?: HTMLAttributes<HTMLDivElement>;
+}
+
+export interface TimelineSegmentContextMenuEvent<Meta = unknown> {
+  laneId: string;
+  segment: TimelineSegment<Meta>;
+  clientX: number;
+  clientY: number;
+}
+
+export interface TimelineLaneContextMenuEvent {
+  laneId: string;
+  minutes: number;
+  clientX: number;
+  clientY: number;
+}
+
 interface TimelineGanttProps<Meta = unknown> {
   lanes: TimelineLane<Meta>[];
   selectedLaneId?: string | null;
@@ -57,6 +79,9 @@ interface TimelineGanttProps<Meta = unknown> {
   onSegmentDrag?(event: TimelineSegmentDragEvent<Meta>): void;
   scrollLeft?: number;
   onScrollLeftChange?(offset: number): void;
+  getLaneProps?(lane: TimelineLane<Meta>): TimelineLaneProps<Meta>;
+  onSegmentContextMenu?(event: TimelineSegmentContextMenuEvent<Meta>): void;
+  onLaneContextMenu?(event: TimelineLaneContextMenuEvent): void;
 }
 
 export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JSX.Element {
@@ -72,12 +97,26 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
     onSegmentDrag,
     scrollLeft,
     onScrollLeftChange,
+    getLaneProps,
+    onSegmentContextMenu,
+    onLaneContextMenu,
   } = props;
 
   const nonEmptyLanes = useMemo(
     () => lanes.filter((lane) => lane.segments.length > 0),
     [lanes],
   );
+
+  const lanePropsMap = useMemo(() => {
+    if (!getLaneProps) {
+      return null;
+    }
+    const map = new Map<string, TimelineLaneProps<Meta>>();
+    for (const lane of nonEmptyLanes) {
+      map.set(lane.id, getLaneProps(lane));
+    }
+    return map;
+  }, [getLaneProps, nonEmptyLanes]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<SegmentDragState<Meta> | null>(null);
@@ -262,29 +301,37 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
         <div className="h-[32px] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Lane
         </div>
-        {nonEmptyLanes.map((lane) => (
-          <div
-            key={lane.id}
-            className={clsx(
-              'flex items-center border-t border-border/50 px-3 text-sm',
-              selectedLaneId === lane.id ? 'bg-muted/40 font-medium text-foreground' : 'text-muted-foreground',
-            )}
-            style={{ height: `${LANE_HEIGHT}px` }}
-          >
-            <div className="flex w-full items-center gap-2">
-              <span className="truncate">{lane.label}</span>
-              {lane.tag ? (
-                <span
-                  className="whitespace-nowrap rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                  data-lane-tag={lane.tag.label}
-                  title={lane.tag.title ?? lane.tag.label}
-                >
-                  {lane.tag.label}
-                </span>
-              ) : null}
+        {nonEmptyLanes.map((lane) => {
+          const laneProps = lanePropsMap?.get(lane.id);
+          const { className: labelClassName, style: labelStyleOverride, ...labelRest } =
+            laneProps?.labelProps ?? {};
+          const labelStyle: CSSProperties = { height: `${LANE_HEIGHT}px`, ...(labelStyleOverride ?? {}) };
+          return (
+            <div
+              key={lane.id}
+              className={clsx(
+                'flex items-center border-t border-border/50 px-3 text-sm',
+                selectedLaneId === lane.id ? 'bg-muted/40 font-medium text-foreground' : 'text-muted-foreground',
+                labelClassName,
+              )}
+              style={labelStyle}
+              {...labelRest}
+            >
+              <div className="flex w-full items-center gap-2">
+                <span className="truncate">{lane.label}</span>
+                {lane.tag ? (
+                  <span
+                    className="whitespace-nowrap rounded-full border border-border/70 bg-muted/60 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    data-lane-tag={lane.tag.label}
+                    title={lane.tag.title ?? lane.tag.label}
+                  >
+                    {lane.tag.label}
+                  </span>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div
         ref={scrollContainerRef}
@@ -324,135 +371,177 @@ export default function TimelineGantt<Meta>(props: TimelineGanttProps<Meta>): JS
             ))}
           </svg>
           <div className="space-y-[6px] pb-4 pt-1">
-            {nonEmptyLanes.map((lane, index) => (
-              <svg
-                key={lane.id}
-                width={timelineWidth}
-                height={LANE_HEIGHT}
-                role="group"
-                aria-label={lane.label}
-              >
-                <rect
-                  x={0}
-                  y={0}
-                  width={timelineWidth}
-                  height={LANE_HEIGHT}
-                  fill={selectedLaneId === lane.id ? 'var(--muted)' : 'transparent'}
-                />
-                {lane.segments.map((segment) => {
-                  const startX = minutesToPosition(segment.startMinutes, bounds, pixelsPerMinute);
-                  const endX = minutesToPosition(segment.endMinutes, bounds, pixelsPerMinute);
-                  const width = Math.max(endX - startX, 2);
-                  const isSelected = selectedLaneId === lane.id && selectedSegmentId === segment.id;
-                  const moveHandlers = {
-                    onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
-                      beginSegmentDrag(event, 'move', lane.id, segment),
-                    onPointerMove: updateSegmentDrag,
-                    onPointerUp: endSegmentDrag,
-                    onPointerCancel: endSegmentDrag,
-                  };
-                  const resizeStartHandlers = {
-                    onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
-                      beginSegmentDrag(event, 'resize-start', lane.id, segment),
-                    onPointerMove: updateSegmentDrag,
-                    onPointerUp: endSegmentDrag,
-                    onPointerCancel: endSegmentDrag,
-                  };
-                  const resizeEndHandlers = {
-                    onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
-                      beginSegmentDrag(event, 'resize-end', lane.id, segment),
-                    onPointerMove: updateSegmentDrag,
-                    onPointerUp: endSegmentDrag,
-                    onPointerCancel: endSegmentDrag,
-                  };
-                  const leftHandleX = Math.max(startX - HANDLE_WIDTH / 2, 0);
-                  const rightHandleX = Math.min(startX + width - HANDLE_WIDTH / 2, timelineWidth - HANDLE_WIDTH);
-                  return (
-                    <g
-                      key={segment.id}
-                      className="cursor-pointer"
-                      onClick={() => onSelect?.({ laneId: lane.id, segmentId: segment.id, segment })}
-                    >
-                      <rect
-                        x={startX}
-                        y={10}
-                        width={width}
-                        height={LANE_HEIGHT - 20}
-                        fill={segment.color ?? 'var(--primary)'}
-                        fillOpacity={isSelected ? 0.85 : 0.6}
-                        stroke={isSelected ? 'var(--primary)' : 'var(--primary-foreground)'}
-                        strokeWidth={isSelected ? 2 : 1}
-                        rx={4}
-                        ry={4}
-                        className="cursor-grab"
-                        {...moveHandlers}
-                      >
-                        <title>
-                          {segment.label}
-                          {' '}
-                          {formatMinutesAsTime(segment.startMinutes)}
-                          {' - '}
-                          {formatMinutesAsTime(segment.endMinutes)}
-                        </title>
-                      </rect>
-                      {previewRect && previewRect.laneId === lane.id && previewRect.segmentId === segment.id && (
-                        <rect
-                          x={previewRect.startX}
-                          y={10}
-                          width={Math.max(previewRect.endX - previewRect.startX, PREVIEW_MIN_WIDTH)}
-                          height={LANE_HEIGHT - 20}
-                          fill="var(--primary)"
-                          fillOpacity={0.25}
-                          stroke="var(--primary)"
-                          strokeDasharray="4 4"
-                          strokeWidth={1.5}
-                          pointerEvents="none"
-                        />
-                      )}
-                      <rect
-                        x={leftHandleX}
-                        y={12}
-                        width={HANDLE_WIDTH}
-                        height={LANE_HEIGHT - 24}
-                        fill="var(--card)"
-                        stroke="var(--primary-foreground)"
-                        strokeWidth="1"
-                        className="cursor-ew-resize"
-                        {...resizeStartHandlers}
-                      />
-                      <rect
-                        x={rightHandleX}
-                        y={12}
-                        width={HANDLE_WIDTH}
-                        height={LANE_HEIGHT - 24}
-                        fill="var(--card)"
-                        stroke="var(--primary-foreground)"
-                        strokeWidth="1"
-                        className="cursor-ew-resize"
-                        {...resizeEndHandlers}
-                      />
-                      <text
-                        x={startX + 6}
-                        y={LANE_HEIGHT / 2 + 4}
-                        fontSize="10"
-                        fill="var(--card-foreground)"
-                        pointerEvents="none"
-                      >
-                        {segment.label}
-                      </text>
-                    </g>
-                  );
-                })}
-                <line
-                  x1={0}
-                  y1={LANE_HEIGHT - 1}
-                  x2={timelineWidth}
-                  y2={LANE_HEIGHT - 1}
-                  stroke="var(--border)"
-                  strokeWidth={index === nonEmptyLanes.length - 1 ? 0 : 1}
-                />
-              </svg>
-            ))}
+            {nonEmptyLanes.map((lane, index) => {
+              const laneProps = lanePropsMap?.get(lane.id);
+              const { className: trackClassName, style: trackStyleOverride, ...trackRest } =
+                laneProps?.trackProps ?? {};
+              const trackStyle: CSSProperties = trackStyleOverride ?? {};
+              const handleLaneContextMenuEvent = (event: ReactMouseEvent<SVGSVGElement>) => {
+                if (!onLaneContextMenu) {
+                  return;
+                }
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const relativeX = event.clientX - rect.left;
+                const minutes = bounds.startMinutes + relativeX / pixelsPerMinute;
+                onLaneContextMenu({
+                  laneId: lane.id,
+                  minutes,
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                });
+              };
+              return (
+                <div
+                  key={lane.id}
+                  className={clsx('relative', trackClassName)}
+                  style={trackStyle}
+                  {...trackRest}
+                >
+                  <svg
+                    width={timelineWidth}
+                    height={LANE_HEIGHT}
+                    role="group"
+                    aria-label={lane.label}
+                    onContextMenu={handleLaneContextMenuEvent}
+                  >
+                    <rect
+                      x={0}
+                      y={0}
+                      width={timelineWidth}
+                      height={LANE_HEIGHT}
+                      fill={selectedLaneId === lane.id ? 'var(--muted)' : 'transparent'}
+                    />
+                    {lane.segments.map((segment) => {
+                      const startX = minutesToPosition(segment.startMinutes, bounds, pixelsPerMinute);
+                      const endX = minutesToPosition(segment.endMinutes, bounds, pixelsPerMinute);
+                      const width = Math.max(endX - startX, 2);
+                      const isSelected = selectedLaneId === lane.id && selectedSegmentId === segment.id;
+                      const moveHandlers = {
+                        onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
+                          beginSegmentDrag(event, 'move', lane.id, segment),
+                        onPointerMove: updateSegmentDrag,
+                        onPointerUp: endSegmentDrag,
+                        onPointerCancel: endSegmentDrag,
+                      };
+                      const resizeStartHandlers = {
+                        onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
+                          beginSegmentDrag(event, 'resize-start', lane.id, segment),
+                        onPointerMove: updateSegmentDrag,
+                        onPointerUp: endSegmentDrag,
+                        onPointerCancel: endSegmentDrag,
+                      };
+                      const resizeEndHandlers = {
+                        onPointerDown: (event: ReactPointerEvent<SVGElement>) =>
+                          beginSegmentDrag(event, 'resize-end', lane.id, segment),
+                        onPointerMove: updateSegmentDrag,
+                        onPointerUp: endSegmentDrag,
+                        onPointerCancel: endSegmentDrag,
+                      };
+                      const leftHandleX = Math.max(startX - HANDLE_WIDTH / 2, 0);
+                      const rightHandleX = Math.min(startX + width - HANDLE_WIDTH / 2, timelineWidth - HANDLE_WIDTH);
+                      const handleSegmentContextMenuEvent = (event: ReactMouseEvent<SVGElement>) => {
+                        if (!onSegmentContextMenu) {
+                          return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSegmentContextMenu({
+                          laneId: lane.id,
+                          segment,
+                          clientX: event.clientX,
+                          clientY: event.clientY,
+                        });
+                      };
+                      return (
+                        <g
+                          key={segment.id}
+                          className="cursor-pointer"
+                          onClick={() => onSelect?.({ laneId: lane.id, segmentId: segment.id, segment })}
+                          onContextMenu={handleSegmentContextMenuEvent}
+                        >
+                          <rect
+                            x={startX}
+                            y={10}
+                            width={width}
+                            height={LANE_HEIGHT - 20}
+                            fill={segment.color ?? 'var(--primary)'}
+                            fillOpacity={isSelected ? 0.85 : 0.6}
+                            stroke={isSelected ? 'var(--primary)' : 'var(--primary-foreground)'}
+                            strokeWidth={isSelected ? 2 : 1}
+                            rx={4}
+                            ry={4}
+                            className="cursor-grab"
+                            {...moveHandlers}
+                          >
+                            <title>
+                              {segment.label}
+                              {' '}
+                              {formatMinutesAsTime(segment.startMinutes)}
+                              {' - '}
+                              {formatMinutesAsTime(segment.endMinutes)}
+                            </title>
+                          </rect>
+                          {previewRect && previewRect.laneId === lane.id && previewRect.segmentId === segment.id && (
+                            <rect
+                              x={previewRect.startX}
+                              y={10}
+                              width={Math.max(previewRect.endX - previewRect.startX, PREVIEW_MIN_WIDTH)}
+                              height={LANE_HEIGHT - 20}
+                              fill="var(--primary)"
+                              fillOpacity={0.25}
+                              stroke="var(--primary)"
+                              strokeDasharray="4 4"
+                              strokeWidth={1.5}
+                              pointerEvents="none"
+                            />
+                          )}
+                          <rect
+                            x={leftHandleX}
+                            y={12}
+                            width={HANDLE_WIDTH}
+                            height={LANE_HEIGHT - 24}
+                            fill="var(--card)"
+                            stroke="var(--primary-foreground)"
+                            strokeWidth="1"
+                            className="cursor-ew-resize"
+                            {...resizeStartHandlers}
+                          />
+                          <rect
+                            x={rightHandleX}
+                            y={12}
+                            width={HANDLE_WIDTH}
+                            height={LANE_HEIGHT - 24}
+                            fill="var(--card)"
+                            stroke="var(--primary-foreground)"
+                            strokeWidth="1"
+                            className="cursor-ew-resize"
+                            {...resizeEndHandlers}
+                          />
+                          <text
+                            x={startX + 6}
+                            y={LANE_HEIGHT / 2 + 4}
+                            fontSize="10"
+                            fill="var(--card-foreground)"
+                            pointerEvents="none"
+                          >
+                            {segment.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    <line
+                      x1={0}
+                      y1={LANE_HEIGHT - 1}
+                      x2={timelineWidth}
+                      y2={LANE_HEIGHT - 1}
+                      stroke="var(--border)"
+                      strokeWidth={index === nonEmptyLanes.length - 1 ? 0 : 1}
+                    />
+                  </svg>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
