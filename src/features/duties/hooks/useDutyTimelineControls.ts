@@ -367,11 +367,30 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
           toast.error('対象のDutyが見つかりません。');
           return false;
         }
-        const gap = resolveGapAroundMinutes(payload.blockId, minutes);
-        if (!gap) {
+        const candidateBlockIds: string[] = [];
+        if (event.segment?.meta?.blockId) {
+          candidateBlockIds.push(event.segment.meta.blockId);
+        }
+        for (const segment of duty.segments) {
+          if (!candidateBlockIds.includes(segment.blockId)) {
+            candidateBlockIds.push(segment.blockId);
+          }
+        }
+        let gapBlockId: string | null = null;
+        let gapResult: ReturnType<typeof resolveGapAroundMinutes> = null;
+        for (const blockId of candidateBlockIds) {
+          const detectedGap = resolveGapAroundMinutes(blockId, minutes);
+          if (detectedGap) {
+            gapBlockId = blockId;
+            gapResult = detectedGap;
+            break;
+          }
+        }
+        if (!gapResult || !gapBlockId) {
           toast.info('ドロップ位置に休憩を挿入できるギャップが見つかりません。');
           return false;
         }
+        const gap = gapResult;
         const hasPreceding = duty.segments.some(
           (segment) => (segment.kind ?? 'drive') !== 'break' && segment.endTripId === gap.startTripId,
         );
@@ -386,7 +405,7 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
           dutyActions.addSegment(
             {
               dutyId,
-              blockId: payload.blockId,
+              blockId: gapBlockId,
               startTripId: gap.startTripId,
               endTripId: gap.endTripId,
               breakUntilTripId: gap.endTripId,
@@ -394,11 +413,11 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
             },
             tripIndex,
           );
-          applyRangeAndSelect(dutyId, payload.blockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
+          applyRangeAndSelect(dutyId, gapBlockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
           toast.success('休憩を追加しました。');
           emitDropEvent({
             kind: payload.type,
-            blockId: payload.blockId,
+            blockId: gapBlockId,
             startTripId: gap.startTripId,
             endTripId: gap.endTripId,
             dutyId,
@@ -421,12 +440,31 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
           toast.error('対象のDutyが見つかりません。');
           return false;
         }
-        const gap = resolveGapAroundMinutes(payload.blockId, minutes);
-        if (!gap) {
+        const candidateBlockIds: string[] = [];
+        if (event.segment?.meta?.blockId) {
+          candidateBlockIds.push(event.segment.meta.blockId);
+        }
+        for (const segment of duty.segments) {
+          if (!candidateBlockIds.includes(segment.blockId)) {
+            candidateBlockIds.push(segment.blockId);
+          }
+        }
+        let gapBlockId: string | null = null;
+        let gapResult: ReturnType<typeof resolveGapAroundMinutes> = null;
+        for (const blockId of candidateBlockIds) {
+          const detectedGap = resolveGapAroundMinutes(blockId, minutes);
+          if (detectedGap) {
+            gapBlockId = blockId;
+            gapResult = detectedGap;
+            break;
+          }
+        }
+        if (!gapResult || !gapBlockId) {
           toast.info('ドロップ位置に回送を挿入できるギャップが見つかりません。');
           return false;
         }
-        const block = tripLookup.get(payload.blockId);
+        const gap = gapResult;
+        const block = tripLookup.get(gapBlockId);
         const startRow = block?.get(gap.startTripId);
         const endRow = block?.get(gap.endTripId);
         const startMinutes = toMinutes(startRow?.tripEnd ?? startRow?.tripStart);
@@ -435,14 +473,14 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
           ? Math.max(endMinutes - startMinutes, 0)
           : gap.gapMinutes;
         if (!startRow || !endRow || !startRow.toStopId || !endRow.fromStopId || !Number.isFinite(gapMinutes) || gapMinutes <= 0) {
-          toast.info('回送を追加するための停留所情報が不足しています。');
+          toast.info('回送を追加するための条件が満たされていません。');
           return false;
         }
         try {
           dutyActions.addSegment(
             {
               dutyId,
-              blockId: payload.blockId,
+              blockId: gapBlockId,
               startTripId: gap.startTripId,
               endTripId: gap.endTripId,
               kind: 'deadhead',
@@ -452,11 +490,11 @@ export function useDutyTimelineControls(params: DutyTimelineControlsParams): Dut
             },
             tripIndex,
           );
-          applyRangeAndSelect(dutyId, payload.blockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
+          applyRangeAndSelect(dutyId, gapBlockId, { startTripId: gap.startTripId, endTripId: gap.endTripId });
           toast.success(`回送（約${Math.round(gapMinutes)}分）を追加しました。`);
           emitDropEvent({
             kind: payload.type,
-            blockId: payload.blockId,
+            blockId: gapBlockId,
             startTripId: gap.startTripId,
             endTripId: gap.endTripId,
             dutyId,

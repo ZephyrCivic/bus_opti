@@ -13,6 +13,7 @@ import type {
   CSSProperties,
   SVGProps,
   MutableRefObject,
+  Ref,
 } from 'react';
 import clsx from 'clsx';
 
@@ -57,9 +58,11 @@ interface SegmentDragState<Meta = unknown> {
   originalEndMinutes: number;
 }
 
+type DivPropsWithRef = HTMLAttributes<HTMLDivElement> & { ref?: Ref<HTMLDivElement> };
+
 export interface TimelineLaneProps<Meta = unknown> {
-  labelProps?: HTMLAttributes<HTMLDivElement>;
-  trackProps?: HTMLAttributes<HTMLDivElement>;
+  labelProps?: DivPropsWithRef;
+  trackProps?: DivPropsWithRef;
 }
 
 export interface TimelineSegmentContextMenuEvent<Meta = unknown> {

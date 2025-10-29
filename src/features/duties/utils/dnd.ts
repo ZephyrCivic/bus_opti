@@ -6,7 +6,7 @@ export function resolveDropRangeForTrips(
   endTripId: string,
   minutes: number | null | undefined,
 ): { startTripId: string; endTripId: string } {
-  if (!trips || trips.length === 0 || minutes === null || !Number.isFinite(minutes)) {
+  if (!trips || trips.length === 0 || typeof minutes !== 'number' || !Number.isFinite(minutes)) {
     return { startTripId, endTripId };
   }
   const startIndex = trips.findIndex((trip) => trip.tripId === startTripId);
@@ -47,7 +47,7 @@ export function resolveGapAroundMinutesForTrips(
   trips: DutyTimelineTrip[] | undefined,
   minutes: number | null | undefined,
 ): { startTripId: string; endTripId: string; gapMinutes: number } | null {
-  if (!trips || trips.length < 2 || minutes === null || !Number.isFinite(minutes)) {
+  if (!trips || trips.length < 2 || typeof minutes !== 'number' || !Number.isFinite(minutes)) {
     return null;
   }
   let previous: DutyTimelineTrip | null = null;
