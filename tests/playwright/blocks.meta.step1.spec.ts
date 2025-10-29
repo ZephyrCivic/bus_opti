@@ -11,16 +11,9 @@ test('Block metadata is recorded and exported in Step1', async ({ page }) => {
   await waitForManualBlocksPlan(page);
   const blockRows = page.locator('table tbody tr[data-block-id]');
   if (await blockRows.count() === 0) {
-    await page.evaluate(() => {
-      const testWindow = window as typeof window & {
-        __TEST_BLOCKS_MANUAL_PLAN?: { plan: { unassignedTripIds: string[] } };
-        __TEST_BLOCKS_CREATE_FROM_TRIP?: (tripId: string) => boolean;
-      };
-      const firstTrip = testWindow.__TEST_BLOCKS_MANUAL_PLAN?.plan.unassignedTripIds[0];
-      if (firstTrip) {
-        testWindow.__TEST_BLOCKS_CREATE_FROM_TRIP?.(firstTrip);
-      }
-    });
+    const unassignedTable = page.locator('[data-testid="blocks-unassigned-table"] tbody tr');
+    await unassignedTable.first().scrollIntoViewIfNeeded();
+    await unassignedTable.first().getByRole('button', { name: '新規行路', exact: true }).click();
     await page.waitForFunction(() => {
       const testWindow = window as typeof window & {
         __TEST_BLOCKS_MANUAL_PLAN?: { plan: { summaries: unknown[] } };
@@ -37,17 +30,9 @@ test('Block metadata is recorded and exported in Step1', async ({ page }) => {
   const vehicleTypeInput = firstRow.locator('input[placeholder="例: M"]');
   const vehicleIdInput = firstRow.locator('input[placeholder="例: BUS_001"]');
 
-  await vehicleTypeInput.evaluate((input, value) => {
-    input.value = value;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, 'TYPE_E2E');
-
-  await vehicleIdInput.evaluate((input, value) => {
-    input.value = value;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, 'BUS_E2E_01');
+  await vehicleTypeInput.fill('TYPE_E2E');
+  await vehicleIdInput.fill('BUS_E2E_01');
+  await vehicleIdInput.blur();
 
   await expect(vehicleTypeInput).toHaveValue('TYPE_E2E');
   await expect(vehicleIdInput).toHaveValue('BUS_E2E_01');

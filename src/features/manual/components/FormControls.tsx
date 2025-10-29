@@ -30,9 +30,10 @@ export function LabeledInput({ id, label, value, onChange, type = 'text', placeh
 export interface DataTableProps {
   headers: (string | JSX.Element)[];
   rows: (string | number | JSX.Element | null | undefined)[][];
+  emptyMessage?: string;
 }
 
-export function DataTable({ headers, rows }: DataTableProps): JSX.Element {
+export function DataTable({ headers, rows, emptyMessage }: DataTableProps): JSX.Element {
   const headerValues = useMemo(() => headers, [headers]);
   return (
     <Table>
@@ -54,7 +55,7 @@ export function DataTable({ headers, rows }: DataTableProps): JSX.Element {
         {rows.length === 0 && (
           <TableRow>
             <TableCell colSpan={headerValues.length} className="text-center text-sm text-muted-foreground">
-              まだ行がありません
+              {emptyMessage ?? 'まだ行がありません'}
             </TableCell>
           </TableRow>
         )}

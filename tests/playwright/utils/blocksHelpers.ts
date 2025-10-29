@@ -9,6 +9,7 @@ interface ManualPlanSnapshot {
     lastTripEnd: string;
   }>;
   connections: Array<{ fromBlockId: string; toBlockId: string }>;
+  unassignedTripIds: string[];
 }
 
 export async function waitForManualBlocksPlan(page: Page): Promise<ManualPlanSnapshot> {
@@ -33,6 +34,7 @@ export async function waitForManualBlocksPlan(page: Page): Promise<ManualPlanSna
             firstTripStart: string;
             lastTripEnd: string;
           }>;
+          unassignedTripIds: string[];
         };
         connections: Array<{
           fromBlockId: string;
@@ -56,6 +58,7 @@ export async function waitForManualBlocksPlan(page: Page): Promise<ManualPlanSna
         fromBlockId: entry.fromBlockId,
         toBlockId: entry.toBlockId,
       })),
+      unassignedTripIds: [...snapshot.plan.unassignedTripIds],
     };
   });
 }

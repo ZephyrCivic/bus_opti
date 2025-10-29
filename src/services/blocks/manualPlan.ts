@@ -185,12 +185,35 @@ export function getConnectionCandidates(
 }
 
 export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed): BlockPlan | null {
-  console.debug('[manualPlan:createBlockFromTrip] attempt', seed.tripId, plan.unassignedTripIds.includes(seed.tripId));
-  if (!plan.unassignedTripIds.includes(seed.tripId)) {
-    return null;
+  const next = cloneBlockPlan(plan);
+
+  const existingRows = next.csvRows.filter((row) => row.tripId === seed.tripId);
+  if (existingRows.length > 0) {
+    const affectedBlockIds = new Set(existingRows.map((row) => row.blockId));
+    next.csvRows = next.csvRows.filter((row) => row.tripId !== seed.tripId);
+    for (const blockId of affectedBlockIds) {
+      const reference = plan.summaries.find((summary) => summary.blockId === blockId);
+      const remaining = next.csvRows.filter((row) => row.blockId === blockId).sort((a, b) => a.seq - b.seq);
+      if (!reference || remaining.length === 0) {
+        next.summaries = next.summaries.filter((summary) => summary.blockId !== blockId);
+        continue;
+      }
+      const normalizedRows = remaining.map((row, index) => ({ ...row, seq: index + 1 }));
+      const updatedSummary = buildSummaryForRows(
+        blockId,
+        normalizedRows,
+        reference.serviceId,
+        reference.serviceDayIndex,
+        0,
+      );
+      next.summaries = next.summaries
+        .filter((summary) => summary.blockId !== blockId)
+        .concat(updatedSummary)
+        .sort((a, b) => (a.serviceDayIndex === b.serviceDayIndex ? a.firstTripStart.localeCompare(b.firstTripStart) : a.serviceDayIndex - b.serviceDayIndex));
+    }
+    next.assignedTripCount = Math.max(0, next.assignedTripCount - existingRows.length);
   }
 
-  const next = cloneBlockPlan(plan);
   const blockId = generateNextBlockId(next.summaries);
 
   const row: BlockCsvRow = {
@@ -228,8 +251,6 @@ export function createBlockFromTrip(plan: BlockPlan, seed: SingleTripBlockSeed):
   next.unassignedTripIds = next.unassignedTripIds.filter((tripId) => tripId !== seed.tripId);
   next.assignedTripCount = Math.min(next.totalTripCount, next.assignedTripCount + 1);
   next.coverageRatio = next.totalTripCount === 0 ? 0 : next.assignedTripCount / next.totalTripCount;
-
-  console.debug('[manualPlan:createBlockFromTrip] success new block', blockId, 'remaining', next.unassignedTripIds.length);
 
   return next;
 }

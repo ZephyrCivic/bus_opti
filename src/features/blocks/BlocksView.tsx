@@ -3,7 +3,7 @@
  * ブロック（行路）編集結果を確認し、ターン間隔や重複状況を把握する画面。
  * タイムライン、統計カード、詳細テーブル、未割当便一覧を提供する。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import clsx from 'clsx';
 
@@ -156,11 +156,17 @@ export default function BlocksView(): JSX.Element {
   const manualPlanState = useManualBlocksPlan(initialPlan, manualPlanConfig);
   const { days, allDays, overlaps } = useBlocksPlan(manualPlanState.plan, { activeDay: activeDayIndex ?? undefined });
 
+  const latestPlanRef = useRef(manualPlanState.plan);
+
+  useEffect(() => {
+    latestPlanRef.current = manualPlanState.plan;
+  }, [manualPlanState.plan]);
+
   useEffect(
     () => () => {
-      setManualBlockPlan(cloneBlockPlan(manualPlanState.plan));
+      setManualBlockPlan(cloneBlockPlan(latestPlanRef.current));
     },
-    [manualPlanState.plan, setManualBlockPlan],
+    [setManualBlockPlan],
   );
 
   useEffect(() => {
@@ -168,20 +174,23 @@ export default function BlocksView(): JSX.Element {
       return;
     }
     const testWindow = window as typeof window & {
-      __TEST_BLOCKS_CREATE_FROM_TRIP?: (tripId: string) => boolean;
+      __TEST_BLOCKS_CREATE_FROM_TRIP?: (tripId: string) => {
+        status: 'created' | 'no-result' | 'seed-missing' | 'not-unassigned' | 'create-failed';
+        unassigned?: boolean;
+      };
     };
     testWindow.__TEST_BLOCKS_CREATE_FROM_TRIP = (tripId: string) => {
       if (!result) {
-        console.debug('[test:createBlockFromTrip] result not ready');
-        return false;
+        console.info('[test:createBlockFromTrip] result not ready');
+        return { status: 'no-result' as const };
       }
       const seed = buildSingleTripBlockSeed(result, tripId);
       if (!seed) {
-        console.debug('[test:createBlockFromTrip] seed not found', tripId);
-        return false;
+        console.info('[test:createBlockFromTrip] seed not found', tripId);
+        return { status: 'seed-missing' as const };
       }
       const hasTrip = manualPlanState.plan.unassignedTripIds.includes(tripId);
-      console.debug(
+      console.info(
         '[test:createBlockFromTrip] attempt',
         tripId,
         'unassignedIncludes',
@@ -190,8 +199,11 @@ export default function BlocksView(): JSX.Element {
         manualPlanState.plan.unassignedTripIds.length,
       );
       const created = manualPlanState.createBlockFromTrip(seed);
-      console.debug('[test:createBlockFromTrip] created', tripId, created);
-      return created;
+      console.info('[test:createBlockFromTrip] created', tripId, created);
+      if (created) {
+        return { status: 'created' as const, unassigned: hasTrip };
+      }
+      return { status: hasTrip ? 'create-failed' : 'not-unassigned', unassigned: hasTrip };
     };
     return () => {
       const globalWindow = window as typeof window & {
@@ -1228,6 +1240,9 @@ function BlocksTable({
                           onChange={(event) =>
                             onUpdateBlockMeta(summary.blockId, 'vehicleTypeId', event.target.value)
                           }
+                          onInput={(event) =>
+                            onUpdateBlockMeta(summary.blockId, 'vehicleTypeId', event.currentTarget.value)
+                          }
                           placeholder="例: M"
                           list="block-meta-vehicle-type-options"
                           autoComplete="off"
@@ -1239,6 +1254,9 @@ function BlocksTable({
                           value={meta.vehicleId ?? ''}
                           onChange={(event) =>
                             onUpdateBlockMeta(summary.blockId, 'vehicleId', event.target.value)
+                          }
+                          onInput={(event) =>
+                            onUpdateBlockMeta(summary.blockId, 'vehicleId', event.currentTarget.value)
                           }
                           placeholder="例: BUS_001"
                           list="block-meta-vehicle-id-options"

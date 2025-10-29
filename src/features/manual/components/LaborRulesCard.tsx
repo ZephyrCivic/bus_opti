@@ -1,6 +1,6 @@
 /**
  * src/features/manual/components/LaborRulesCard.tsx
- * 労務ルール（Labor Rules）の入力・CSV入出力を扱うカード。
+ * 労務ルールの入力・CSV入出力を扱うカード。
  */
 import { useRef, useState } from 'react';
 
@@ -57,7 +57,7 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
     <Card>
       <CardHeader className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <CardTitle>労務ルール（Labor Rules）</CardTitle>
+          <CardTitle>労務ルール</CardTitle>
           <CardDescription>
             `labor_rules.csv`（driver_idごとの拘束時間/休憩など）を取り込み、後続の警告ロジックの基礎データとします。
           </CardDescription>
@@ -88,13 +88,13 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
         <div className="grid gap-3 lg:grid-cols-5">
           <LabeledInput
             id="labor-driver-id"
-            label="driver_id *"
+            label="ドライバーID（必須）"
             value={draft.driverId}
             onChange={(value) => setDraft((prev) => ({ ...prev, driverId: value }))}
           />
           <LabeledInput
             id="labor-max-continuous"
-            label="max_continuous_drive_min"
+            label="最大連続運転時間（分）"
             value={draft.maxContinuousDriveMin}
             onChange={(value) => setDraft((prev) => ({ ...prev, maxContinuousDriveMin: value }))}
             type="number"
@@ -102,7 +102,7 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
           />
           <LabeledInput
             id="labor-min-break"
-            label="min_break_min"
+            label="最小休憩時間（分）"
             value={draft.minBreakMin}
             onChange={(value) => setDraft((prev) => ({ ...prev, minBreakMin: value }))}
             type="number"
@@ -110,7 +110,7 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
           />
           <LabeledInput
             id="labor-max-duty"
-            label="max_duty_span_min"
+            label="拘束時間上限（分）"
             value={draft.maxDutySpanMin}
             onChange={(value) => setDraft((prev) => ({ ...prev, maxDutySpanMin: value }))}
             type="number"
@@ -118,7 +118,7 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
           />
           <LabeledInput
             id="labor-max-work"
-            label="max_work_min"
+            label="労働時間上限（分）"
             value={draft.maxWorkMin}
             onChange={(value) => setDraft((prev) => ({ ...prev, maxWorkMin: value }))}
             type="number"
@@ -126,31 +126,31 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
           />
           <LabeledInput
             id="labor-night-start"
-            label="night_window_start"
+            label="深夜時間帯開始"
             value={draft.nightWindowStart}
             onChange={(value) => setDraft((prev) => ({ ...prev, nightWindowStart: value }))}
             placeholder="22:00"
           />
           <LabeledInput
             id="labor-night-end"
-            label="night_window_end"
+            label="深夜時間帯終了"
             value={draft.nightWindowEnd}
             onChange={(value) => setDraft((prev) => ({ ...prev, nightWindowEnd: value }))}
             placeholder="05:00"
           />
           <LabeledInput
             id="labor-qualifications"
-            label="qualifications (|区切り)"
+            label="資格（|区切り）"
             value={draft.qualifications}
             onChange={(value) => setDraft((prev) => ({ ...prev, qualifications: value }))}
-            placeholder="large_bus|route"
+            placeholder="大型バス|路線"
           />
           <LabeledInput
             id="labor-affiliation"
-            label="affiliation"
+            label="所属"
             value={draft.affiliation}
             onChange={(value) => setDraft((prev) => ({ ...prev, affiliation: value }))}
-            placeholder="DepotA"
+            placeholder="営業所A"
           />
           <div className="lg:self-end">
             <Button
@@ -179,14 +179,14 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
 
         <DataTable
           headers={[
-            'driver_id',
-            'max_continuous',
-            'min_break',
-            'max_duty_span',
-            'max_work',
-            'night_window',
-            'qualifications',
-            'affiliation',
+            'ドライバーID',
+            '最大連続運転（分）',
+            '最小休憩（分）',
+            '拘束時間上限（分）',
+            '労働時間上限（分）',
+            '深夜時間帯',
+            '資格',
+            '所属',
             '',
           ]}
           rows={rows.map((rule) => [
@@ -209,4 +209,3 @@ export function LaborRulesCard({ rows, onAdd, onDelete, onImport, onExport }: La
     </Card>
   );
 }
-

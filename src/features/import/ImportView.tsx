@@ -21,6 +21,7 @@ import {
 import { DataTable } from '@/components/ui/data-table';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
 import { useGtfsImport } from '@/services/import/GtfsImportProvider';
+import type { GtfsImportStatus } from '@/services/import/GtfsImportProvider';
 import type { GtfsImportSummaryItem } from '@/services/import/gtfsParser';
 import { fromSaved, fromSavedProject } from '@/services/import/gtfsPersistence';
 import { useSectionNavigation } from '@/components/layout/SectionNavigationContext';
@@ -40,6 +41,8 @@ const STATUS_COPY: Record<string, string> = {
 export default function ImportView(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const savedInputRef = useRef<HTMLInputElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const previousStatusRef = useRef<GtfsImportStatus>('idle');
   const [localError, setLocalError] = useState<string | null>(null);
   const {
     status,
@@ -151,6 +154,26 @@ export default function ImportView(): JSX.Element {
       },
     });
   }, [result, selectedRoutesKey, selectedRouteIds.length]);
+
+  useEffect(() => {
+    if (previousStatusRef.current === 'parsing' && status === 'ready') {
+      const sentinel = bottomSentinelRef.current;
+      if (sentinel) {
+        const scrollToBottom = () => {
+          sentinel.scrollIntoView({
+            behavior: 'smooth',
+            block: 'end',
+          });
+        };
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(scrollToBottom);
+        } else {
+          scrollToBottom();
+        }
+      }
+    }
+    previousStatusRef.current = status;
+  }, [status]);
 
   const totalRouteCount = useMemo(() => {
     if (!result) {
@@ -387,12 +410,10 @@ export default function ImportView(): JSX.Element {
           </CardFooter>
         </Card>
       )}
+
+      <div ref={bottomSentinelRef} aria-hidden className="h-px w-px" />
     </div>
   );
 }
-
-
-
-
 
 

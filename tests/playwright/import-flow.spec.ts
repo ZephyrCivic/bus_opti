@@ -124,7 +124,7 @@ test.describe('Import 導線', () => {
         // ignore
       }
     });
-    await page.goto('/');
+    await page.goto('/bus_opti/');
   });
 
   test('GTFS ZIP を読み込む導線でサマリー表示と Explorer 遷移ができる', async ({ page }) => {

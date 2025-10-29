@@ -33,7 +33,7 @@ export function ReliefPointsCard({ rows, onAdd, onDelete, onImport, onExport }: 
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>交代地点（Relief Points）</CardTitle>
+          <CardTitle>交代地点</CardTitle>
           <CardDescription>交代可能な地点を追加します（未入力でも作業は継続可能）。</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">

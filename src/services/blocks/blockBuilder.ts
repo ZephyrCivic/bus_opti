@@ -138,7 +138,17 @@ export function buildBlocksPlan(result?: GtfsImportResult, options?: BuildBlocks
     }
   }
 
-  schedules.sort((a, b) => a.startMinutes - b.startMinutes || a.tripId.localeCompare(b.tripId));
+  schedules.sort((a, b) => {
+    const dayDiff = a.serviceDayIndex - b.serviceDayIndex;
+    if (dayDiff !== 0) {
+      return dayDiff;
+    }
+    const startDiff = a.startMinutes - b.startMinutes;
+    if (startDiff !== 0) {
+      return startDiff;
+    }
+    return a.tripId.localeCompare(b.tripId);
+  });
 
   const csvRows: BlockCsvRow[] = [];
   const summaries: BlockSummary[] = [];

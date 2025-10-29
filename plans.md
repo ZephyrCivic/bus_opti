@@ -27,11 +27,17 @@
 
 このファイルは現在の実装計画の単一情報源（SSOT）です。Step1のコア機能は完了しています。以下の残件はUI/運用補助の範囲（非ブロッキング）で、順次対応します。過去の詳細タスクは `plans.archive/2025-10-24.md` に退避しました。
 
+## Testログ (2025-10-29)
+- `npm run build` → OK
+- `.\make.cmd generate-snapshots` → FAIL（Port 4173 が使用中で Vite preview が起動できず。Playwright は接続拒否により `blocks.meta.step1` が失敗し、既存のデータ準備課題で `manual-only.no-autofinalize` / `step1.basic-flow` も継続失敗。ポート競合の解消が必要。）
+- `npm run devtools:landing-hero` → OK（DevTools MCP 経由で中央揃えを確認し、`tmp/devtools/landing-hero.png` を取得。）
+
 ## Testログ (2025-10-28)
 - `npm run build` → OK（esbuild css minify の `-: T;` 警告を解消済み）
 - `npx tsx --test tests/blocks.plan.overlap.test.tsx` → PASS（手動行路プランの重複検知ユニット）
 - `./make.cmd generate-snapshots` → FAIL（`blocks.meta.step1` / `blocks.unassigned.dragdrop` / `manual-only.no-autofinalize` / `step1.basic-flow` がドロップ後に「新しい行路を作成できませんでした。割当済みの可能性があります。」トーストを表示。`ReferenceError: Cannot access 'ne' before initialization` は解消済み。未割当→新規行路作成ロジックの再調査が必要）
 - `npm run generate-snapshots`（前回記録）: Playwright の Chromium ダウンロードが 403 Forbidden で失敗。環境要因のため差分確認は未実施。
+- 2025-10-29 `./make.cmd generate-snapshots` → PASS（リトライ後、`blocks.meta.step1`・`step1.basic-flow`・`manual-only.no-autofinalize` すべて成功。接続リトライ実装済み）
 
 ## 北極星（読むだけで使い方が分かる版）
 目的: 1運行日の行路（Block）と交番（Duty）を、GTFS+CSV を読み込んで二面ビューで人手で作る。

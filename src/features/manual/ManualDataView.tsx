@@ -33,8 +33,7 @@ import { DeadheadRulesCard } from './components/DeadheadRulesCard';
 import { DriversCard } from './components/DriversCard';
 import { LaborRulesCard, type LaborRuleDraft } from './components/LaborRulesCard';
 import { ReliefPointsCard } from './components/ReliefPointsCard';
-import { VehicleTypesCard } from './components/VehicleTypesCard';
-import { VehiclesCard } from './components/VehiclesCard';
+import { VehicleCatalogCard } from './components/VehicleCatalogCard';
 import { readFileAsText } from './utils/file';
 import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 
@@ -216,11 +215,11 @@ export default function ManualDataView(): JSX.Element {
     (draft: LaborRuleDraft) => {
       const driverId = draft.driverId.trim();
       if (!driverId) {
-        toast.error('driver_id を入力してください。');
+        toast.error('ドライバーIDを入力してください。');
         return false;
       }
       if (manual.laborRules.some((rule) => rule.driverId === driverId)) {
-        toast.error(`driver_id "${driverId}" は既に登録されています。`);
+        toast.error(`ドライバーID「${driverId}」は既に登録されています。`);
         return false;
       }
 
@@ -243,10 +242,10 @@ export default function ManualDataView(): JSX.Element {
       let maxWork: number | undefined;
 
       try {
-        maxContinuous = parseNumber('max_continuous_drive_min', draft.maxContinuousDriveMin);
-        minBreak = parseNumber('min_break_min', draft.minBreakMin);
-        maxDuty = parseNumber('max_duty_span_min', draft.maxDutySpanMin);
-        maxWork = parseNumber('max_work_min', draft.maxWorkMin);
+        maxContinuous = parseNumber('最大連続運転時間（分）', draft.maxContinuousDriveMin);
+        minBreak = parseNumber('最小休憩時間（分）', draft.minBreakMin);
+        maxDuty = parseNumber('拘束時間上限（分）', draft.maxDutySpanMin);
+        maxWork = parseNumber('労働時間上限（分）', draft.maxWorkMin);
       } catch (error) {
         if (error instanceof Error && error.message === 'invalid-number') {
           return false;
@@ -419,12 +418,13 @@ export default function ManualDataView(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <VehicleTypesCard
-        rows={manual.vehicleTypes}
-        onAdd={handleAddVehicleType}
-        onDelete={handleDeleteVehicleType}
-        onImport={handleImportVehicleTypes}
-        onExport={() =>
+      <VehicleCatalogCard
+        vehicleTypes={manual.vehicleTypes}
+        vehicles={manual.vehicles}
+        onTypeAdd={handleAddVehicleType}
+        onTypeDelete={handleDeleteVehicleType}
+        onTypeImport={handleImportVehicleTypes}
+        onTypeExport={() =>
           exportWithGuard(
             '車両タイプ',
             manual.vehicleTypes,
@@ -434,16 +434,18 @@ export default function ManualDataView(): JSX.Element {
             'manual.vehicleTypes.csv',
           )
         }
-      />
-
-      <VehiclesCard
-        rows={manual.vehicles}
-        vehicleTypes={manual.vehicleTypes}
-        onAdd={handleAddVehicle}
-        onDelete={handleDeleteVehicle}
-        onImport={handleImportVehicles}
-        onExport={() =>
-          exportWithGuard('車両', manual.vehicles, () => vehiclesToCsv(manual.vehicles), 'manual-vehicles.csv', 'manual.vehicles', 'manual.vehicles.csv')
+        onVehicleAdd={handleAddVehicle}
+        onVehicleDelete={handleDeleteVehicle}
+        onVehicleImport={handleImportVehicles}
+        onVehicleExport={() =>
+          exportWithGuard(
+            '車両',
+            manual.vehicles,
+            () => vehiclesToCsv(manual.vehicles),
+            'manual-vehicles.csv',
+            'manual.vehicles',
+            'manual.vehicles.csv',
+          )
         }
       />
 

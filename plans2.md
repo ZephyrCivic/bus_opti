@@ -156,6 +156,21 @@ npm run context7:docs -- <libraryId>
 - 2025-10-28: 行路＝Dutyを主対象とし、Blockはドラッグソース兼リファレンスとして扱う。
 - 2025-10-28: DnDはPointer＋DragBusで統一（dnd-kit等は現時点で導入しない）。
 
+## Step1 テスト安定化 Exec Plan（2025-10-29着手）
+
+### 全体像
+Step1 専用シナリオの初期データとロジックを見直し、`blocks.meta.step1` / `manual-only.no-autofinalize` / `step1.basic-flow` など Playwright テストが期待する状態を再現する。DnD 改修の副作用や依存関係を洗い出し、必要であれば Step1 セッション用の初期化を補強する。
+
+### 進捗状況
+- [x] 失敗テストの再現とログ精査（`test-results/*` / コンソール出力）※ 2025-10-29: `make.cmd generate-snapshots` ログを再確認し、`blocks.meta.step1` ほかの失敗条件を把握
+- [ ] Step1 フィクスチャ・初期化ロジックの差分確認（`tests/fixtures/step1` 系 / `src/features/blocks`）
+- [ ] 修正案の実装（初期データ or ロジック）
+- [ ] Playwright 該当スイートの再実行
+- [ ] ドキュメント / 記録更新
+
+### 発見とメモ
+- `useEffect(() => () => setManualBlockPlan(...))` が `manualPlanState.plan` 変更のたびにクリーンアップを発火し、旧プランを保存 → Step1 で行路作成後すぐ初期化される挙動を確認。最新プランを保持するため `useRef` と組み合わせた保存に切り替える必要あり（2025-10-29）
+
 ## To-Do（実装✅チェックリスト）
 1. [x] DragBusの実装と配線
 2. [x] TimelineGanttの外部ドロップ対応
@@ -168,6 +183,7 @@ npm run context7:docs -- <libraryId>
 9. [x] E2E/単体テスト追加
 10. [ ] UIスナップショット取得と基準更新
 11. [x] ドキュメント更新（操作チュートリアル）
+12. [ ] Step1 既知不具合（blocks.meta.step1 / manual-only.no-autofinalize / step1.basic-flow）の再調査と是正計画策定（2025-10-29 着手）
 
 ---
 
@@ -184,3 +200,9 @@ npm run context7:docs -- <libraryId>
 - 2025-10-28: `npm run build` → OK（css minify の `-: T;` 警告を解消）
 - 2025-10-28: `npx tsx --test tests/blocks.plan.overlap.test.tsx` → PASS（manual plan overlap のユニット確認）
 - 2025-10-28: `./make.cmd generate-snapshots` → FAIL（`blocks.meta.step1` / `blocks.unassigned.dragdrop` / `manual-only.no-autofinalize` / `step1.basic-flow` が未割当→新規行路作成時に失敗トーストを表示。`ReferenceError` は再現せず。`test-results/*` を参照し原因調査継続）
+- 2025-10-29: `make.cmd generate-snapshots` → FAIL（`blocks.meta.step1` / `manual-only.no-autofinalize` / `step1.basic-flow` が失敗。Step1関連の既知課題が継続。ログ: `test-results/*` を参照）
+- 2025-10-29: `PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/playwright/blocks.meta.step1.spec.ts --project=chromium --workers=1` → FAIL（webServer 設定が port 4174 の既存 preview と競合。バックグラウンド起動手順を再整理予定）
+- 2025-10-29: `npm run build` → OK
+- 2025-10-29: `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4173 npx playwright test tests/playwright/blocks.meta.step1.spec.ts --reporter=list --workers=1` → PASS
+- 2025-10-29: `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4173 npx playwright test tests/playwright/manual-only.no-autofinalize.spec.ts --reporter=list --workers=1` → PASS
+- 2025-10-29: `PLAYWRIGHT_SKIP_WEBSERVER=1 APP_BASE_URL=http://127.0.0.1:4173 npx playwright test tests/playwright/step1.basic-flow.spec.ts --reporter=list --workers=1` → PASS

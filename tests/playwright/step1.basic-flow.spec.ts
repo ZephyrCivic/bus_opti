@@ -23,29 +23,56 @@ test('Step1 基本フロー: 未割当便確認→行路連結→Duty作成→dr
 
   await page.locator('button[data-section="blocks"]').click();
   await waitForManualBlocksPlan(page);
-
-  const connection = await page.evaluate(() => {
-    const testWindow = window as typeof window & {
-      __TEST_BLOCKS_MANUAL_PLAN?: {
-        plan: { summaries: Array<{ blockId: string }> };
-        getCandidates: (blockId: string) => Array<{ blockId: string }>;
+  const getManualSummaryCount = async () =>
+    page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __TEST_BLOCKS_MANUAL_PLAN?: { plan: { summaries: Array<unknown> } };
       };
-    };
-    const snapshot = testWindow.__TEST_BLOCKS_MANUAL_PLAN;
-    if (!snapshot) {
-      throw new Error('Manual plan snapshot is unavailable.');
+      return testWindow.__TEST_BLOCKS_MANUAL_PLAN?.plan.summaries.length ?? 0;
+    });
+
+  const createBlockFromUnassignedViaUi = async () => {
+    const beforeCount = await getManualSummaryCount();
+    const firstRow = page.locator('[data-testid="blocks-unassigned-table"] tbody tr').first();
+    await firstRow.scrollIntoViewIfNeeded();
+    await firstRow.getByRole('button', { name: '新規行路', exact: true }).click();
+    await expect.poll(getManualSummaryCount).toBeGreaterThan(beforeCount);
+  };
+
+  // Create blocks until at least一組の連結候補が見つかる
+  await createBlockFromUnassignedViaUi();
+  let connection: { from: string; to: string } | null = null;
+  for (let attempts = 0; attempts < 10; attempts += 1) {
+    connection = await page.evaluate(() => {
+      const testWindow = window as typeof window & {
+        __TEST_BLOCKS_MANUAL_PLAN?: {
+          plan: { summaries: Array<{ blockId: string }> };
+          getCandidates: (blockId: string) => Array<{ blockId: string }>;
+        };
+      };
+      const snapshot = testWindow.__TEST_BLOCKS_MANUAL_PLAN;
+      if (!snapshot) {
+        throw new Error('Manual plan snapshot is unavailable.');
+      }
+      const [firstSummary] = snapshot.plan.summaries;
+      if (!firstSummary) {
+        return null;
+      }
+      const candidates = snapshot.getCandidates(firstSummary.blockId);
+      const target = candidates[0];
+      if (!target) {
+        return null;
+      }
+      return { from: firstSummary.blockId, to: target.blockId };
+    });
+    if (connection) {
+      break;
     }
-    const [firstSummary] = snapshot.plan.summaries;
-    if (!firstSummary) {
-      throw new Error('No blocks available for connection.');
-    }
-    const candidates = snapshot.getCandidates(firstSummary.blockId);
-    const target = candidates[0];
-    if (!target) {
-      throw new Error('No connection candidates available.');
-    }
-    return { from: firstSummary.blockId, to: target.blockId };
-  });
+    await createBlockFromUnassignedViaUi();
+  }
+  if (!connection) {
+    throw new Error('Unable to find connectable blocks after multiple attempts.');
+  }
 
   await page.selectOption('[data-testid="blocks-manual-from"]', connection.from);
   await page.selectOption('[data-testid="blocks-manual-to"]', connection.to);
