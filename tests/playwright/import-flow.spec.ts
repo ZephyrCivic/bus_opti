@@ -127,7 +127,7 @@ test.describe('Import 導線', () => {
     await page.goto('/bus_opti/');
   });
 
-  test('GTFS ZIP を読み込む導線でサマリー表示と Explorer 遷移ができる', async ({ page }) => {
+  test('GTFS ZIP を読み込む導線でサマリー表示と手動入力セクションへ遷移できる', async ({ page }) => {
     test.setTimeout(120_000);
 
     const zipInput = page.locator('input[type="file"][accept=".zip"]');
@@ -149,19 +149,19 @@ test.describe('Import 導線', () => {
       return events.filter((event) => event.type === 'import.route-filter.updated').length;
     }).toBeGreaterThan(0);
 
-    const explorerButton = page.getByRole('button', { name: '「行路編集対象の便を選択」を開く' });
-    await expect(explorerButton).toBeEnabled();
-    await explorerButton.click();
+    const manualButton = page.getByRole('main').getByRole('button', { name: '制約条件（手動入力）' });
+    await expect(manualButton).toBeEnabled();
+    await manualButton.click();
 
-    await expect(page.locator('[data-section="explorer"][data-active="true"]').first()).toBeVisible();
+    await expect(page.locator('[data-section="manual"][data-active="true"]').first()).toBeVisible();
 
     await expect.poll(async () => {
       const events = await getTelemetryEvents(page);
-      return events.filter((event) => event.type === 'import.open-explorer').length;
+      return events.filter((event) => event.type === 'import.open-manual').length;
     }).toBeGreaterThan(0);
   });
 
-  test('保存データから再開する導線でサマリー表示とテレメトリが記録される', async ({ page }) => {
+  test('保存データから再開する導線でサマリー表示と手動入力セクションへの導線が動作する', async ({ page }) => {
     const savedInput = page.locator('input[type="file"][accept="application/json,.json"]');
     await expect(savedInput).toBeHidden();
 
@@ -176,15 +176,15 @@ test.describe('Import 導線', () => {
       return events.filter((event) => event.type === 'import.route-filter.updated').length;
     }).toBeGreaterThan(0);
 
-    const explorerButton = page.getByRole('button', { name: '「行路編集対象の便を選択」を開く' });
-    await expect(explorerButton).toBeEnabled();
-    await explorerButton.click();
+    const manualButton = page.getByRole('main').getByRole('button', { name: '制約条件（手動入力）' });
+    await expect(manualButton).toBeEnabled();
+    await manualButton.click();
 
-    await expect(page.locator('[data-section="explorer"][data-active="true"]').first()).toBeVisible();
+    await expect(page.locator('[data-section="manual"][data-active="true"]').first()).toBeVisible();
 
     await expect.poll(async () => {
       const events = await getTelemetryEvents(page);
-      return events.filter((event) => event.type === 'import.open-explorer').length;
+      return events.filter((event) => event.type === 'import.open-manual').length;
     }).toBeGreaterThan(0);
 
     const events = await getTelemetryEvents(page);

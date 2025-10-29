@@ -339,12 +339,18 @@ export default function ManualDataView(): JSX.Element {
         toast.error(`vehicle_id "${vehicleId}" は既に登録されています。`);
         return false;
       }
-      if (!manual.vehicleTypes.some((type) => type.typeId === vehicleTypeId)) {
-        toast.error(`vehicle_type "${vehicleTypeId}" が存在しません。先に車両タイプを登録してください。`);
-        return false;
-      }
+      const typeExists = manual.vehicleTypes.some((type) => type.typeId === vehicleTypeId);
       setManual((prev) => ({
         ...prev,
+        vehicleTypes: typeExists
+          ? prev.vehicleTypes
+          : [
+              ...prev.vehicleTypes,
+              {
+                typeId: vehicleTypeId,
+                name: vehicleTypeId,
+              },
+            ],
         vehicles: [
           ...prev.vehicles,
           {
@@ -355,6 +361,9 @@ export default function ManualDataView(): JSX.Element {
         ],
       }));
       toast.success(`車両 ${vehicleId} を追加しました。`);
+      if (!typeExists) {
+        toast.info(`車両タイプ ${vehicleTypeId} を暫定登録しました。`);
+      }
       return true;
     },
     [manual.vehicleTypes, manual.vehicles, setManual],

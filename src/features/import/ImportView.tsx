@@ -394,18 +394,18 @@ export default function ImportView(): JSX.Element {
                   return;
                 }
                 recordTelemetryEvent({
-                  type: 'import.open-explorer',
+                  type: 'import.open-manual',
                   payload: {
                     sourceName: result.sourceName,
                     routeCount: selectedRouteIds.length,
                   },
                 });
-                navigate('explorer');
+                navigate('manual');
               }}
               disabled={!hasRouteSelection}
               aria-disabled={!hasRouteSelection}
             >
-              「行路編集対象の便を選択」を開く
+              制約条件（手動入力）
             </Button>
           </CardFooter>
         </Card>
@@ -415,5 +415,3 @@ export default function ImportView(): JSX.Element {
     </div>
   );
 }
-
-

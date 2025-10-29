@@ -34,7 +34,7 @@ date: 2025-10-20
 4. 自動フォールバックが必要な場合は `tools/ui-snapshots/runWithPreview.ts` と同じロジックで空きポートを探索しているか確認し、Runbook を再更新する
 
 ## Telemetry ログの確認
-- Import サマリー上で路線選択を変更すると `import.route-filter.updated`、Explorer へ遷移すると `import.open-explorer` が記録される。
+- Import サマリー上で路線選択を変更すると `import.route-filter.updated`、手動入力ビューへ遷移すると `import.open-manual` が記録される。
 - ブラウザコンソールで `window.__TELEMETRY__` または `localStorage.getItem('bus-opti.telemetry.events')` を確認すると最新100件までのイベント内容を確認可能。
 
 

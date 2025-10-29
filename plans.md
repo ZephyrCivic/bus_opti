@@ -21,6 +21,28 @@
 3. Blocks/Dutiesの各コンポーネントでドラッグ統合
 4. テレメトリ・テスト・ドキュメント更新とスナップショット取得
 
+# Exec Plan: 車両グリッド入力リデザイン
+
+## 全体像
+車両タイプと車両の登録体験を「1行=1車両」のグリッド入力へ統合し、CSV カラムと同じ並びで高速入力できるようにする。タイプはテンプレートとして維持しつつ、車両行から即座に新規タイプを作成できる導線を用意する。
+
+## 進捗状況
+- [x] 要件すり合わせと既存 UI/CSV の読み解き
+- [x] VehicleCatalogCard のUI再構成とロジック整理
+- [x] CSV 入出力・ストア更新・テスト/ドキュメント反映
+
+## 発見と驚き
+- まだ記録なし
+
+## 決定ログ
+- 2025-10-29: CSV のカラム順（`vehicle_id, vehicle_type, depot_id, seats, wheelchair_accessible, low_floor, notes`）をグリッド列として採用し、タイプはモーダル追加＋自動暫定タイプ生成で両立する方針。
+
+## To-Do
+1. [x] 既存 VehicleCatalogCard のフォーム/テーブル構造を洗い出す
+2. [x] グリッド入力用の行コンポーネントとタイプ新規作成モーダルを実装
+3. [x] CSV 入出力とストア更新の整合を確認しテスト＆docsを更新
+4. [ ] Playwright `import-flow` シナリオをプレビュー起動環境で再実行（`npm run preview` を別セッションで起動して再検証）
+
 # MVP 実行ガイド（SSOT）
 
 最終更新: 2025-10-24
@@ -28,6 +50,9 @@
 このファイルは現在の実装計画の単一情報源（SSOT）です。Step1のコア機能は完了しています。以下の残件はUI/運用補助の範囲（非ブロッキング）で、順次対応します。過去の詳細タスクは `plans.archive/2025-10-24.md` に退避しました。
 
 ## Testログ (2025-10-29)
+- `npx tsx --test tests/manual.csv.test.ts` → PASS（manualCsv の車両・タイプ含む全ラウンドトリップを確認。）
+- `PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/playwright/import-flow.spec.ts` → FAIL（`http://127.0.0.1:4174/bus_opti/` へ接続できず。プレビューサーバ未起動のため接続拒否。別セッションで `npm run preview` を起動できる環境で再実行が必要。）
+- `.\make.cmd generate-snapshots` → FAIL（Playwright `duty-biview.latency.spec.ts` が 30s タイムアウト。`input[type="file"][accept=".zip"]` 取得でハングし、GTFS サンプルの読み込み待ちで停止している。UI 差分確認は未完了。）
 - `npm run build` → OK
 - `.\make.cmd generate-snapshots` → FAIL（Port 4173 が使用中で Vite preview が起動できず。Playwright は接続拒否により `blocks.meta.step1` が失敗し、既存のデータ準備課題で `manual-only.no-autofinalize` / `step1.basic-flow` も継続失敗。ポート競合の解消が必要。）
 - `npm run devtools:landing-hero` → OK（DevTools MCP 経由で中央揃えを確認し、`tmp/devtools/landing-hero.png` を取得。）

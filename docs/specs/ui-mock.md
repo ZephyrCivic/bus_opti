@@ -132,30 +132,36 @@ Shortcuts: Tab=フォーカス切替, S/E/Enter=Connect, A=新規Duty, Z/Y=Undo/
 
 ---
 
-## Manual（Vehicles / Vehicle Types）
+## Manual（Vehicle Catalog）
 
 ```
 +-------------------------------------------------------------------------------+
 | Tabs: Import | Explorer | Blocks | Duties | Manual                              |
 +-------------------------------------------------------------------------------+
-| Vehicle Types                                                                 |
-|  [Import CSV] [Export CSV]                                                     |
-|  type_id   name       wheel(low)  seated  total  tags                          |
-|  VT-STD    標準車     1(1)        30      70     city,non-step                 |
-|  VT-LF     低床大型   1(1)        36      80     brt,low-floor                 |
-|--------------------------------------------------------------------------------|
-| Vehicles                                                                       |
-|  [Import CSV] [Export CSV] [Add]                                               |
-|  vehicle_id  vehicle_type  depot_id  seats  whl  low  notes                    |
-|  BUS-001     VT-STD       DEPOT-A   30     1    1    2022年導入                |
-|  BUS-002     VT-LF        DEPOT-B   36     1    1                                |
+| Vehicle Catalog                                                                |
+|  Type CSV: [Import] [Export]   Vehicle CSV: [Import] [Export]                  |
+|  Filter: [ すべてのタイプ ▼ ]                                                  |
+|-------------------------------------------------------------------------------|
+| vehicle_id | vehicle_type | depot_id | seats | wheelchair | low_floor | notes | + |
+| [   入力行：datalist + Select + Input + モーダルでタイプ追加   ]               |
+|-------------------------------------------------------------------------------|
+| BUS-001    | LARGE        | DEPOT_A  | 45    | 1          | 1         | 予備      |
+| BUS-002    | SMALL        | DEPOT_B  | 30    | 0          | 0         |            |
+| ...                                                                           |
++-------------------------------------------------------------------------------+
+| Type Summary (右サイドパネル)                                                  |
+|  LARGE  名称: 大型   台数: 12    [削除]                                         |
+|  SMALL  名称: 小型   台数: 4     [削除]                                         |
+|  [+] モーダルでtype_id / 仕様を登録                                             |
 +-------------------------------------------------------------------------------+
 ```
 
 操作:
-- CSV Import/Export で台帳の入出力。未知列は無視して前方互換。
-- 1行追加/削除、簡易編集（数値/ON/OFF）。
-- depot_id は既存 Depots からの参照（未登録なら警告）。
+- グリッド先頭の入力行に `vehicle_id`・`vehicle_type`（datalist対応）を直接入力し、`行を追加` で即時保存。未登録の `vehicle_type` を入力した場合は暫定タイプを自動生成する。
+- 「タイプを追加」ボタンを押すとモーダルが開き、座席数・車椅子対応などの仕様をテンプレートとして登録できる。登録後は右側サマリーに反映され、既存車両のドロップダウンにも即時追加される。
+- CSV Import/Export で台帳の入出力。未知列は無視して前方互換。CSVは `vehicle_id,vehicle_type,depot_id,seats,wheelchair_accessible,low_floor,notes` の列順。
+- フィルターはタイプ単位。サマリーはタイプごとの登録台数を表示し、削除ボタンは参照車両が無いときだけ有効。
+- depot_id は既存 Depots からの参照（未登録でも受け入れるが、後続で整合性警告を表示する）。
 
 ---
 

@@ -1,17 +1,27 @@
 /**
  * src/features/manual/components/VehicleCatalogCard.tsx
- * Manages vehicle types and vehicles side by side to emphasize their relationship.
+ * グリッド中心の車両管理フォーム。車両タイプと車両を同じカード内で編集できるよう再構成する。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import clsx from 'clsx';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { ManualVehicle, ManualVehicleType } from '@/types';
 
-import { DataTable, LabeledInput } from './FormControls';
+import { LabeledInput } from './FormControls';
 
 type BooleanChoice = 'unset' | 'true' | 'false';
 
@@ -54,6 +64,8 @@ const BOOLEAN_OPTIONS: { label: string; value: BooleanChoice }[] = [
   { value: 'false', label: '非対応（0）' },
 ];
 
+const ALL_TYPES_VALUE = '__all__';
+
 export function VehicleCatalogCard({
   vehicleTypes,
   vehicles,
@@ -69,51 +81,40 @@ export function VehicleCatalogCard({
   const typeFileInputRef = useRef<HTMLInputElement | null>(null);
   const vehicleFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [typeDraft, setTypeDraft] = useState<VehicleTypeDraft>({
-    typeId: '',
-    name: '',
-    wheelchairAccessible: 'unset',
-    lowFloor: 'unset',
-    capacitySeated: '',
-    capacityTotal: '',
-    tags: '',
-  });
-  const [vehicleDraft, setVehicleDraft] = useState<VehicleDraft>({
-    vehicleId: '',
-    vehicleTypeId: '',
-    depotId: '',
-    seats: '',
-    wheelchairAccessible: 'unset',
-    lowFloor: 'unset',
-    notes: '',
-  });
-
-  const [selectedTypeId, setSelectedTypeId] = useState<string>(() => vehicleTypes[0]?.typeId ?? '');
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  const [typeDraft, setTypeDraft] = useState<VehicleTypeDraft>(() => createTypeDraft());
+  const [vehicleDraft, setVehicleDraft] = useState<VehicleDraft>(() => createVehicleDraft(vehicleTypes[0]?.typeId ?? ''));
+  const [typeFilter, setTypeFilter] = useState<string>(ALL_TYPES_VALUE);
 
   useEffect(() => {
-    if (!selectedTypeId && vehicleTypes.length > 0) {
-      setSelectedTypeId(vehicleTypes[0]!.typeId);
+    if (!typeDialogOpen) {
+      setTypeDraft(createTypeDraft());
+    }
+  }, [typeDialogOpen]);
+
+  useEffect(() => {
+    setVehicleDraft((prev) => {
+      if (vehicleTypes.length === 0) {
+        return prev.vehicleTypeId === '' ? prev : { ...prev, vehicleTypeId: '' };
+      }
+      if (vehicleTypes.some((type) => type.typeId === prev.vehicleTypeId)) {
+        return prev;
+      }
+      return { ...prev, vehicleTypeId: vehicleTypes[0]!.typeId };
+    });
+  }, [vehicleTypes]);
+
+  useEffect(() => {
+    if (typeFilter === ALL_TYPES_VALUE) {
       return;
     }
-    if (selectedTypeId && !vehicleTypes.some((type) => type.typeId === selectedTypeId)) {
-      setSelectedTypeId(vehicleTypes[0]?.typeId ?? '');
-    }
-  }, [selectedTypeId, vehicleTypes]);
-
-  useEffect(() => {
-    setVehicleDraft((prev) => ({
-      ...prev,
-      vehicleTypeId: selectedTypeId ?? '',
-    }));
-  }, [selectedTypeId]);
-
-  const vehicleCountsByType = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const vehicle of vehicles) {
-      counts.set(vehicle.vehicleTypeId, (counts.get(vehicle.vehicleTypeId) ?? 0) + 1);
-    }
-    return counts;
-  }, [vehicles]);
+    setVehicleDraft((prev) => {
+      if (prev.vehicleTypeId === typeFilter) {
+        return prev;
+      }
+      return { ...prev, vehicleTypeId: typeFilter };
+    });
+  }, [typeFilter]);
 
   const vehicleTypeOptions = useMemo(
     () =>
@@ -125,27 +126,78 @@ export function VehicleCatalogCard({
   );
 
   const filteredVehicles = useMemo(() => {
-    if (!selectedTypeId) {
+    if (typeFilter === ALL_TYPES_VALUE) {
       return vehicles;
     }
-    return vehicles.filter((vehicle) => vehicle.vehicleTypeId === selectedTypeId);
-  }, [selectedTypeId, vehicles]);
+    return vehicles.filter((vehicle) => vehicle.vehicleTypeId === typeFilter);
+  }, [typeFilter, vehicles]);
 
-  const safeBoolean = (choice: BooleanChoice): boolean | undefined => {
-    if (choice === 'unset') {
-      return undefined;
+  const vehicleCountsByType = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const vehicle of vehicles) {
+      counts.set(vehicle.vehicleTypeId, (counts.get(vehicle.vehicleTypeId) ?? 0) + 1);
     }
-    return choice === 'true';
+    return counts;
+  }, [vehicles]);
+
+  const handleAddVehicleFromDraft = () => {
+    const vehicleId = vehicleDraft.vehicleId.trim();
+    const vehicleTypeId = vehicleDraft.vehicleTypeId.trim();
+    if (!vehicleId || !vehicleTypeId) {
+      return;
+    }
+
+    const typeExists = vehicleTypes.some((type) => type.typeId === vehicleTypeId);
+    if (!typeExists && typeFilter === ALL_TYPES_VALUE) {
+      setTypeFilter(vehicleTypeId);
+    }
+
+    const payload: ManualVehicle = {
+      vehicleId,
+      vehicleTypeId,
+      depotId: vehicleDraft.depotId.trim() || undefined,
+      seats: parseOptionalNumber(vehicleDraft.seats),
+      wheelchairAccessible: safeBoolean(vehicleDraft.wheelchairAccessible),
+      lowFloor: safeBoolean(vehicleDraft.lowFloor),
+      notes: vehicleDraft.notes.trim() || undefined,
+    };
+    const added = onVehicleAdd(payload);
+    if (!added) {
+      return;
+    }
+
+    const resetTypeId = typeFilter !== ALL_TYPES_VALUE ? typeFilter : vehicleTypeId;
+    setVehicleDraft(createVehicleDraft(resetTypeId));
   };
 
-  const parseOptionalNumber = (value: string): number | undefined => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return undefined;
+  const handleSubmitType = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const typeId = typeDraft.typeId.trim();
+    if (!typeId) {
+      return;
     }
-    const numeric = Number(trimmed);
-    return Number.isFinite(numeric) ? numeric : undefined;
+
+    const payload: ManualVehicleType = {
+      typeId,
+      name: typeDraft.name.trim() || undefined,
+      wheelchairAccessible: safeBoolean(typeDraft.wheelchairAccessible),
+      lowFloor: safeBoolean(typeDraft.lowFloor),
+      capacitySeated: parseOptionalNumber(typeDraft.capacitySeated),
+      capacityTotal: parseOptionalNumber(typeDraft.capacityTotal),
+      tags: typeDraft.tags.trim() || undefined,
+    };
+
+    const added = onTypeAdd(payload);
+    if (!added) {
+      return;
+    }
+    setTypeDialogOpen(false);
+    setTypeFilter(typeId);
+    setVehicleDraft(createVehicleDraft(typeId));
   };
+
+  const hasTypes = vehicleTypes.length > 0;
+  const hasVehicles = vehicles.length > 0;
 
   return (
     <Card data-testid="manual-vehicle-catalog-card">
@@ -153,7 +205,7 @@ export function VehicleCatalogCard({
         <div>
           <CardTitle>車両タイプと車両</CardTitle>
           <CardDescription>
-            タイプ（カテゴリの共通属性）と個別車両（ナンバー・所属など）を1つの画面で編集します。タイプを選択すると、その配下の車両一覧と追加フォームが表示されます。
+            CSV と同じ列順で「1行 = 1車両」を入力できます。タイプを選ばず保存した場合は、自動で暫定タイプを登録します。
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -162,413 +214,392 @@ export function VehicleCatalogCard({
             type="file"
             accept=".csv,text/csv"
             className="hidden"
-            onChange={(event) => {
+            onChange={async (event) => {
               const file = event.target.files?.[0];
               if (file) {
-                void onTypeImport(file);
+                await onTypeImport(file);
+                event.target.value = '';
               }
-              event.target.value = '';
             }}
           />
+          <Button variant="outline" onClick={() => typeFileInputRef.current?.click()}>
+            タイプCSVを読み込む
+          </Button>
+          <Button variant="outline" onClick={onTypeExport} disabled={!hasTypes}>
+            タイプCSVを書き出す
+          </Button>
+
           <input
             ref={vehicleFileInputRef}
             type="file"
             accept=".csv,text/csv"
             className="hidden"
-            onChange={(event) => {
+            onChange={async (event) => {
               const file = event.target.files?.[0];
               if (file) {
-                void onVehicleImport(file);
+                await onVehicleImport(file);
+                event.target.value = '';
               }
-              event.target.value = '';
             }}
           />
-          <Button variant="secondary" size="sm" onClick={() => typeFileInputRef.current?.click()}>
-            タイプCSVを読み込む
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => vehicleFileInputRef.current?.click()}>
+          <Button variant="outline" onClick={() => vehicleFileInputRef.current?.click()}>
             車両CSVを読み込む
           </Button>
-          <Button size="sm" onClick={onTypeExport}>
-            タイプCSVを書き出す
-          </Button>
-          <Button size="sm" onClick={onVehicleExport}>
+          <Button variant="outline" onClick={onVehicleExport} disabled={!hasVehicles}>
             車両CSVを書き出す
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-8">
-        <section className="space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-muted-foreground">1. 車両タイプを登録</h3>
-            <p className="text-xs text-muted-foreground">
-              共通する仕様（座席数・バリアフリーなど）をタイプとしてまとめます。後段の車両登録ではここで選択した type_id を利用します。
-            </p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-6">
-            <LabeledInput
-              id="vehicle-type-id"
-              label="type_id"
-              value={typeDraft.typeId}
-              onChange={(value) => setTypeDraft((prev) => ({ ...prev, typeId: value }))}
-            />
-            <LabeledInput
-              id="vehicle-type-name"
-              label="名称"
-              value={typeDraft.name}
-              onChange={(value) => setTypeDraft((prev) => ({ ...prev, name: value }))}
-            />
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">車椅子対応</label>
-              <Select
-                value={typeDraft.wheelchairAccessible}
-                onValueChange={(value: BooleanChoice) => setTypeDraft((prev) => ({ ...prev, wheelchairAccessible: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="未指定" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOOLEAN_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+      <CardContent className="space-y-6">
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <section className="flex-1 space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground">車両一覧と追加</h3>
+                <p className="text-xs text-muted-foreground">
+                  CSV と同じ列順で入力できます。タイプは選択肢から選ぶか、新しい type_id を直接入力してください。
+                </p>
+              </div>
+              <div className="w-full sm:w-56">
+                <label className="text-xs font-medium text-muted-foreground">フィルター</label>
+                <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="すべてのタイプ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_TYPES_VALUE}>すべてのタイプ</SelectItem>
+                    {vehicleTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">ノンステップ</label>
-              <Select
-                value={typeDraft.lowFloor}
-                onValueChange={(value: BooleanChoice) => setTypeDraft((prev) => ({ ...prev, lowFloor: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="未指定" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOOLEAN_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <LabeledInput
-              id="vehicle-type-capacity-seated"
-              label="座席数"
-              value={typeDraft.capacitySeated}
-              onChange={(value) => setTypeDraft((prev) => ({ ...prev, capacitySeated: value }))}
-              type="number"
-            />
-            <LabeledInput
-              id="vehicle-type-capacity-total"
-              label="総定員"
-              value={typeDraft.capacityTotal}
-              onChange={(value) => setTypeDraft((prev) => ({ ...prev, capacityTotal: value }))}
-              type="number"
-            />
-            <LabeledInput
-              id="vehicle-type-tags"
-              label="タグ（カンマ区切り）"
-              value={typeDraft.tags}
-              onChange={(value) => setTypeDraft((prev) => ({ ...prev, tags: value }))}
-            />
-            <div className="md:self-end">
-              <Button
-                type="button"
-                onClick={() => {
-                  const typeId = typeDraft.typeId.trim();
-                  if (!typeId) {
-                    return;
-                  }
-                  const payload: ManualVehicleType = {
-                    typeId,
-                    name: typeDraft.name.trim() || undefined,
-                    wheelchairAccessible: safeBoolean(typeDraft.wheelchairAccessible),
-                    lowFloor: safeBoolean(typeDraft.lowFloor),
-                    capacitySeated: parseOptionalNumber(typeDraft.capacitySeated),
-                    capacityTotal: parseOptionalNumber(typeDraft.capacityTotal),
-                    tags: typeDraft.tags.trim() || undefined,
-                  };
-                  const added = onTypeAdd(payload);
-                  if (added) {
-                    setTypeDraft({
-                      typeId: '',
-                      name: '',
-                      wheelchairAccessible: 'unset',
-                      lowFloor: 'unset',
-                      capacitySeated: '',
-                      capacityTotal: '',
-                      tags: '',
-                    });
-                    setSelectedTypeId((prevSelected) => prevSelected || payload.typeId);
-                  }
-                }}
-              >
-                車両タイプを追加
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>type_id</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>車椅子</TableHead>
-                  <TableHead>低床</TableHead>
-                  <TableHead>座席</TableHead>
-                  <TableHead>総定員</TableHead>
-                  <TableHead>タグ</TableHead>
-                  <TableHead>車両数</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {vehicleTypes.map((type) => {
-                  const isSelected = selectedTypeId === type.typeId;
-                  return (
-                    <TableRow
-                      key={type.typeId}
-                      className={clsx('cursor-pointer', isSelected && 'bg-muted/60')}
-                      onClick={() => setSelectedTypeId(type.typeId)}
-                    >
-                      <TableCell>{type.typeId}</TableCell>
-                      <TableCell>{type.name ?? '-'}</TableCell>
-                      <TableCell>
-                        {type.wheelchairAccessible === undefined ? '-' : type.wheelchairAccessible ? '1' : '0'}
+
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[10rem]">vehicle_id</TableHead>
+                    <TableHead className="min-w-[12rem]">vehicle_type</TableHead>
+                    <TableHead className="min-w-[10rem]">depot_id</TableHead>
+                    <TableHead className="min-w-[6rem] text-right">seats</TableHead>
+                    <TableHead className="min-w-[8rem] text-center">wheelchair_accessible</TableHead>
+                    <TableHead className="min-w-[8rem] text-center">low_floor</TableHead>
+                    <TableHead className="min-w-[14rem]">notes</TableHead>
+                    <TableHead className="min-w-[6rem]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow className="bg-muted/20">
+                    <TableCell>
+                      <Input
+                        value={vehicleDraft.vehicleId}
+                        onChange={(event) => setVehicleDraft((prev) => ({ ...prev, vehicleId: event.target.value }))}
+                        placeholder="例: 001"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          list="manual-vehicle-type-suggestions"
+                          value={vehicleDraft.vehicleTypeId}
+                          onChange={(event) => setVehicleDraft((prev) => ({ ...prev, vehicleTypeId: event.target.value }))}
+                          placeholder="type_id を入力"
+                        />
+                        <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button type="button" variant="secondary" size="sm">
+                              タイプを追加
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>車両タイプを追加</DialogTitle>
+                              <DialogDescription>共通仕様をテンプレートとして登録します。</DialogDescription>
+                            </DialogHeader>
+                            <form className="space-y-3" onSubmit={handleSubmitType}>
+                              <LabeledInput
+                                id="type-id"
+                                label="type_id（必須）"
+                                value={typeDraft.typeId}
+                                onChange={(value) => setTypeDraft((prev) => ({ ...prev, typeId: value }))}
+                                placeholder="例: LARGE_A"
+                              />
+                              <LabeledInput
+                                id="type-name"
+                                label="名称"
+                                value={typeDraft.name}
+                                onChange={(value) => setTypeDraft((prev) => ({ ...prev, name: value }))}
+                                placeholder="任意ラベル"
+                              />
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-muted-foreground">車椅子対応</label>
+                                  <Select
+                                    value={typeDraft.wheelchairAccessible}
+                                    onValueChange={(value: BooleanChoice) =>
+                                      setTypeDraft((prev) => ({ ...prev, wheelchairAccessible: value }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="未指定" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {BOOLEAN_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-muted-foreground">ノンステップ</label>
+                                  <Select
+                                    value={typeDraft.lowFloor}
+                                    onValueChange={(value: BooleanChoice) =>
+                                      setTypeDraft((prev) => ({ ...prev, lowFloor: value }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="未指定" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {BOOLEAN_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <LabeledInput
+                                  id="type-capacity-seated"
+                                  label="座席数"
+                                  value={typeDraft.capacitySeated}
+                                  onChange={(value) => setTypeDraft((prev) => ({ ...prev, capacitySeated: value }))}
+                                  type="number"
+                                />
+                                <LabeledInput
+                                  id="type-capacity-total"
+                                  label="総定員"
+                                  value={typeDraft.capacityTotal}
+                                  onChange={(value) => setTypeDraft((prev) => ({ ...prev, capacityTotal: value }))}
+                                  type="number"
+                                />
+                              </div>
+                              <LabeledInput
+                                id="type-tags"
+                                label="タグ（カンマ区切り）"
+                                value={typeDraft.tags}
+                                onChange={(value) => setTypeDraft((prev) => ({ ...prev, tags: value }))}
+                                placeholder="例: 大型,ノンステップ"
+                              />
+                              <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                <DialogClose asChild>
+                                  <Button type="button" variant="ghost">
+                                    キャンセル
+                                  </Button>
+                                </DialogClose>
+                                <Button type="submit">タイプを追加</Button>
+                              </DialogFooter>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={vehicleDraft.depotId}
+                        onChange={(event) => setVehicleDraft((prev) => ({ ...prev, depotId: event.target.value }))}
+                        placeholder="所属車庫"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        value={vehicleDraft.seats}
+                        onChange={(event) => setVehicleDraft((prev) => ({ ...prev, seats: event.target.value }))}
+                        type="number"
+                        placeholder="数値"
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Select
+                        value={vehicleDraft.wheelchairAccessible}
+                        onValueChange={(value: BooleanChoice) =>
+                          setVehicleDraft((prev) => ({ ...prev, wheelchairAccessible: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="未指定" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BOOLEAN_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Select
+                        value={vehicleDraft.lowFloor}
+                        onValueChange={(value: BooleanChoice) =>
+                          setVehicleDraft((prev) => ({ ...prev, lowFloor: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="未指定" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BOOLEAN_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={vehicleDraft.notes}
+                        onChange={(event) => setVehicleDraft((prev) => ({ ...prev, notes: event.target.value }))}
+                        placeholder="任意メモ"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" onClick={handleAddVehicleFromDraft}>
+                        行を追加
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+
+                  {filteredVehicles.map((vehicle) => (
+                    <TableRow key={vehicle.vehicleId}>
+                      <TableCell>{vehicle.vehicleId}</TableCell>
+                      <TableCell>{vehicle.vehicleTypeId}</TableCell>
+                      <TableCell>{vehicle.depotId ?? '-'}</TableCell>
+                      <TableCell className="text-right">{vehicle.seats ?? '-'}</TableCell>
+                      <TableCell className="text-center">
+                        {vehicle.wheelchairAccessible === undefined ? '-' : vehicle.wheelchairAccessible ? '1' : '0'}
                       </TableCell>
-                      <TableCell>{type.lowFloor === undefined ? '-' : type.lowFloor ? '1' : '0'}</TableCell>
-                      <TableCell>{type.capacitySeated ?? '-'}</TableCell>
-                      <TableCell>{type.capacityTotal ?? '-'}</TableCell>
-                      <TableCell>{type.tags ?? '-'}</TableCell>
-                      <TableCell>{vehicleCountsByType.get(type.typeId) ?? 0}</TableCell>
+                      <TableCell className="text-center">
+                        {vehicle.lowFloor === undefined ? '-' : vehicle.lowFloor ? '1' : '0'}
+                      </TableCell>
+                      <TableCell>{vehicle.notes ?? '-'}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onTypeDelete(type.typeId);
-                          }}
-                        >
+                        <Button variant="destructive" size="sm" onClick={() => onVehicleDelete(vehicle.vehicleId)}>
                           削除
                         </Button>
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-                {vehicleTypes.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-sm text-muted-foreground">
-                      まだ車両タイプがありません。まずタイプを追加してください。
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground">2. 車両を登録</h3>
-              <p className="text-xs text-muted-foreground">
-                選択中のタイプに対して車両 ID・所属・備考を登録します。タイプごとの車両がテーブル下部に一覧表示されます。
-              </p>
-            </div>
-            <div className="w-full sm:w-60">
-              <label className="text-xs font-medium text-muted-foreground">車両タイプを選択</label>
-              <Select
-                value={selectedTypeId}
-                onValueChange={(value) => setSelectedTypeId(value)}
-                disabled={vehicleTypes.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="タイプ未選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicleTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-6">
-            <LabeledInput
-              id="vehicle-id"
-              label="vehicle_id"
-              value={vehicleDraft.vehicleId}
-              onChange={(value) => setVehicleDraft((prev) => ({ ...prev, vehicleId: value }))}
-            />
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">vehicle_type</label>
-              <Select
-                value={vehicleDraft.vehicleTypeId}
-                onValueChange={(value) => setVehicleDraft((prev) => ({ ...prev, vehicleTypeId: value }))}
-                disabled={vehicleTypeOptions.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="タイプを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicleTypeOptions.length === 0 ? (
-                    <SelectItem value="__no-types__" disabled>
-                      先に車両タイプを登録してください
-                    </SelectItem>
-                  ) : (
-                    vehicleTypeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))
+
+                  {filteredVehicles.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
+                        {typeFilter === ALL_TYPES_VALUE ? 'まだ車両がありません。CSV またはフォームから追加してください。' : `type_id=${typeFilter} の車両はまだ登録されていません。`}
+                      </TableCell>
+                    </TableRow>
                   )}
-                </SelectContent>
-              </Select>
+                </TableBody>
+              </Table>
             </div>
-            <LabeledInput
-              id="vehicle-depot"
-              label="depot_id"
-              value={vehicleDraft.depotId}
-              onChange={(value) => setVehicleDraft((prev) => ({ ...prev, depotId: value }))}
-            />
-            <LabeledInput
-              id="vehicle-seats"
-              label="座席数"
-              value={vehicleDraft.seats}
-              onChange={(value) => setVehicleDraft((prev) => ({ ...prev, seats: value }))}
-              type="number"
-            />
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">車椅子対応</label>
-              <Select
-                value={vehicleDraft.wheelchairAccessible}
-                onValueChange={(value: BooleanChoice) => setVehicleDraft((prev) => ({ ...prev, wheelchairAccessible: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="未指定" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOOLEAN_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">ノンステップ</label>
-              <Select
-                value={vehicleDraft.lowFloor}
-                onValueChange={(value: BooleanChoice) => setVehicleDraft((prev) => ({ ...prev, lowFloor: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="未指定" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOOLEAN_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <LabeledInput
-              id="vehicle-notes"
-              label="備考"
-              value={vehicleDraft.notes}
-              onChange={(value) => setVehicleDraft((prev) => ({ ...prev, notes: value }))}
-              placeholder="任意メモ"
-            />
-            <div className="md:self-end">
-              <Button
-                type="button"
-                disabled={vehicleTypeOptions.length === 0}
-                onClick={() => {
-                  const vehicleId = vehicleDraft.vehicleId.trim();
-                  if (!vehicleId) {
-                    return;
-                  }
-                  const vehicleTypeId = vehicleDraft.vehicleTypeId.trim();
-                  if (!vehicleTypeId) {
-                    return;
-                  }
-                  const payload: ManualVehicle = {
-                    vehicleId,
-                    vehicleTypeId,
-                    depotId: vehicleDraft.depotId.trim() || undefined,
-                    seats: parseOptionalNumber(vehicleDraft.seats),
-                    wheelchairAccessible: safeBoolean(vehicleDraft.wheelchairAccessible),
-                    lowFloor: safeBoolean(vehicleDraft.lowFloor),
-                    notes: vehicleDraft.notes.trim() || undefined,
-                  };
-                  const added = onVehicleAdd(payload);
-                  if (added) {
-                    setVehicleDraft({
-                      vehicleId: '',
-                      vehicleTypeId: selectedTypeId,
-                      depotId: '',
-                      seats: '',
-                      wheelchairAccessible: 'unset',
-                      lowFloor: 'unset',
-                      notes: '',
-                    });
-                  }
-                }}
-              >
-                車両を追加
-              </Button>
-            </div>
-          </div>
+            <p className="text-xs text-muted-foreground">
+              表示件数: {filteredVehicles.length} / 総登録 {vehicles.length}
+              {typeFilter !== ALL_TYPES_VALUE ? `（type_id=${typeFilter}）` : ''}
+            </p>
+          </section>
 
-          <DataTable
-            headers={[
-              'vehicle_id',
-              'vehicle_type',
-              'depot_id',
-              '座席',
-              '車椅子',
-              '低床',
-              '備考',
-              '',
-            ]}
-            rows={filteredVehicles.map((vehicle) => [
-              vehicle.vehicleId,
-              vehicle.vehicleTypeId,
-              vehicle.depotId ?? '-',
-              vehicle.seats ?? '-',
-              vehicle.wheelchairAccessible === undefined ? '-' : vehicle.wheelchairAccessible ? '1' : '0',
-              vehicle.lowFloor === undefined ? '-' : vehicle.lowFloor ? '1' : '0',
-              vehicle.notes ?? '-',
-              <Button
-                key={`delete-${vehicle.vehicleId}`}
-                variant="destructive"
-                size="sm"
-                onClick={() => onVehicleDelete(vehicle.vehicleId)}
-              >
-                削除
-              </Button>,
-            ])}
-            emptyMessage={
-              selectedTypeId
-                ? `type_id=${selectedTypeId} の車両がまだ登録されていません。`
-                : 'まだ車両がありません。タイプを選択して追加してください。'
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            表示中の車両件数: {filteredVehicles.length}
-            {selectedTypeId ? `（type_id=${selectedTypeId}）` : ''}
-          </p>
-        </section>
+          <aside className="lg:w-80 lg:flex-none">
+            <div className="space-y-3 rounded-md border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground">車両タイプ一覧</h3>
+                  <p className="text-xs text-muted-foreground">タイプごとの登録台数を確認できます。</p>
+                </div>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setTypeDialogOpen(true)}>
+                  追加
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                {vehicleTypes.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">まだタイプがありません。先に登録するか、車両行で新しい type_id を入力してください。</p>
+                ) : (
+                  vehicleTypes.map((type) => (
+                    <div key={type.typeId} className="flex items-start justify-between gap-2 rounded border px-3 py-2">
+                      <div className="space-y-1 text-xs">
+                        <p className="text-sm font-semibold">{type.typeId}</p>
+                        {type.name && <p className="text-muted-foreground">名称: {type.name}</p>}
+                        <p className="text-muted-foreground">
+                          車両数: {vehicleCountsByType.get(type.typeId) ?? 0}
+                        </p>
+                        {type.tags && <p className="text-muted-foreground">タグ: {type.tags}</p>}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => onTypeDelete(type.typeId)}>
+                        削除
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </aside>
+        </div>
       </CardContent>
+
+      <datalist id="manual-vehicle-type-suggestions">
+        {vehicleTypeOptions.map((option) => (
+          <option key={option.value} value={option.value} />
+        ))}
+      </datalist>
     </Card>
   );
+}
+
+function createTypeDraft(): VehicleTypeDraft {
+  return {
+    typeId: '',
+    name: '',
+    wheelchairAccessible: 'unset',
+    lowFloor: 'unset',
+    capacitySeated: '',
+    capacityTotal: '',
+    tags: '',
+  };
+}
+
+function createVehicleDraft(defaultTypeId: string): VehicleDraft {
+  return {
+    vehicleId: '',
+    vehicleTypeId: defaultTypeId,
+    depotId: '',
+    seats: '',
+    wheelchairAccessible: 'unset',
+    lowFloor: 'unset',
+    notes: '',
+  };
+}
+
+function safeBoolean(choice: BooleanChoice): boolean | undefined {
+  if (choice === 'unset') {
+    return undefined;
+  }
+  return choice === 'true';
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) ? numeric : undefined;
 }
