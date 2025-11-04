@@ -1,6 +1,6 @@
 /**
  * src/App.tsx
- * 行路編集モードに寄せた最小ナビゲーション構成。Import と Blocks のみを提供する。
+ * 行路編集モードに寄せた最小ナビゲーション構成。
  */
 import { useMemo, useState } from 'react';
 import AppShell, { type NavigationSection } from './components/layout/AppShell';

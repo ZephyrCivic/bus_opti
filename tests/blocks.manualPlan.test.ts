@@ -57,6 +57,12 @@ const config: ManualPlanConfig = {
   maxGapMinutes: 60,
 };
 
+const configNoValidation: ManualPlanConfig = {
+  minTurnaroundMin: 10,
+  maxGapMinutes: 60,
+  validationMode: 'off',
+};
+
 test('connectBlocksPlan merges blocks and preserves ordering', () => {
   const plan = createPlan();
   const result = connectBlocksPlan(plan, 'BLOCK_A', 'BLOCK_B', config);
@@ -128,7 +134,7 @@ test('createBlockFromTrip promotes an unassigned trip into a new block', () => {
   assert.equal(next?.coverageRatio, 1);
 });
 
-test('createBlockFromTrip returns null when trip is already assigned', () => {
+test('createBlockFromTrip moves assigned trip into a new block', () => {
   const plan = createPlan();
   const result = createBlockFromTrip(plan, {
     tripId: 'TRIP_A1',
@@ -139,6 +145,26 @@ test('createBlockFromTrip returns null when trip is already assigned', () => {
     fromStopId: 'STOP_A',
     toStopId: 'STOP_B',
   });
-  assert.equal(result, null);
+  assert.ok(result);
+  const newSummary = result?.summaries.find((summary) => summary.blockId === 'BLOCK_001');
+  assert.ok(newSummary);
+  assert.equal(newSummary?.tripCount, 1);
+  assert.equal(newSummary?.firstTripStart, '08:00');
+  assert.ok(result?.csvRows.some((row) => row.blockId === 'BLOCK_001' && row.tripId === 'TRIP_A1'));
+});
+
+
+
+test('connectBlocksPlan allows mismatched service when validationMode is off', () => {
+  const plan = createPlan();
+  plan.summaries[1]!.serviceDayIndex = 1;
+  plan.summaries[1]!.serviceId = 'SUN';
+
+  const strictResult = connectBlocksPlan(plan, 'BLOCK_A', 'BLOCK_B', config);
+  assert.equal(strictResult, null);
+
+  const relaxedResult = connectBlocksPlan(plan, 'BLOCK_A', 'BLOCK_B', configNoValidation);
+  assert.ok(relaxedResult);
+  assert.equal(relaxedResult?.connection.serviceDayIndex, plan.summaries[0]!.serviceDayIndex);
 });
 
