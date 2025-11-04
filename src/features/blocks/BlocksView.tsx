@@ -17,7 +17,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import TimelineGantt, {
   type TimelineLaneContextMenuEvent,
   type TimelineLaneProps,
@@ -25,6 +25,7 @@ import TimelineGantt, {
 } from '@/features/timeline/TimelineGantt';
 import { DEFAULT_PIXELS_PER_MINUTE, parseTimeLabel } from '@/features/timeline/timeScale';
 import type { TimelineLane, TimelineSegment, TimelineSegmentDragEvent } from '@/features/timeline/types';
+import { DragBusProvider, useOptionalDragBus } from '@/features/timeline/dragBus';
 import {
   buildBlocksPlan,
   buildSingleTripBlockSeed,
@@ -37,20 +38,13 @@ import { useGtfsImport } from '@/services/import/GtfsImportProvider';
 import { useBlocksPlan } from './hooks/useBlocksPlan';
 import { useManualBlocksPlan } from './hooks/useManualBlocksPlan';
 import { isStepOne } from '@/config/appStep';
-import { buildBlocksMetaCsv } from '@/services/export/blocksMetaCsv';
 import { downloadCsv } from '@/utils/downloadCsv';
-import { useExportConfirmation } from '@/components/export/ExportConfirmationProvider';
 import { recordAuditEvent } from '@/services/audit/auditLog';
 import { toast } from 'sonner';
-import type { BlockMetaEntry } from '@/types';
 import { cloneBlockPlan } from '@/services/blocks/manualPlan';
-
-const TIMELINE_AXIS_LABELS = {
-  block: '行路ID',
-  vehicle: '車両ID',
-} as const;
-
-type TimelineAxisMode = keyof typeof TIMELINE_AXIS_LABELS;
+import MapView from '@/features/explorer/MapView';
+import { buildExplorerDataset } from '@/features/explorer/mapData';
+import { buildBlocksIntervalsCsv } from '@/services/export/blocksIntervalsCsv';
 
 const DEFAULT_INTERVAL_MINUTES = 10;
 const DEADHEAD_COLOR = '#60a5fa';
@@ -61,6 +55,9 @@ interface BlockInterval {
   kind: 'break' | 'deadhead';
   startMinutes: number;
   endMinutes: number;
+  anchorTripId?: string;
+  position?: 'before' | 'after' | 'absolute';
+  note?: string;
 }
 
 type BlockTimelineSegmentMeta =
@@ -109,21 +106,13 @@ export default function BlocksView(): JSX.Element {
   const [fromBlockId, setFromBlockId] = useState<string>('');
   const [toBlockId, setToBlockId] = useState<string>('');
   const [manualStatus, setManualStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [timelineAxis, setTimelineAxis] = useState<TimelineAxisMode>('block');
   const [globalDropActive, setGlobalDropActive] = useState(false);
   const [blockIntervals, setBlockIntervals] = useState<Record<string, BlockInterval[]>>({});
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [dropTargetBlockId, setDropTargetBlockId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<BlockContextMenuState | null>(null);
-  const blockMeta = manual.blockMeta ?? {};
-  const vehicleTypeOptions = useMemo(
-    () =>
-      manual.vehicleTypes.map((type) => ({
-        value: type.typeId,
-        label: type.name ? `${type.typeId}（${type.name}）` : type.typeId,
-      })),
-    [manual.vehicleTypes],
-  );
+  const [mapRouteId, setMapRouteId] = useState<string | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
   const vehicleIdOptions = useMemo(
     () =>
       manual.vehicles.map((vehicle) => ({
@@ -150,6 +139,7 @@ export default function BlocksView(): JSX.Element {
     () => ({
       minTurnaroundMin: 0,
       maxGapMinutes: Number.MAX_SAFE_INTEGER,
+      validationMode: 'off' as const,
     }),
     [],
   );
@@ -167,6 +157,51 @@ export default function BlocksView(): JSX.Element {
       setManualBlockPlan(cloneBlockPlan(latestPlanRef.current));
     },
     [setManualBlockPlan],
+  );
+
+  const getTripTimes = useCallback(
+    (blockId: string, tripId: string): { start: number; end: number } | null => {
+      const row = manualPlanState.plan.csvRows
+        .filter((r) => r.blockId === blockId && r.tripId === tripId)
+        .sort((a, b) => a.seq - b.seq)[0];
+      if (!row) return null;
+      const s = parseTimeLabel(row.tripStart);
+      const e = parseTimeLabel(row.tripEnd);
+      if (s === undefined || e === undefined) return null;
+      return { start: s, end: e };
+    },
+    [manualPlanState.plan.csvRows],
+  );
+
+  const handleAddAnchoredInterval = useCallback(
+    (
+      blockId: string,
+      tripId: string,
+      position: 'before' | 'after',
+      kind: 'break' | 'deadhead',
+    ) => {
+      const times = getTripTimes(blockId, tripId);
+      if (!times) return;
+      const duration = DEFAULT_INTERVAL_MINUTES;
+      let start = position === 'after' ? times.end : Math.max(0, times.start - duration);
+      let end = position === 'after' ? Math.min(24 * 60, times.end + duration) : times.start;
+      if (end <= start) end = start + 1;
+      const interval: BlockInterval = {
+        id: `interval-${crypto.randomUUID()}`,
+        kind,
+        startMinutes: Number(start.toFixed(2)),
+        endMinutes: Number(end.toFixed(2)),
+        anchorTripId: tripId,
+        position,
+      };
+      setBlockIntervals((current) => {
+        const list = current[blockId] ?? [];
+        return { ...current, [blockId]: [...list, interval] };
+      });
+      setContextMenu(null);
+      toast.success('区間を追加しました。');
+    },
+    [getTripTimes],
   );
 
   useEffect(() => {
@@ -525,6 +560,67 @@ export default function BlocksView(): JSX.Element {
     });
   }, []);
 
+  // ---- Tripドラッグ（分離→結合、検証OFF） ----
+  const dragBus = useOptionalDragBus();
+
+  const getSegmentPropsForDrag = useCallback(
+    (lane: TimelineLane<BlockTimelineSegmentMeta>, segment: TimelineSegment<BlockTimelineSegmentMeta>) => {
+      const meta = segment.meta;
+      if (!dragBus || !meta || meta.type !== 'trip') {
+        return {};
+      }
+      return {
+        onPointerDown: (event: React.PointerEvent<SVGGElement>) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          dragBus.beginDrag(
+            {
+              type: 'block-trip',
+              blockId: meta.blockId,
+              tripId: meta.tripId,
+              serviceDayIndex: 0,
+              startMinutes: segment.startMinutes,
+              endMinutes: segment.endMinutes,
+            },
+            {
+              origin: { laneId: lane.id, segmentId: segment.id },
+              pointerId: (event as unknown as PointerEvent).pointerId,
+              pointerType: (event as unknown as PointerEvent).pointerType,
+              initialPosition: { clientX: event.clientX, clientY: event.clientY },
+            },
+          );
+        },
+        className: 'cursor-grab',
+      } as React.SVGProps<SVGGElement>;
+    },
+    [dragBus],
+  );
+
+  const handleExternalDrop = useCallback(
+    (evt: import('@/features/timeline/types').TimelineExternalDropEvent<BlockTimelineSegmentMeta>) => {
+      if (!evt || evt.payload.type !== 'block-trip') return false;
+      const sourceBlockId = evt.payload.blockId;
+      const targetBlockId = evt.laneId;
+      if (!targetBlockId || targetBlockId === sourceBlockId) return false;
+      const split = manualPlanState.splitBlock(sourceBlockId, evt.payload.tripId);
+      // 分離に成功したら新規ブロックを推定、失敗時は元ブロックをそのまま結合
+      let newBlockId = sourceBlockId;
+      if (split) {
+        const ids = manualPlanState.plan.summaries.map((s) => s.blockId);
+        newBlockId = ids.sort().slice(-1)[0] ?? sourceBlockId;
+      }
+      const connected = manualPlanState.connect(newBlockId, targetBlockId);
+      if (connected) {
+        toast.success(`${newBlockId} を ${targetBlockId} に結合しました（検証OFF）`);
+        return true;
+      }
+      toast.info('結合できませんでした');
+      return false;
+    },
+    [manualPlanState],
+  );
+
   const getLaneProps = useCallback(
     (lane: TimelineLane<BlockTimelineSegmentMeta>): TimelineLaneProps => {
       const isDropTarget = dropTargetBlockId === lane.id;
@@ -756,7 +852,7 @@ export default function BlocksView(): JSX.Element {
   const timelineLanes = useMemo<TimelineLane<BlockTimelineSegmentMeta>[]>(() => {
     return visibleSummaries.reduce<TimelineLane<BlockTimelineSegmentMeta>[]>((lanes, summary) => {
       const meta = blockMeta[summary.blockId];
-      const laneLabel = formatTimelineLaneLabel(summary, meta, timelineAxis);
+      const laneLabel = formatTimelineLaneLabel(summary);
       const vehicleTypeLabel = meta?.vehicleTypeId?.trim();
       const overlapMinutes = overlapMinutesByBlock.get(summary.blockId) ?? 0;
       const baseColor = overlapMinutes > 0 ? 'var(--destructive)' : 'var(--primary)';
@@ -866,6 +962,7 @@ export default function BlocksView(): JSX.Element {
   ]);
 
   return (
+    <DragBusProvider>
     <div
       className="relative space-y-6"
       data-testid="blocks-view-root"
@@ -935,6 +1032,57 @@ export default function BlocksView(): JSX.Element {
                   onClick={() => handleAddInterval(contextMenu.blockId, 'deadhead', contextMenu.minutes)}
                 >
                   回送をこの位置に追加
+                </button>
+              </>
+            ) : null}
+            {contextMenu.type === 'trip' ? (
+              <>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddAnchoredInterval(contextMenu.blockId, contextMenu.tripId, 'before', 'break')}
+                >
+                  この便の前に休憩を追加
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddAnchoredInterval(contextMenu.blockId, contextMenu.tripId, 'after', 'break')}
+                >
+                  この便の後に休憩を追加（10分）
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddAnchoredInterval(contextMenu.blockId, contextMenu.tripId, 'before', 'deadhead')}
+                >
+                  この便の前に回送を追加
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => handleAddAnchoredInterval(contextMenu.blockId, contextMenu.tripId, 'after', 'deadhead')}
+                >
+                  この便の後に回送を追加
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-left hover:bg-muted focus:outline-none"
+                  onClick={() => {
+                    if (!result) return;
+                    const tripsTable = result.tables['trips.txt'];
+                    const row = tripsTable?.rows.find((r: any) => String(r.trip_id).trim() === contextMenu.tripId);
+                    const routeId = row ? String(row.route_id ?? '').trim() : '';
+                    if (routeId) {
+                      setMapRouteId(routeId);
+                      setMapOpen(true);
+                      setContextMenu(null);
+                    } else {
+                      toast.info('この便の route_id を取得できませんでした');
+                    }
+                  }}
+                >
+                  この便のルートを地図で表示
                 </button>
               </>
             ) : null}
@@ -1096,24 +1244,7 @@ export default function BlocksView(): JSX.Element {
                     </Button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>表示軸</span>
-                  <div className="flex items-center gap-1" role="group" aria-label="タイムライン表示軸">
-                    {(Object.keys(TIMELINE_AXIS_LABELS) as TimelineAxisMode[]).map((axis) => (
-                      <Button
-                        key={axis}
-                        type="button"
-                        size="sm"
-                        variant={timelineAxis === axis ? 'default' : 'outline'}
-                        className="h-7 px-3 text-xs"
-                        aria-pressed={timelineAxis === axis}
-                        onClick={() => setTimelineAxis(axis)}
-                      >
-                        {TIMELINE_AXIS_LABELS[axis]}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+
               </div>
               <TimelineGantt
                 lanes={timelineLanes}
@@ -1124,26 +1255,53 @@ export default function BlocksView(): JSX.Element {
                 onSegmentDrag={handleTimelineSegmentDrag}
                 onSegmentContextMenu={handleSegmentContextMenu}
                 onLaneContextMenu={handleLaneContextMenu}
+                onExternalDrop={handleExternalDrop}
+                onExternalDragOver={() => {}}
+                getSegmentProps={getSegmentPropsForDrag}
               />
             </>
           )}
         </CardContent>
       </Card>
 
-      <BlocksTable
-        summaries={manualPlanState.plan.summaries}
-        overlapMinutesByBlock={overlapMinutesByBlock}
-        blockMeta={blockMeta}
-        vehicleTypeOptions={vehicleTypeOptions}
-        vehicleIdOptions={vehicleIdOptions}
-        onUpdateBlockMeta={handleBlockMetaChange}
-        onExportMeta={handleExportMeta}
-      />
+      <div className="flex items-center justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            const exportData = buildBlocksIntervalsCsv(blockIntervals);
+            downloadCsv(exportData.csv, exportData.fileName);
+            toast.success('blocks_intervals.csv を出力しました。');
+          }}
+          disabled={Object.keys(blockIntervals).length === 0}
+        >
+          blocks_intervals.csv を出力
+        </Button>
+      </div>
       <UnassignedTable
         unassigned={manualPlanState.plan.unassignedTripIds}
         onCreateBlock={handleCreateBlockFromTrip}
       />
+      {/* 地図モーダル */}
+      <Dialog open={mapOpen} onOpenChange={setMapOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>ルート地図</DialogTitle>
+          </DialogHeader>
+          {result && mapRouteId ? (
+            <MapView
+              dataset={buildExplorerDataset(result, { routeIds: [mapRouteId] })}
+              onSelect={() => {}}
+              showDepots={false}
+              showReliefPoints={false}
+            />
+          ) : (
+            <div className="p-4 text-sm text-muted-foreground">GTFS データが未読み込みです。</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+    </DragBusProvider>
   );
 }
 
@@ -1415,3 +1573,11 @@ function formatTimelineLaneLabel(
   }
   return `${summary.blockId}（便 ${summary.tripCount} 件）`;
 }
+
+
+
+
+
+
+
+

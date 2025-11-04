@@ -4,6 +4,11 @@ import { evaluateBlockWarnings, countWarnings } from './blockBuilder';
 export interface ManualPlanConfig {
   minTurnaroundMin: number;
   maxGapMinutes: number;
+  /**
+   * 'off' の場合、サービス日/サービスID/ターン時間などの検証をスキップし、
+   * 任意の結合を許可する。既定は 'strict'。
+   */
+  validationMode?: 'strict' | 'off';
 }
 
 export interface ManualConnection {
@@ -68,19 +73,24 @@ export function connectBlocksPlan(
     return null;
   }
 
-  if (fromSummary.serviceDayIndex !== toSummary.serviceDayIndex) {
-    return null;
-  }
-  if (fromSummary.serviceId && toSummary.serviceId && fromSummary.serviceId !== toSummary.serviceId) {
-    return null;
+  const strict = (config.validationMode ?? 'strict') === 'strict';
+  if (strict) {
+    if (fromSummary.serviceDayIndex !== toSummary.serviceDayIndex) {
+      return null;
+    }
+    if (fromSummary.serviceId && toSummary.serviceId && fromSummary.serviceId !== toSummary.serviceId) {
+      return null;
+    }
   }
 
   const gapMinutes = computeGapMinutes(fromSummary.lastTripEnd, toSummary.firstTripStart);
-  if (gapMinutes === null) {
-    return null;
-  }
-  if (gapMinutes < config.minTurnaroundMin || gapMinutes > config.maxGapMinutes) {
-    return null;
+  if (strict) {
+    if (gapMinutes === null) {
+      return null;
+    }
+    if (gapMinutes < config.minTurnaroundMin || gapMinutes > config.maxGapMinutes) {
+      return null;
+    }
   }
 
   const nextPlan = cloneBlockPlan(plan);
@@ -92,8 +102,13 @@ export function connectBlocksPlan(
 
   const combinedRows = [...fromRows, ...toRows];
   const orderedRows = combinedRows.sort((a, b) => {
-    const aStart = toMinutes(a.tripStart) ?? 0;
-    const bStart = toMinutes(b.tripStart) ?? 0;
+    const aStart = toMinutes(a.tripStart);
+    const bStart = toMinutes(b.tripStart);
+    if (aStart === null && bStart === null) {
+      return a.seq - b.seq;
+    }
+    if (aStart === null) return 1;
+    if (bStart === null) return -1;
     if (aStart === bStart) {
       return a.seq - b.seq;
     }
