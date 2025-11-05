@@ -387,26 +387,28 @@ export default function ImportView(): JSX.Element {
           </CardContent>
           <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">{footerMessage}</p>
-            <Button
-              type="button"
-              onClick={() => {
-                if (!hasRouteSelection) {
-                  return;
-                }
-                recordTelemetryEvent({
-                  type: 'import.open-manual',
-                  payload: {
-                    sourceName: result.sourceName,
-                    routeCount: selectedRouteIds.length,
-                  },
-                });
-                navigate('manual');
-              }}
-              disabled={!hasRouteSelection}
-              aria-disabled={!hasRouteSelection}
-            >
-              制約条件（手動入力）
-            </Button>
+            {!isStepOne && (
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!hasRouteSelection) {
+                    return;
+                  }
+                  recordTelemetryEvent({
+                    type: 'import.open-manual',
+                    payload: {
+                      sourceName: result.sourceName,
+                      routeCount: selectedRouteIds.length,
+                    },
+                  });
+                  navigate('manual');
+                }}
+                disabled={!hasRouteSelection}
+                aria-disabled={!hasRouteSelection}
+              >
+                制約条件（手動入力）
+              </Button>
+            )}
           </CardFooter>
         </Card>
       )}

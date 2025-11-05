@@ -49,6 +49,10 @@
 
 このファイルは現在の実装計画の単一情報源（SSOT）です。Step1のコア機能は完了しています。以下の残件はUI/運用補助の範囲（非ブロッキング）で、順次対応します。過去の詳細タスクは `plans.archive/2025-10-24.md` に退避しました。
 
+## Testログ (2025-11-05)
+- `npm run build` → OK。
+- `cmd.exe /c make.cmd generate-snapshots` → FAIL（既知の Playwright シナリオがタイムアウト/失敗: `blocks.meta.step1`, `blocks.unassigned.dragdrop`, `duty-biview.latency`, `explorer-performance`, `import-flow` 系2件, `step1.basic-flow`。従来課題と同一事象で停止）。
+
 ## Testログ (2025-10-29)
 - `npx tsx --test tests/manual.csv.test.ts` → PASS（manualCsv の車両・タイプ含む全ラウンドトリップを確認。）
 - `PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test tests/playwright/import-flow.spec.ts` → FAIL（`http://127.0.0.1:4174/bus_opti/` へ接続できず。プレビューサーバ未起動のため接続拒否。別セッションで `npm run preview` を起動できる環境で再実行が必要。）
@@ -160,6 +164,7 @@ Vehicle 面タイムラインで行路ID/車両IDの表示軸をトグルしつ�
 - 警告の有無に関わらず保存は常に非ブロッキング。
 - 車両タイプ適合や資格適合の自動検証は行わない（記録のみ）。
 - 表示軸の切替は可視化のみであり、割付の自動移動・整列は行わない。
+- 制約条件（手動入力）画面への導線は表示しない（Step1では非対応）。
 - 英語のみの UI 文言は出さない（例外は固有名詞・仕様名）。
 
 次の段階（ロードマップの見取り図）
